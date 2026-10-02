@@ -1,0 +1,27 @@
+# Minecraft server: binaries, world data, logs, local config
+server/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+
+# Logs, caches, local tool settings
+*.log
+.pytest_cache/
+.claude/settings.local.json
+
+# Loader debug output (python loader/load_recipes.py --out ...)
+subset.json
+full.json
