@@ -5,7 +5,7 @@ import hmac
 import logging
 import uuid
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import get_settings
@@ -37,11 +37,16 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/ask", response_model=AskResponse)
-def ask(body: AskRequest, x_minecorp_key: str = Header(default="")) -> AskResponse:
-    """Answer a player's question. Requires the shared secret in X-MineCorp-Key."""
+def require_key(x_minecorp_key: str = Header(default="")) -> None:
+    """Reject the request unless it carries the shared secret. Runs before the body is validated, so a caller
+    without the secret learns nothing about the expected fields."""
     if not hmac.compare_digest(x_minecorp_key.encode(), settings.shared_secret.encode()):
         raise HTTPException(status_code=401, detail="unauthorized")
+
+
+@app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_key)])
+def ask(body: AskRequest) -> AskResponse:
+    """Answer a player's question. Requires the shared secret in X-MineCorp-Key."""
     request_id = uuid.uuid4().hex[:12]
     log.info("ask %s player=%s question=%r", request_id, body.playerName, body.question)
     text = answer(Question(body.playerUuid, body.playerName, body.sessionId, body.question), request_id)

@@ -31,3 +31,6 @@ target/
 
 # Agent traces (contain player questions)
 agent/logs/
+
+# End-to-end test server (a private copy of server/)
+.test-server/

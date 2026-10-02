@@ -100,8 +100,11 @@ plugin/
   src/main/resources/plugin.yml                Plugin descriptor: name, main class, api-version, command, permission
   src/main/resources/config.yml                Default config (copied to the server on first start)
   src/main/java/com/minecorp/plugin/
-    MineCorpPlugin.java                        Entry point and the /agent command (async, one question at a time per sender)
+    MineCorpPlugin.java                        Entry point and the /agent command; connects the pieces below to Bukkit
+    AskGuard.java                              The rules for accepting a question (usage, length, configured, one at a time)
+    Replies.java                               Splits an answer into chat lines
     AgentClient.java                           HTTP client for the agent service (POST /ask)
+  src/test/java/com/minecorp/plugin/           JUnit tests (see ../tests/README.md)
 ```
 
 `plugin.yml` takes its version from `pom.xml` (`${project.version}`), so change the version in one place.
@@ -128,3 +131,21 @@ When the server is moved to a new Paper version, update all of these together:
 ## What's next
 
 The agent service gets an LLM loop and graph tools; the plugin does not change. See [docs/architecture.md](../docs/architecture.md) and [agent/README.md](../agent/README.md).
+
+## Tests
+
+```powershell
+cd plugin
+mvn -B test                      # 37 JUnit tests, about 5 seconds
+```
+
+| Test class (in `plugin/src/test/java/com/minecorp/plugin/`) | What it checks |
+|---|---|
+| `AskGuardTest` | empty question, 500-character limit (exactly 500 allowed), not configured, one question at a time per sender, the order the rules are checked in, and 16 simultaneous attempts letting only one through |
+| `AgentClientTest` | against a local HTTP server: method, path, secret header, JSON body and escaping, the answer, trailing slashes, and every failure (non-200, not JSON, no answer, answer not a string, empty body, timeout, nothing listening) |
+| `RepliesTest` | how an answer splits into chat lines |
+| `PluginDescriptorTest` | `plugin.yml` and `config.yml` as packaged: main class exists, version filled in, `api-version` matches Paper, the `/agent` command and permission, no secret shipped |
+
+The end-to-end test (`tests/plugin/test_plugin_e2e.py`) runs the built plugin in a real Paper server with a stub agent.
+
+Or from the project root: `./scripts/test.ps1`; add `-E2E` to also start a real Paper server with this plugin and a stub agent (about 25 seconds, on a random port, so your own server can keep running). Details in [../tests/README.md](../tests/README.md).

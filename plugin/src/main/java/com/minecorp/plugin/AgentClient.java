@@ -2,6 +2,7 @@ package com.minecorp.plugin;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 
 import java.io.IOException;
 import java.net.URI;
@@ -28,7 +29,10 @@ final class AgentClient {
         this.timeout = timeout;
     }
 
-    /** Sends a question and returns the answer text. Throws if the agent is unreachable or returns an error. */
+    /**
+     * Sends a question and returns the answer text. Throws IOException if the agent is unreachable, times out,
+     * returns a non-200 status, or returns a body that is not JSON with an "answer" string.
+     */
     String ask(String playerUuid, String playerName, String sessionId, String question)
             throws IOException, InterruptedException {
         JsonObject body = new JsonObject();
@@ -48,7 +52,15 @@ final class AgentClient {
         if (response.statusCode() != 200) {
             throw new IOException("Agent returned HTTP " + response.statusCode());
         }
-        JsonObject json = GSON.fromJson(response.body(), JsonObject.class);
+        JsonObject json;
+        try {
+            json = GSON.fromJson(response.body(), JsonObject.class);
+        } catch (JsonParseException e) {
+            throw new IOException("Agent reply was not valid JSON", e);
+        }
+        if (json == null || !json.has("answer") || !json.get("answer").isJsonPrimitive()) {
+            throw new IOException("Agent reply had no answer");
+        }
         return json.get("answer").getAsString();
     }
 }

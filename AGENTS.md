@@ -102,6 +102,10 @@ Loader (Python) and local Neo4j (docker-compose.yml): see [loader/README.md](loa
 
 [plugin/](plugin/) is the thin Paper plugin (Maven, Java 25, `paper-api 26.2.build.129-stable`, kept in step with the server build). `/agent <question>` POSTs to the agent service (stub reply for now) asynchronously with a shared secret. Build and install with [scripts/build-plugin.ps1](scripts/build-plugin.ps1) (copies the jar to `server/plugins`). How to build and use it: [plugin/README.md](plugin/README.md). Not yet tested on a running server.
 
+## Tests
+
+[tests/README.md](tests/README.md). Run `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -All` (about a minute). 494 tests as of 2026-10-02: 125 loader unit tests, 37 against the real Paper jar, 125 agent unit tests (fake model, no tokens), 124 agent tool tests and 34 loader integration tests that rebuild the graph in a throwaway Neo4j database (`minecorptest`, created and dropped by the test; the real database is never touched), 37 plugin JUnit tests, 12 end-to-end tests with a real Paper server on a random port in `.test-server/` plus a stub agent. The agent also has evals (`agent/evals`, call the model, cost tokens) for tool choice and answer quality. Each component README lists its own tests. The plugin's rules live in `AskGuard`, `Replies` and `AgentClient` so they can be tested without Minecraft. Pytest markers: `jar`, `integration`, `e2e`; the fast run excludes `integration` and `e2e`.
+
 ## Server
 
 Scripts are in scripts/; the server itself runs in server/ (git-ignored via .gitignore).

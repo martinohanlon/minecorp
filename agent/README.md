@@ -53,3 +53,26 @@ agent/
 ## Use with the plugin
 
 See [plugin/README.md](../plugin/README.md): build the plugin, start this service, start the Minecraft server, then type `/agent <question>`.
+
+## Tests
+
+Two kinds, and they answer different questions.
+
+**Tests** (`tests/agent/`, no model, no tokens) check that the code around the model behaves:
+
+| File | Needs | What it checks |
+|---|---|---|
+| `test_tools_unit.py` | nothing | the tool registry and the specs sent to the model are valid; how recipes, requirements and routes are written as text; how conditions are put into words |
+| `test_agent_loop.py` | nothing | the tool-calling loop against a scripted fake model: tool calls and results, a tool that raises, over-long results cut at the cap, the turn limit (last turn forbids tools, fallback answer), model failures, trace lines written |
+| `test_config.py` | nothing | `.env` reading (never overrides real variables) and the settings: secret of 16+ characters, safe defaults (localhost), overrides and types |
+| `test_app.py` | nothing | `/health`, the secret check (exact match only, done before the body is read), field limits, one request id per call, start-up problems turned into a friendly message |
+| `test_tools_graph.py` (marker `integration`) | Neo4j Enterprise and the Paper jar | every tool against the real graph, rebuilt from source in a throwaway database: name resolution and ambiguity, recipe shapes, categories and exclusions, limit clamping, `how_to_get` wording and ordering, and `what_do_i_need` on 47 items to prove every step only uses things gathered or made before it |
+
+**Evals** (`agent/evals`, calls the model, costs tokens) check that the model chooses the right tools and gives a good answer. Run them after changing the prompt or a tool description, not on every change:
+
+```powershell
+cd agent
+python -m evals.run_evals
+```
+
+Run the tests from the project root with `./scripts/test.ps1` (add `-Integration` for the graph tests). More in [../tests/README.md](../tests/README.md).

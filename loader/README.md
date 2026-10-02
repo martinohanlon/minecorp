@@ -99,3 +99,17 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 - Full graph loaded into Neo4j 2026.09.0 (2026-10-02) following ontology v0.4: 1,571 Item (234 of them ItemClass), 1,585 Recipe, 7 Station, plus 3 sample Tasks and a test Player.
 - Subset logic follows only recipes that *produce* an item. It does not yet include uses of an item (the forward direction).
 - Special recipes (banner duplicate, fireworks...) have no inputs and are flagged `special`.
+
+## Tests
+
+`./scripts/test.ps1` runs the loader tests (125 unit tests, 37 against the real jar), and `-Integration` also rebuilds the whole graph in a throwaway database and checks it. See [../tests/README.md](../tests/README.md).
+
+| File (in `tests/loader/`) | Needs | What it checks |
+|---|---|---|
+| `test_load_recipes.py` (43) | nothing | recipe parsing: shaped counts, shapeless repeats, stations, special recipes, alternative lists becoming a tag plus an exclusion, category naming and collisions |
+| `test_load_actions.py` (40) | nothing (builds a tiny jar in a temp folder) | tool tiers and the "required" rule, loot conditions, rolls and negative ranges, loot tables that point at other tables, the action rows that come out |
+| `test_load_model.py` (42) | nothing | every validation error in the YAML model, plus the real `model/` files |
+| `test_real_jar.py` (37, marker `jar`) | the Paper jar | rules that hold for any version, and known vanilla facts that act as canaries when the server version changes |
+| `test_graph_integration.py` (34, marker `integration`) | Neo4j Enterprise and the jar | the whole rebuild in order into the `minecorptest` database, which is dropped afterwards; shape, counts, the model, and the rebuild contract |
+
+The database fixtures (`built`, `db`) live in `tests/conftest.py` and `tests/graphdb.py`, and are shared with the agent's graph tests, so the graph is built once per run.
