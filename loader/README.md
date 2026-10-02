@@ -23,6 +23,15 @@ $env:NEO4J_PASSWORD = "<same as .env>"
 
 Load everything (all recipes and item tags) with `--all --wipe`.
 
+**After every full load, compute the route properties** (steps, chain length and base materials per craftable item; about 10 seconds). The agent's `rank_recipes` tool needs them, and a `--wipe` removes them:
+
+```powershell
+# reads NEO4J_* from .env itself (through the agent settings)
+.venv\Scripts\python loader\compute_routes.py
+```
+
+Use `--dry-run` to see the numbers without writing.
+
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`, `--no-samples`.
 
 The loader is idempotent (it uses `MERGE`); `--wipe` deletes everything first.

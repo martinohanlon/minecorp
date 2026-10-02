@@ -1,6 +1,6 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. Status: **v0.4, built and loaded into Neo4j for review (2026-10-02).** The full graph is loaded with the v0.4 model. The test-model subset section below was measured on v0.3.1 and has not been rebuilt.
+Living document. Each version records what changed and why. Status: **v0.5, built and loaded into Neo4j (2026-10-02).** The full graph is loaded with the v0.4 model. The test-model subset section below was measured on v0.3.1 and has not been rebuilt.
 
 ## Source evidence (Paper 26.2, vanilla)
 
@@ -25,7 +25,7 @@ Observations that drive the model:
 6. Six tag ids collide with item ids (`anvil`, `dirt`, `mud`, `sand`, `stone_bricks`, `terracotta`), so categories and items cannot share an `id` namespace as written in the jar. Minecraft itself writes tag references as `#minecraft:anvil`; v0.4 keeps that notation.
 7. Special recipes (banner duplicate, firework, map extending...) have no declarative inputs. They are modelled as `Recipe` nodes with `special: true` and no ingredient edges, to be described from the wiki later.
 
-## v0.4 model
+## v0.5 model (v0.4 plus route properties)
 
 ### Design idea
 
@@ -35,7 +35,7 @@ Recipes require **Items**, always. Some of those Items are **categories** ("Bed"
 
 | Label | Key property | Other properties | Notes |
 |---|---|---|---|
-| `Item` | `id` (e.g. `minecraft:iron_ingot`) | `name` | Covers blocks too. A *concrete* Item exists in the game. |
+| `Item` | `id` (e.g. `minecraft:iron_ingot`) | `name`; for craftable concrete items also the **route properties** below | Covers blocks too. A *concrete* Item exists in the game. |
 | `Item:ItemClass` | `id` (see below) | `name`, `inline` (bool), `size` (number of concrete items covered, expanding nested classes) | A *category* of Items, for example "Bed". Does not exist in the game. Replaces the old `ItemTag` label. |
 
 Category `id`: Minecraft tags keep the jar's notation with a leading `#`, e.g. `#minecraft:planks` (avoids the six id collisions with items). Anonymous alternative lists keep `inline:<hash of members>`.
@@ -58,6 +58,20 @@ A recipe can list its alternatives inline instead of naming a tag. The 16 `dye_<
 ```
 
 Rule: an anonymous list that is contained in a real tag with at most one extra item is replaced by that tag (smallest such tag), with the extra item in `excludes`. Of the 76 anonymous lists in the data, 66 map this way (16 each for beds, carpets, harnesses and "sulfur cube archetype light", plus two that equal an existing tag exactly). 10 stay as `inline:<hash>` classes (sandstone and quartz slab/stair inputs, nugget smelting inputs).
+
+#### Route properties (computed, v0.5)
+
+For every craftable concrete item, `loader/compute_routes.py` works out the **main route** from base materials to the item (the same calculation the agent's `what_do_i_need` tool uses: preferred recipe per item, skipping reversible loops such as ingot to nuggets and back, simplest recipe first) and stores a summary on the `Item`:
+
+| Property | Meaning |
+|---|---|
+| `routeSteps` | Number of crafting, smelting, smithing... steps on the main route (each distinct item made counts once, even if made in bulk) |
+| `routeLevels` | Longest chain of made items from a base material to this item |
+| `routeBaseMaterials` | Number of distinct base materials (including categories) the route needs |
+| `routeStations` | Stations used, e.g. `["Crafting Table", "Furnace"]` |
+| `routeTruncated` | `true` if the route hit the depth limit (6) and is not fully expanded; excluded from rankings |
+
+These are **derived data**, not vanilla facts: they depend on the route-choice rule, so a different rule gives different numbers. They are recomputed after every load (`--wipe` removes them). The agent stays read-only; this is a separate write job. The `rank_recipes` tool sorts on them to answer "give me a hard recipe", and `get_recipes` and `what_do_i_need` return the same summary as `overview`.
 
 ### Relationships
 
@@ -188,6 +202,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-02 | v0.5: route summary stored as properties on `Item` (`routeSteps`, `routeLevels`, `routeBaseMaterials`, `routeStations`, `routeTruncated`), computed by a separate write job; used to rank recipes by difficulty. |
 | 2026-10-02 | v0.4: one `Item` label for everything a recipe requires; categories are `Item:ItemClass` (replacing `ItemTag`), linked by `INCLUDES`. |
 | 2026-10-02 | v0.4: category ids keep the `#` prefix (`#minecraft:planks`); categories get readable names. |
 | 2026-10-02 | v0.4: no vanilla default item per category; a representative, if wanted, is curated MineCorp data. |
@@ -204,6 +219,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 
 ## Change log
 
+- **v0.5** (2026-10-02): route properties on craftable `Item`s, computed by `loader/compute_routes.py` (988 items in about 10 s; 1 truncated at depth 6: Waxed Chiseled Copper); `rank_recipes` agent tool. Hardest by the metric: Lime and Purple Glazed Terracotta (8 steps), then the Netherite tools (7 steps).
 - **v0.4** (2026-10-02): built and loaded. Anonymous alternative lists map to real tags with `excludes` (66 of 76); only 10 inline classes remain. Full graph: 1,571 Item (234 ItemClass), 1,585 Recipe, 7 Station.
 - **v0.4 PROPOSED, rev 2** (2026-10-02): label is `ItemClass` (marker label on `Item`); name rule uses the common word of the members (160 of 300 existing categories qualify; others fall back); `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES`. The measured v0.3.1 sections keep the old names because they describe the graph as loaded.
 - **v0.4 PROPOSED** (2026-10-02): `ItemTag` replaced by `Item:Class` (categories are Items with a marker label); `#` prefix on category ids to avoid six id collisions; readable category names; AND/OR reading of `CONSUMES` documented; no vanilla default item per category (noted). Not yet built.

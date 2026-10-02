@@ -244,17 +244,19 @@ def tool_class_members(graph: Graph, args: dict) -> dict:
 
 # --------------------------------------------------------------------------- what do I need
 
-class _Route:
+class Route:
     """Works out the main route from base materials to one item, as an ordered list of steps."""
 
     VERBS = {"smelting": "Smelt", "blasting": "Blast", "smoking": "Smoke", "campfire_cooking": "Cook",
              "stonecutting": "Cut", "smithing_transform": "Smith", "smithing_trim": "Smith"}
 
-    def __init__(self, graph: Graph, max_depth: int) -> None:
+    def __init__(self, graph: Graph, max_depth: int, shared: dict | None = None) -> None:
+        """`shared` is an optional dict that lets many routes reuse one recipe/reversal cache."""
         self.graph = graph
         self.max_depth = max_depth
-        self.recipes: dict[str, list[dict]] = {}
-        self.reversal: dict[tuple[str, str], bool] = {}
+        shared = shared if shared is not None else {}
+        self.recipes: dict[str, list[dict]] = shared.setdefault("recipes", {})
+        self.reversal: dict[tuple[str, str], bool] = shared.setdefault("reversal", {})
         self.totals: dict[tuple[str, bool], dict] = {}   # (name, is_category) -> {"count", "examples"}
         self.steps: dict[str, dict] = {}                 # item id -> step, in the order they must be done
         self.levels = 0                                  # deepest chain of crafted items
@@ -367,13 +369,14 @@ class _Route:
         """A small summary of how big the job is."""
         return {"craftingSteps": len(self.steps), "chainLength": self.levels,
                 "baseMaterials": len(self.totals),
-                "stations": sorted({s["station"] for s in self.steps.values() if s["station"]})}
+                "stations": sorted({s["station"] for s in self.steps.values() if s["station"]}),
+                "truncated": bool(self.not_expanded)}
 
 
 def route_overview(graph: Graph, item_id: str) -> dict | None:
     """Overview of the main route for one item, or None if it cannot be worked out."""
     try:
-        route = _Route(graph, 6)
+        route = Route(graph, 6)
         route.build(item_id, "", 1, frozenset(), 0)
         return route.overview() if route.steps else None
     except Exception:
@@ -387,7 +390,7 @@ def tool_what_do_i_need(graph: Graph, args: dict) -> dict:
         return err
     quantity = max(1, min(int(args.get("quantity", 1) or 1), 64))
     for depth in (6, 4, 3, 2):  # shrink if the answer would be too large for the model
-        route = _Route(graph, depth)
+        route = Route(graph, depth)
         route.build(item["id"], item["name"], quantity, frozenset(), 0)
         result = {"item": item["name"], "quantity": quantity,
                   "gather": route.gather(),
@@ -403,6 +406,27 @@ def tool_what_do_i_need(graph: Graph, args: dict) -> dict:
         if len(json.dumps(result)) <= 9000:
             return result
     return result
+
+
+def tool_rank_recipes(graph: Graph, args: dict) -> dict:
+    """rank_recipes: craftable items ordered by how big the job is (steps, base materials, chain)."""
+    order = "easiest" if str(args.get("order", "hardest")).lower().startswith("e") else "hardest"
+    limit = max(1, min(int(args.get("limit", 8) or 8), 25))
+    direction = "ASC" if order == "easiest" else "DESC"
+    rows = graph.read(
+        f"""
+        MATCH (i:Item) WHERE i.routeSteps IS NOT NULL AND NOT coalesce(i.routeTruncated, false)
+        RETURN i.name AS item, i.routeSteps AS craftingSteps, i.routeLevels AS chainLength,
+               i.routeBaseMaterials AS baseMaterials, i.routeStations AS stations
+        ORDER BY craftingSteps {direction}, baseMaterials {direction}, chainLength {direction}, item
+        LIMIT $limit
+        """, limit=limit)
+    if not rows:
+        return {"error": "No route data is stored in the graph yet (run loader/compute_routes.py)."}
+    return {"order": order, "items": rows,
+            "note": ("Ranked by crafting steps on the main route, then distinct base materials, then chain "
+                     "length. This measures how many things must be made, not how rare the materials are. "
+                     "Use what_do_i_need on one of these items for the full steps.")}
 
 
 # --------------------------------------------------------------------------- registry
@@ -426,6 +450,15 @@ TOOLS: list[Tool] = [
              "quantity": {"type": "integer", "description": "how many to make (default 1)"}},
           "required": ["item"], "additionalProperties": False},
          tool_what_do_i_need),
+    Tool("rank_recipes",
+         "Craftable items ranked by how big the job is (crafting steps, base materials, chain length). Use "
+         "when the player asks for a hard, easy, long or short recipe, or wants a challenge. Then offer to "
+         "walk through one of them.",
+         {"type": "object", "properties": {
+             "order": {"type": "string", "enum": ["hardest", "easiest"], "description": "default hardest"},
+             "limit": {"type": "integer", "description": "how many items (default 8, max 25)"}},
+          "additionalProperties": False},
+         tool_rank_recipes),
     Tool("get_uses",
          "What an item can be used to make. Use for 'what can I make with X'.",
          {"type": "object", "properties": {

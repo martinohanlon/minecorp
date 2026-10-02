@@ -152,20 +152,18 @@
   {
     "id": "recommend-hard-recipe",
     "question": "Give me a really hard recipe to make.",
-    "expect_any": [
-      "can't rank",
-      "cannot rank",
-      "can't recommend",
-      "cannot recommend",
-      "can't pick",
-      "cannot pick",
-      "don't have",
-      "not able",
-      "unable",
-      "can't"
+    "expect_tools": [
+      "rank_recipes"
     ],
-    "expect_none": [
-      "nether star"
+    "expect_any": [
+      "step"
+    ]
+  },
+  {
+    "id": "recommend-easy-recipe",
+    "question": "What is an easy recipe I can start with?",
+    "expect_tools": [
+      "rank_recipes"
     ]
   }
 ]
