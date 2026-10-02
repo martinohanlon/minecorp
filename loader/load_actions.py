@@ -1,17 +1,24 @@
-"""Load harvest definitions from the Paper jar into Neo4j (docs/ontology.md v0.6).
+"""Load Action nodes from the Paper jar into Neo4j (docs/ontology.md v0.7).
 
-    python loader/load_harvests.py --dry-run   # parse and report, no database
-    python loader/load_harvests.py             # load
+    python loader/load_actions.py --dry-run   # parse and report, no database
+    python loader/load_actions.py             # load
 
-Harvest kinds, all from loot tables in the jar:
-    mine   block loot tables (blocks/*)      -> (Harvest)-[:FROM_BLOCK]->(Block)
-    kill   mob loot tables (entities/*)      -> (Harvest)-[:FROM_MOB]->(Mob)
-    shear  shearing loot tables (shearing/*) -> (Harvest)-[:FROM_MOB]->(Mob), needs Shears
-Every harvest has (Harvest)-[:CREATES {count, condition}]->(Item). Mining a block that needs a tool also gets
-(Harvest)-[:REQUIRES {role: 'tool', orBetter: true}]->(minimum tool Item); shearing requires Shears.
+An Action is a node with a verb label. There are two kinds, both generated from the jar:
 
-Run it after `load_recipes.py --all` (the tool items come from there) and before `compute_routes.py`. Safe to
-repeat: Harvest nodes are rebuilt each time.
+Gathering actions are the definitions (from loot tables and block tags):
+    Mine   one per block with drops   (Action)-[:REQUIRES {role:'target'}]->(Block)
+    Kill   one per mob with drops     (Action)-[:REQUIRES {role:'target'}]->(Mob)
+    Shear  one per shearable mob      (Action)-[:REQUIRES {role:'target'}]->(Mob)
+    Each has (Action)-[:CREATES {count, condition}]->(Item) and, when a tool is needed,
+    (Action)-[:REQUIRES {role:'tool', orBetter}]->(Item). A tool is an ordinary Item.
+
+Transforming actions are thin, one per verb and item (the Recipe nodes hold the ingredients and the station):
+    Craft  crafting recipes           Smelt  smelting, blasting, smoking, campfire cooking
+    Smith  smithing recipes           Cut    stonecutting recipes
+    Each has (Action)-[:CREATES]->(Item); the Recipe nodes that make the same item meet it there.
+
+Run it after `load_recipes.py --all` (the items and recipes come from there) and before `load_model.py`.
+The graph is rebuilt from source, so this loader deletes and recreates every Action (and any old Harvest).
 
 What the jar does and does not say about tools:
 - Tool TYPE for blocks comes from the block tags mineable/pickaxe, axe, shovel, hoe.
@@ -19,7 +26,7 @@ What the jar does and does not say about tools:
 - Whether a block drops anything WITHOUT the tool is not in the data (stone gives nothing by hand, logs do).
   Rule used: a tool is "required" for pickaxe blocks and for any block that needs better than a wooden tool;
   axe, shovel and hoe blocks only mine faster with the tool. Exceptions exist.
-- Mobs need no tool to kill; a weapon is only faster. Looting and fortune bonuses are ignored everywhere.
+- Mobs need no tool to kill; a weapon is only faster. Shearing needs Shears. Looting and fortune are ignored.
 
 Conditions on drops (CREATES.condition):
     blocks: default, silk_touch, shears, state (block state, e.g. grown crops), chance
@@ -41,18 +48,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from neo4j import GraphDatabase  # noqa: E402
 
-from load_recipes import DEFAULT_JAR, display_name  # noqa: E402
+from load_recipes import DEFAULT_JAR, display_name, normalise  # noqa: E402
+from load_recipes import read_jar as read_recipe_jar  # noqa: E402
 from minecorp_agent.config import get_settings  # noqa: E402
 
 TIERS = ["wooden", "stone", "copper", "iron", "diamond", "netherite"]   # weakest to strongest (gold mines like wood)
 TOOLS = ["pickaxe", "axe", "shovel", "hoe"]                              # order of preference when a block allows several
 SHEARS = "minecraft:shears"
 MAX_REF_DEPTH = 4                                                        # loot tables that reference other tables
+GATHER_VERBS = ("Mine", "Kill", "Shear")
+TRANSFORM_VERBS = ("Craft", "Smelt", "Smith", "Cut")
+RECIPE_VERB = {                                                          # recipe type -> verb of the action that makes its item
+    "smelting": "Smelt", "blasting": "Smelt", "smoking": "Smelt", "campfire_cooking": "Smelt",
+    "smithing_transform": "Smith", "smithing_trim": "Smith", "stonecutting": "Cut",
+}
 
 
 # --------------------------------------------------------------------------- read
 
-def read_jar(jar: Path) -> tuple[dict, dict]:
+def read_loot(jar: Path) -> tuple[dict, dict]:
     """Return (loot tables, block tags). Loot tables are keyed like 'minecraft:blocks/stone'."""
     loot, tags = {}, {}
     with zipfile.ZipFile(jar) as z:
@@ -191,54 +205,78 @@ def table_drops(loot: dict, classify, combine, tables: dict, depth: int = 0, inh
 
 # --------------------------------------------------------------------------- build
 
-def build(loot: dict, tags: dict) -> dict:
-    """Turn the jar data into node and relationship rows."""
+def build(jar: Path) -> dict:
+    """Turn the jar into node and relationship rows for every action."""
+    loot, tags = read_loot(jar)
+    raw_recipes, _ = read_recipe_jar(jar)
     cache: dict = {}
-    blocks, mobs, harvests, creates, requires, items = [], [], [], [], [], {}
+    blocks, mobs, actions, creates, targets, tools, items = [], {}, [], [], [], [], {}
     stats = Counter()
 
-    def add_drops(hid: str, drops: dict) -> None:
+    def add_drops(aid: str, drops: dict) -> None:
         for (item, cond), count in sorted(drops.items()):
             items[item] = display_name(item)
-            creates.append({"harvest": hid, "item": item, "count": count, "condition": cond})
+            creates.append({"action": aid, "item": item, "count": count, "condition": cond})
 
+    # gathering: mine
     for key in sorted(k for k in loot if k.startswith("minecraft:blocks/")):
         block_id = key.replace("blocks/", "")
         blocks.append({"id": block_id, "name": display_name(block_id)})
         d = table_drops(loot[key], classify_block, override, loot)
         if not d:
-            stats["blocks with no drops (no harvest)"] += 1
+            stats["blocks with no drops (no action)"] += 1
             continue
         t = analyse_tool(block_id, tags, cache)
         if not t["monotonic"]:
             stats["tier list not monotonic"] += 1
-        harvests.append({"id": key, "name": f"Mine {display_name(block_id)}", "kind": "mine", "tool": t["tool"],
-                         "minTier": t["minTier"], "toolRequired": t["toolRequired"], "block": block_id, "mob": None})
-        add_drops(key, d)
+        aid = "mine:" + block_id
+        actions.append({"id": aid, "name": f"Mine {display_name(block_id)}", "verb": "Mine", "tool": t["tool"],
+                        "minTier": t["minTier"], "toolRequired": t["toolRequired"]})
+        targets.append({"action": aid, "target": block_id, "kind": "Block"})
+        add_drops(aid, d)
         if t["toolRequired"]:
             tool_item = f"minecraft:{t['minTier']}_{t['tool']}"
             items[tool_item] = display_name(tool_item)
-            requires.append({"harvest": key, "item": tool_item, "orBetter": True})
-        stats[f"mine tool={t['tool']}"] += 1
+            tools.append({"action": aid, "item": tool_item, "orBetter": True})
 
-    seen_mobs = {}
-    for prefix, kind, verb, classify_fn in (("entities", "kill", "Kill", classify_mob), ("shearing", "shear", "Shear", classify_mob)):
+    # gathering: kill and shear
+    for prefix, verb in (("entities", "Kill"), ("shearing", "Shear")):
         for key in sorted(k for k in loot if k.startswith(f"minecraft:{prefix}/") and k.count("/") == 1):
             mob_id = "minecraft:" + key.split("/", 1)[1]
-            d = table_drops(loot[key], classify_fn, union, loot)
+            d = table_drops(loot[key], classify_mob, union, loot)
             if not d:
-                stats[f"{prefix} with no drops (no harvest)"] += 1
+                stats[f"{prefix} with no drops (no action)"] += 1
                 continue
-            seen_mobs[mob_id] = display_name(mob_id)
-            harvests.append({"id": key, "name": f"{verb} {display_name(mob_id)}", "kind": kind, "tool": "shears" if kind == "shear" else None,
-                             "minTier": None, "toolRequired": kind == "shear", "block": None, "mob": mob_id})
-            add_drops(key, d)
-            if kind == "shear":
+            mobs[mob_id] = display_name(mob_id)
+            aid = f"{verb.lower()}:{mob_id}"
+            actions.append({"id": aid, "name": f"{verb} {display_name(mob_id)}", "verb": verb,
+                            "tool": "shears" if verb == "Shear" else None, "minTier": None, "toolRequired": verb == "Shear"})
+            targets.append({"action": aid, "target": mob_id, "kind": "Mob"})
+            add_drops(aid, d)
+            if verb == "Shear":
                 items[SHEARS] = display_name(SHEARS)
-                requires.append({"harvest": key, "item": SHEARS, "orBetter": False})
-            stats[f"{kind} harvests"] += 1
-    mobs = [{"id": k, "name": v} for k, v in sorted(seen_mobs.items())]
-    return {"blocks": blocks, "mobs": mobs, "harvests": harvests, "creates": creates, "requires": requires,
+                tools.append({"action": aid, "item": SHEARS, "orBetter": False})
+
+    # transforming: one thin action per verb and item
+    seen = set()
+    transform = []
+    for rid, raw in sorted(raw_recipes.items()):
+        rec = normalise(rid, raw)
+        if not rec["result"]:
+            continue
+        item = rec["result"][0]
+        verb = RECIPE_VERB.get(rec["type"], "Craft")
+        if (verb, item) in seen:
+            continue
+        seen.add((verb, item))
+        items[item] = display_name(item)
+        transform.append({"id": f"{verb.lower()}:{item}", "name": f"{verb} {display_name(item)}", "verb": verb, "item": item})
+    for a in actions:
+        stats[f"{a['verb']} actions"] += 1
+    for a in transform:
+        stats[f"{a['verb']} actions"] += 1
+    return {"blocks": blocks, "mobs": [{"id": k, "name": v} for k, v in sorted(mobs.items())], "actions": actions,
+            "creates": creates, "targets": targets, "tools": tools, "transform": transform,
             "items": [{"id": k, "name": v} for k, v in sorted(items.items())], "stats": stats}
 
 
@@ -246,26 +284,33 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> set:
     """Write the rows to Neo4j; return the item ids that did not already exist (for the report)."""
     with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         with driver.session(database=database) as s:
+            s.run("DROP CONSTRAINT harvest_id IF EXISTS")
             s.run("CREATE CONSTRAINT block_id IF NOT EXISTS FOR (n:Block) REQUIRE n.id IS UNIQUE")
             s.run("CREATE CONSTRAINT mob_id IF NOT EXISTS FOR (n:Mob) REQUIRE n.id IS UNIQUE")
-            s.run("CREATE CONSTRAINT harvest_id IF NOT EXISTS FOR (n:Harvest) REQUIRE n.id IS UNIQUE")
+            s.run("CREATE CONSTRAINT action_id IF NOT EXISTS FOR (n:Action) REQUIRE n.id IS UNIQUE")
             existing = {r["id"] for r in s.run("MATCH (i:Item) RETURN i.id AS id")}
-            s.run("MATCH (h:Harvest) DETACH DELETE h")  # regenerate
+            s.run("MATCH (n) WHERE n:Harvest OR n:Action DETACH DELETE n")  # regenerate (the graph is rebuilt from source)
             s.run("UNWIND $rows AS r MERGE (i:Item {id: r.id}) SET i.name = coalesce(i.name, r.name)", rows=g["items"])
             s.run("UNWIND $rows AS r MERGE (b:Block {id: r.id}) SET b.name = r.name", rows=g["blocks"])
             s.run("UNWIND $rows AS r MERGE (m:Mob {id: r.id}) SET m.name = r.name", rows=g["mobs"])
-            s.run("""UNWIND $rows AS r MERGE (h:Harvest {id: r.id})
-                     SET h.name = r.name, h.kind = r.kind, h.tool = r.tool, h.minTier = r.minTier,
-                         h.toolRequired = r.toolRequired""", rows=g["harvests"])
-            s.run("""UNWIND $rows AS r WITH r WHERE r.block IS NOT NULL
-                     MATCH (h:Harvest {id: r.id}), (b:Block {id: r.block}) MERGE (h)-[:FROM_BLOCK]->(b)""", rows=g["harvests"])
-            s.run("""UNWIND $rows AS r WITH r WHERE r.mob IS NOT NULL
-                     MATCH (h:Harvest {id: r.id}), (m:Mob {id: r.mob}) MERGE (h)-[:FROM_MOB]->(m)""", rows=g["harvests"])
-            s.run("""UNWIND $rows AS r MATCH (h:Harvest {id: r.harvest}) MATCH (i:Item {id: r.item})
-                     MERGE (h)-[c:CREATES {condition: r.condition}]->(i) SET c.count = r.count""", rows=g["creates"])
-            s.run("""UNWIND $rows AS r MATCH (h:Harvest {id: r.harvest}) MATCH (i:Item {id: r.item})
-                     MERGE (h)-[q:REQUIRES {role: 'tool', slot: ''}]->(i) SET q.count = 1, q.orBetter = r.orBetter""",
-                  rows=g["requires"])
+            for verb in GATHER_VERBS:
+                s.run(f"""UNWIND $rows AS r WITH r WHERE r.verb = '{verb}'
+                          CREATE (a:Action:{verb} {{id: r.id, name: r.name, tool: r.tool, minTier: r.minTier,
+                                                    toolRequired: r.toolRequired}})""", rows=g["actions"])
+            s.run("""UNWIND $rows AS r WITH r WHERE r.kind = 'Block'
+                     MATCH (a:Action {id: r.action}), (b:Block {id: r.target})
+                     CREATE (a)-[:REQUIRES {role: 'target', slot: '', count: 1}]->(b)""", rows=g["targets"])
+            s.run("""UNWIND $rows AS r WITH r WHERE r.kind = 'Mob'
+                     MATCH (a:Action {id: r.action}), (m:Mob {id: r.target})
+                     CREATE (a)-[:REQUIRES {role: 'target', slot: '', count: 1}]->(m)""", rows=g["targets"])
+            s.run("""UNWIND $rows AS r MATCH (a:Action {id: r.action}), (i:Item {id: r.item})
+                     MERGE (a)-[c:CREATES {condition: r.condition}]->(i) SET c.count = r.count""", rows=g["creates"])
+            s.run("""UNWIND $rows AS r MATCH (a:Action {id: r.action}), (i:Item {id: r.item})
+                     CREATE (a)-[:REQUIRES {role: 'tool', slot: '', count: 1, orBetter: r.orBetter}]->(i)""", rows=g["tools"])
+            for verb in TRANSFORM_VERBS:
+                s.run(f"""UNWIND $rows AS r WITH r WHERE r.verb = '{verb}'
+                          CREATE (a:Action:{verb} {{id: r.id, name: r.name}})
+                          WITH a, r MATCH (i:Item {{id: r.item}}) CREATE (a)-[:CREATES]->(i)""", rows=g["transform"])
     return {i["id"] for i in g["items"]} - existing
 
 
@@ -278,12 +323,10 @@ def main() -> int:
     if not args.jar.exists():
         sys.exit(f"Jar not found: {args.jar}")
 
-    loot, tags = read_jar(args.jar)
-    g = build(loot, tags)
-    print(f"{len(loot)} loot tables (blocks, entities, shearing), {len(tags)} block tags")
-    print(f"  Block {len(g['blocks'])}  Mob {len(g['mobs'])}  Harvest {len(g['harvests'])}  CREATES {len(g['creates'])}  "
-          f"tool REQUIRES {len(g['requires'])}  items referenced {len(g['items'])}")
-    print("  conditions:", dict(Counter(c["condition"] for c in g["creates"])))
+    g = build(args.jar)
+    print(f"  Block {len(g['blocks'])}  Mob {len(g['mobs'])}  Action {len(g['actions']) + len(g['transform'])}  "
+          f"gathering CREATES {len(g['creates'])}  tool REQUIRES {len(g['tools'])}  items referenced {len(g['items'])}")
+    print("  drop conditions:", dict(Counter(c["condition"] for c in g["creates"])))
     for k, v in sorted(g["stats"].items()):
         print(f"  {k}: {v}")
     if args.dry_run:

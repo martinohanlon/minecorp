@@ -1,6 +1,6 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. Status: **v0.6 BUILT and loaded (2026-10-02): recipes, harvests, organization and the Iron tool line process.**
+Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.**
 
 ## Source evidence (Paper 26.2, vanilla)
 
@@ -25,9 +25,9 @@ Observations that drive the model:
 6. Six tag ids collide with item ids (`anvil`, `dirt`, `mud`, `sand`, `stone_bricks`, `terracotta`), so categories and items cannot share an `id` namespace as written in the jar. Minecraft itself writes tag references as `#minecraft:anvil`; v0.4 keeps that notation.
 7. Special recipes (banner duplicate, firework, map extending...) have no declarative inputs. They are modelled as `Recipe` nodes with `special: true` and no ingredient edges, to be described from the wiki later.
 
-## Graph model (v0.6, as built)
+## Graph model (v0.7, as built)
 
-Every node label and relationship that is built, and nothing else: properties are in the tables below ("Node labels", "Nodes", "Relationships") so this stays readable. Round brackets are node labels. The organization and process nodes are authored in the YAML in `model/`; recipes, harvests, blocks and items come from the Paper server jar.
+Every node label and relationship that is built, and nothing else: properties are in the tables below ("Node labels", "Nodes", "Relationships") so this stays readable. Round brackets are node labels. The organization and process nodes are authored in the YAML in `model/`; everything else is generated from the Paper server jar.
 
 ```
                           PART_OF
@@ -42,33 +42,33 @@ Every node label and relationship that is built, and nothing else: properties ar
     |                      | PERFORMS                                     | HAS_TASK
     | COMPLETED            v                                              |
     +------------------> (Task) <-----------------------------------------+
-                          |   |    Task also has NEXT and HANDOFF_TO (to another Task),
-                          |   |    and ESCALATES_TO and CONFIRMED_BY (to a Role)
-          CRAFTED         |   |     HARVESTED
-         +----------------+   +----------------+
-         v                                     v
-     (Recipe) --USES_STATION--> (Item)      (Harvest) --FROM_BLOCK--> (Block)
-         |                                     |   \--FROM_MOB----> (Mob)
-         | CREATES                             | CREATES
-         | REQUIRES                            | REQUIRES  (the tool; "or better" for pickaxes etc.)
-         v                                     v
-       (Item) <--------------------------------+
-         ^
-         | INCLUDES
-         |
-     (ItemClass)      an Item with an extra label: a category, which may include other categories
-     (Station)        an Item with an extra label: where work is done (crafting table, furnace...)
+                          |      Task also has NEXT and HANDOFF_TO (to another Task),
+                          |      and ESCALATES_TO and CONFIRMED_BY (to a Role)
+                          | HAS_ACTION
+                          v
+ (Block) <--REQUIRES-- (Action) --REQUIRES (tool)--> (Item)
+ (Mob)   <--REQUIRES--    |
+                          | CREATES
+                          v
+                        (Item) <--CREATES-- (Recipe) --REQUIRES--> (Item | ItemClass)
+                          ^                     |
+                          | INCLUDES            +--USES_STATION--> (Item)
+                     (ItemClass)
 
+ (Action) has a verb label. Craft, Smelt, Smith and Cut are thin (only the item they make; the Recipe nodes
+ hold the ingredients and the station). Mine, Kill and Shear are the definitions (target, tool and drops).
+ Item can also carry the marker labels ItemClass (a category) and Station (where work is done).
 ```
 
 **Reading rules**
 
 - All `REQUIRES` edges of one recipe are needed together (AND). An `ItemClass` target means any ONE member (OR), except the items in `excludes`.
-- A `Harvest` `REQUIRES` the minimum tool; that tool or any better one works (`orBetter`).
-- A `Task` points at one definition: a `Recipe`, a `Harvest`, or neither (a manual task).
+- A gathering action `REQUIRES` the minimum tool; that tool or any better one works (`orBetter`). Shears are exact (`orBetter: false`). Killing needs no tool.
+- A transforming action and the recipes that make its item meet at the `Item`; there is no edge between them.
+- A `Task` performs zero or more ordered actions (`HAS_ACTION {order, quantity}`). No actions means a manual task.
 - Candidates (not yet confirmed) carry `source`, `extractedAt`, `confidence`; confirmed tasks have `CONFIRMED_BY`.
 
-Loaded today (2026-10-02): `Item` 1,628 (of which `ItemClass` 234), `Recipe` 1,585, `Item:Station` 7, `Block` 1,113, `Mob` 63, `Harvest` 1,166, `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 7. Stations are `Item:Station` nodes, so a station has its own recipe. Craftable items also carry computed route properties (see "Route properties").
+Loaded today (2026-10-02, rebuilt from source in 30 seconds): `Item` 1,628 (of which `ItemClass` 234 and `Station` 7), `Recipe` 1,585, `Action` 2,385 (`Mine` 1,099, `Craft` 949, `Cut` 197, `Kill` 63, `Smelt` 61, `Smith` 12, `Shear` 4), `Block` 1,113, `Mob` 63, `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 6. Craftable items also carry computed route properties (see "Route properties").
 
 ## v0.5 model (v0.4 plus route properties)
 
@@ -128,7 +128,7 @@ These are **derived data**, not vanilla facts: they depend on the route-choice r
 | `CREATES` | `Recipe` -> `Item` | `count` | The result. |
 | `REQUIRES` | `Recipe` -> `Item` (concrete or `:ItemClass`) | `role` (`ingredient`, `template`, `base`, `addition`, `material`, `input`), `count`, `slot` (shaped key char), `excludes` (item ids of the class that may not be used, usually empty), `excludesNames` (same, readable) | Inputs. `count` is how many are needed (shapeless repeats and shaped key usage summed). |
 | `USES_STATION` | `Recipe` -> `Item:Station` | | Where it is made. |
-| `CRAFTED` | `Task` -> `Recipe` | | The vanilla recipe a task is carried out with. |
+| `HAS_ACTION` | `Task` -> `Action` | `order`, `quantity` | (v0.7; replaced `CRAFTED`, the old Task-to-Recipe link.) The actions a task performs. |
 | `COMPLETED` | `Player` -> `Task` | `at` (datetime), `count` | A player has completed a task (history of work). |
 
 **How to read REQUIRES (important for queries and the agent):** all `REQUIRES` edges of a recipe are needed together (AND). When the target is an `:ItemClass`, exactly one member of that class is used (OR), except any item in `excludes`. Example: `dye_brown_bed` = 1 Brown Dye (concrete) AND 1 Bed (class of 15) = a brown bed from brown dye plus any bed except a brown one (`excludes: [brown_bed]`).
@@ -196,7 +196,9 @@ RETURN r.id, c.role, c.count, i.name, i:ItemClass AS isCategory, collect(DISTINC
 
 ## v0.6: organization, process and harvest model
 
-**Built:** the harvest part (`loader/load_harvests.py`) and the organization and process part (`loader/load_model.py`, reading `model/*.yaml`). Implements step 1 of [knowledge-layer.md](knowledge-layer.md) section 9. Everything above this heading describes what is loaded today (v0.5). Names marked provisional follow the Neo4j series chapters, which were only partly readable (chapter 1, operating structure, was not).
+> **Partly superseded by v0.7 (below).** `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED` no longer exist: the same facts (target, tool, drops) now sit on gathering `Action` nodes, and tasks link to actions with `HAS_ACTION`. The tables and counts in this section are kept as the record of how the data was derived.
+
+**Built:** the harvest part (`loader/load_actions.py`, formerly `load_harvests.py`) and the organization and process part (`loader/load_model.py`, reading `model/*.yaml`). Implements step 1 of [knowledge-layer.md](knowledge-layer.md) section 9. Everything above this heading describes what is loaded today (v0.5). Names marked provisional follow the Neo4j series chapters, which were only partly readable (chapter 1, operating structure, was not).
 
 ### Classification (decided)
 
@@ -298,16 +300,14 @@ Governance roles: Process Owner `OWNS` the processes. Domain Owner, Platform Own
 Worked example, process "Iron tool line":
 
 ```
-Activity 1 Collect       T1 Mine iron ore    (Miner)      HARVESTED    minecraft:blocks/iron_ore     needs: Stone Pickaxe or better
-                         T2 Mine oak logs    (Miner)      HARVESTED    minecraft:blocks/oak_log
-Activity 2 Refine        T3 Smelt raw iron   (Smelter)    CRAFTED      iron_ingot_from_smelting_raw_iron
-                         T4 Craft planks     (Crafter)    CRAFTED      oak_planks
-                         T5 Craft sticks     (Crafter)    CRAFTED      stick
-Activity 3 Fabricate     T6 Craft iron pickaxe (Crafter)  CRAFTED      iron_pickaxe
-Activity 4 Store         T7 Stock the tools chest (Storekeeper)  type manual, no vanilla definition
+Activity 1 Collect       T1 Mine iron ore      (Miner)        Mine iron ore x3     needs: Stone Pickaxe or better
+                         T2 Mine oak logs      (Miner)        Mine oak log x2
+Activity 2 Refine        T3 Smelt raw iron     (Smelter)      Smelt iron ingot x3
+                         T4 Make sticks        (Crafter)      1 Craft oak planks x2, 2 Craft stick x4
+Activity 3 Fabricate     T5 Craft iron pickaxe (Crafter)      Craft iron pickaxe
+Activity 4 Store         T6 Stock the tools chest (Storekeeper)  no actions: manual
 
-NEXT: T1 -> T3 (raw iron collected, default)     T2 -> T4     T4 -> T5
-      T3 -> T6     T5 -> T6     T6 -> T7 (HANDOFF_TO: Crafter to Storekeeper)
+NEXT: T1 -> T3 (raw iron collected, default)   T2 -> T4   T3 -> T5   T4 -> T5   T5 -> T6 (HANDOFF_TO: Crafter to Storekeeper)
 ```
 
 What the model lets the agent answer that it cannot now: who owns the line; the default path end to end; what comes after smelting; which tasks could be automated; **how to obtain a base material** (iron ore is mined, with a stone pickaxe or better); and gaps such as "T1 needs a stone pickaxe and nothing earlier in this process makes one".
@@ -318,14 +318,14 @@ Every role is filled by the one player, so nothing here needs two people. `HANDO
 
 ### How the data gets in
 
-- **Vanilla:** a new `loader/load_harvests.py` reads block loot tables and block tags from the jar and creates `Block`, `Harvest`, `CREATES` and the minimum-tool `REQUIRES` edges (deterministic, regenerated like recipes). Derivation of the minimum tier: the lowest tier in the order wooden, stone, copper, iron, diamond, netherite that is not listed in `incorrect_for_<tier>_tool` for the block; the loader checks that every tier above it also works. Gold is ignored as a requirement because it mines like wood.
+- **Vanilla:** `loader/load_actions.py` (formerly `load_harvests.py`) reads block loot tables and block tags from the jar and creates `Block`, `Harvest`, `CREATES` and the minimum-tool `REQUIRES` edges (deterministic, regenerated like recipes). Derivation of the minimum tier: the lowest tier in the order wooden, stone, copper, iron, diamond, netherite that is not listed in `incorrect_for_<tier>_tool` for the block; the loader checks that every tier above it also works. Gold is ignored as a requirement because it mines like wood.
 - **Authored:** the organization and processes are YAML files in a new `model/` folder (`org.yaml`, `processes/*.yaml`), version-controlled and human-edited. A new `loader/load_model.py` validates every `CRAFTED` and `HARVESTED` id against the graph and then merges the nodes. A bad reference fails the load.
 - **Proposals:** later, an LLM job can draft process YAML from `what_do_i_need` routes as `status: candidate` with source and confidence. The Steward confirms by editing the file (loader writes `CONFIRMED_BY`).
 - **Route calculation:** `what_do_i_need` can later report, for each base material, the harvest that gets it and the tool it needs.
 
 ### Harvest: built (blocks only, 2026-10-02)
 
-`python loader/load_harvests.py` (run after `load_recipes.py --all`, before `compute_routes.py`; safe to repeat):
+`python loader/load_actions.py` (formerly `load_harvests.py`; run after `load_recipes.py --all`, before `compute_routes.py`; safe to repeat):
 
 | | Count |
 |---|---|
@@ -384,7 +384,7 @@ Why it mattered: a route stops at "base materials", and before mobs were loaded 
 
 Where to find things is also in the jar: ore placement (`worldgen/placed_feature/ore_*`, for example iron generates between y -24 and 56, ten veins per chunk) and mob spawn lists per biome (`worldgen/biome/*.json`, for example plains spawns sheep, pigs, chickens and cows). Neither is modelled; they would add `Biome` and placement data.
 
-Mob design (built): a domain node `Mob`; `Harvest.kind` is `kill` or `shear`; an `FROM_MOB` edge parallel to `FROM_BLOCK`; the same `CREATES {count, condition}`; Shears as the tool for shearing.
+Mob design (built, then reshaped by v0.7): a domain node `Mob`; `Kill` and `Shear` actions that `REQUIRE {role: 'target'}` the mob; the same `CREATES {count, condition}`; Shears as the tool for shearing.
 
 ### Questions for review
 
@@ -401,13 +401,126 @@ Decided (2026-10-02): **1** `Harvest` is its own node, **2** the tool requiremen
 | 7 | Silk touch and variable drops (fortune) in harvests | Record the default drop plus a `silk_touch` drop where the table has one; `count` is the typical number; fortune and loot bonuses are ignored for now |
 | 8 | Should `Station` link to something? | **Decided: `Station` is a marker label on `Item`** (one node, two labels), so a station has its own recipe and `USES_STATION` points at a real item. Built. |
 
+## v0.7: actions (built 2026-10-02)
+
+Replaces `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED`. The earlier v0.6 sections above still describe what the data holds (drops, tools, counts); in the graph those facts now sit on `Action` nodes.
+
+### Why
+
+A `Task` used to point straight at one `Recipe` or one `Harvest` and had a `type` of recipe, harvest or manual. That was too simple: a task could not do more than one thing, it had to pin an exact recipe (the first draft of the Iron tool line pinned the wrong one), and manual work had no place in the model.
+
+### The model
+
+A **Task performs one or more ordered Actions** (`HAS_ACTION`). An **Action** is a node with a secondary label for its verb. Actions are shared nodes generated from the Paper jar; a task points at the ones it performs.
+
+| Kind | Verb labels | What the action holds | Where the requirements live | Built |
+|---|---|---|---|---|
+| **Gathering** | `Mine`, `Kill`, `Shear` | The action **is** the definition: its target (`Block` or `Mob`), the tool, and what it drops | On the action itself | 1,099 + 63 + 4 |
+| **Transforming** | `Craft`, `Smelt`, `Smith`, `Cut` | Only the verb and the item it makes | On the `Recipe` nodes that create the same item (ingredients, station) | 949 + 61 + 12 + 197 |
+
+A transforming action and its recipes meet at the `Item`; there is no edge between them, so "Smelt Iron Ingot" can be done by any smelting-type recipe (raw iron, iron ore, deepslate iron ore, blasting). One transforming action is generated per verb and item, and the verb follows the recipe type:
+
+| Verb | Recipe types |
+|---|---|
+| `Craft` | crafting (shaped, shapeless, transmute, special and dye) |
+| `Smelt` | smelting, blasting, smoking, campfire cooking |
+| `Smith` | smithing |
+| `Cut` | stonecutting |
+
+The verbs follow the roles in the organization (a Smelter smelts, a Smith smiths). More verbs can be added later (Fish, Barter, Store, Move...) without changing the rest of the model.
+
+### Nodes and properties
+
+| Label | Key | Properties | Notes |
+|---|---|---|---|
+| `Action` + verb label | `id`: `<verb>:<id>` (`mine:minecraft:iron_ore`, `kill:minecraft:spider`, `shear:minecraft:sheep`, `craft:minecraft:iron_pickaxe`, `smelt:minecraft:iron_ingot`) | `name` ("Mine Iron Ore", "Craft Iron Pickaxe"); gathering actions also `tool` (type: `pickaxe`, `axe`, `shovel`, `hoe`, `shears` or none), `minTier` (`wooden`, `stone`, `copper`, `iron`, `diamond`, `netherite` or none), `toolRequired` | Generated from the jar; regenerated on every rebuild. |
+
+`Block`, `Mob`, `Recipe` and `Item` (with `ItemClass` and `Station`) are unchanged. Tools are ordinary `Item`s (a stone pickaxe has its own recipe); there is no `Tool` node. `Task` keeps `id`, `name`, `description`, `status`, `automatable` and the candidate fields; its `type` property is gone (a task with no actions is manual).
+
+### Relationships
+
+| Relationship | From -> To | Properties | Meaning |
+|---|---|---|---|
+| `HAS_ACTION` | `Task` -> `Action` | `order` (1, 2, 3...), `quantity` (items to make; default 1) | The task's steps, in order. Quantity is per task, so it sits on the link, because the action is shared. |
+| `CREATES` | `Action` -> `Item` | gathering: `count` (typical), `condition` (blocks: `default`, `silk_touch`, `shears`, `state`, `chance`; mobs: `default` or a `+`-joined mix of `killed_by_player`, `chance`, `state`) | What the action yields. For a transforming action it is just the item it makes. |
+| `REQUIRES` | `Action` -> `Block` or `Mob` | `role: 'target'` | What is mined, killed or sheared. |
+| `REQUIRES` | `Action` -> `Item` | `role: 'tool'`, `orBetter` | The minimum tool (Stone Pickaxe, `orBetter: true`) or Shears (`orBetter: false`). Optional. |
+
+`REQUIRES` has several roles; the `role` property tells them apart: `ingredient` and the other recipe roles (on `Recipe`), `tool` and `target` (on gathering actions).
+
+### Rules
+
+- **One role per task.** All of a task's actions are done by the same role. A change of role is a `NEXT` plus `HANDOFF_TO` between tasks. Within a task the order is `HAS_ACTION.order`; between tasks it is `NEXT`.
+- **Actions are checked by id.** `load_model.py` fails the load if a task names an action that is not in the graph, or a quantity that is not a whole number of 1 or more.
+- **Manual work** is a task with no actions. Actions for manual verbs (Store, Move) are not modelled yet.
+- **No recipe pin.** An earlier draft let a task pin one recipe (`using`). It was dropped: the route picks a method by item, and the chain between tasks is checked through the items.
+
+### Example: the Iron tool line
+
+From [model/processes/iron-tool-line.yaml](../model/processes/iron-tool-line.yaml). A task names the actions it performs by id:
+
+```yaml
+- id: iron-tool-line/mine-iron-ore
+  role: miner
+  actions:
+    - {do: "mine:minecraft:iron_ore", quantity: 3}      # drops raw iron; needs a stone pickaxe or better
+
+- id: iron-tool-line/smelt-raw-iron
+  role: smelter
+  actions:
+    - {do: "smelt:minecraft:iron_ingot", quantity: 3}
+
+- id: iron-tool-line/make-sticks                         # one task, two ordered actions, one role
+  role: crafter
+  actions:
+    - {do: "craft:minecraft:oak_planks", quantity: 2}
+    - {do: "craft:minecraft:stick", quantity: 4}
+
+- id: iron-tool-line/stock-tools-chest                   # manual: no actions
+  role: storekeeper
+```
+
+Loaded: 6 tasks, 6 `HAS_ACTION` links, 5 `NEXT`, 4 handoffs. Checked in the graph: "Mine Iron Ore" requires the Iron Ore block and a Stone Pickaxe or better and creates Raw Iron (default) and Iron Ore (silk touch); "Kill Spider" requires the Spider mob and creates String and Spider Eye; "Smelt Iron Ingot" meets the smelting recipes at the Iron Ingot item.
+
+### What it enables
+
+- A task can be authored without choosing a recipe; the route picks it (the agent already does this by item).
+- A task can carry several steps.
+- One query for "what produces this item": `(a:Action)-[:CREATES]->(i)` finds mining, killing, shearing, crafting, smelting, smithing and cutting alike.
+- Gap checks across a process: the tool a gathering action needs is an item; if no earlier action creates it (or a better one), the process has a gap. `load_model.py` prints these as notes.
+
+### What changed in the code
+
+| Area | Change |
+|---|---|
+| `loader/load_actions.py` (was `load_harvests.py`) | Builds the gathering actions from loot tables and block tags, and one thin transforming action per verb and item from the recipes. Deletes and recreates every `Action` (and any old `Harvest`). |
+| `loader/load_model.py`, `model/processes/*.yaml` | Tasks list `actions:`; `HAS_ACTION {order, quantity}` is written; `Task.type` is removed; old task-to-recipe/harvest links are cleared. |
+| `agent/minecorp_agent/tools.py` | `mined_from`, `sources_of`, `silk_only` and `how_to_get` read `Action` nodes (verb labels and `REQUIRES {role:'target'}`); answers are unchanged. |
+| Rebuild | The graph is rebuilt from source whenever required (Paper jar plus `model/`). Order: `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, `compute_routes.py` (30 seconds). Not rebuildable from source: `COMPLETED` history, future event data and agent memory (none yet). |
+
+### Decisions (2026-10-02)
+
+| Decision |
+|---|
+| `Action` is a node with a secondary label for its verb (Craft, Smelt, Smith, Cut, Mine, Kill, Shear). |
+| `Harvest` is gone: the Mine, Kill and Shear actions carry its target, tool and drops. |
+| A craft-type action crafts an item and the `Recipe` creates the item; they meet at the `Item`. |
+| Actions are shared, generated nodes; the task's link carries `order` and `quantity`. |
+| The link is `HAS_ACTION` (not `PERFORM_ACTION`, which is easy to confuse with `PERFORMS`). |
+| No recipe pin (`using`). |
+| The Smelt, Smith and Cut actions are generated now, for a more complete graph of how Minecraft works. |
+| A task may have several ordered actions; one role per task. |
+| Manual verbs (Store, Move) are left out for now. |
+| Tools are ordinary Items; no separate `Tool` node. |
+| The graph can be rebuilt from source if required. |
+
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
 | Knowledge-layer concept | MineCorp candidate |
 |---|---|
 | BusinessProcess | A MineCorp product line, e.g. "Iron tools" (to be authored; not in vanilla data) |
 | BusinessActivity | A stage, e.g. "Smelt iron", "Craft tools" |
-| BusinessTask | A `Task` that `CRAFTED` a `Recipe` (atomic, delegatable, has inputs/outputs) |
+| BusinessTask | A `Task` that performs `Action`s (atomic, delegatable, has inputs/outputs) |
 | Role | A MineCorp job, e.g. Smelter; stations are tools of a Role, not Roles themselves |
 | `NEXT` (routing as data) | Derived from output of one task being input of the next, plus conditions (fuel, location) |
 
@@ -428,6 +541,8 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-02 | v0.7: `Action` node with a verb label replaces `Harvest` and the direct Task-to-Recipe link; `HAS_ACTION {order, quantity}`; thin transforming actions generated for every verb and item; no recipe pin; built. |
+| 2026-10-02 | The graph can be rebuilt from source if required (Paper jar plus `model/`); the rebuild order is the rule. |
 | 2026-10-02 | v0.6: mining modelled as a `Harvest` node parallel to `Recipe`; tool requirement is the minimum tool item with `orBetter`; first load blocks only; org units and roles accepted for now. Built for harvests. |
 | 2026-10-02 | v0.5: route summary stored as properties on `Item` (`routeSteps`, `routeLevels`, `routeBaseMaterials`, `routeStations`, `routeTruncated`), computed by a separate write job; used to rank recipes by difficulty. |
 | 2026-10-02 | v0.4: one `Item` label for everything a recipe requires; categories are `Item:ItemClass` (replacing `ItemTag`), linked by `INCLUDES`. |
@@ -446,6 +561,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 
 ## Change log
 
+- **v0.7** (2026-10-02): built. `Action` node with a verb label (Craft, Smelt, Smith, Cut, Mine, Kill, Shear) between `Task` and the vanilla `Recipe` nodes; `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED` removed (Mine, Kill and Shear actions carry target, tool and drops); transforming actions are thin and meet their `Recipe` nodes at the `Item`; `HAS_ACTION {order, quantity}`; several ordered actions per task with one role; no recipe pin; 2,385 actions generated; full rebuild from source in 30 seconds. `load_harvests.py` renamed `load_actions.py`.
 - **v0.6.4** (2026-10-02): mob harvests built: `Mob` (63), `Harvest` kinds `kill` (63) and `shear` (4), `FROM_MOB`; loader handles loot tables that reference other tables (sheep colours). Agent: `getFrom` in routes, new `how_to_get` tool, route stop rule extended to mob sources. 1,166 harvests in total; `Item` 1,628.
 - **v0.6.3** (2026-10-02): `Station` is now a marker label on `Item` (like `ItemClass`) instead of a separate node; `USES_STATION` points at the item (decision 8). Node labels table repaired: `Recipe` and `Item:Station` rows restored, and a garbled paragraph about duplicate class names corrected.
 - **v0.6.2** (2026-10-02): relationships renamed `USED_RECIPE` -> `CRAFTED` and `USED_HARVEST` -> `HARVESTED` (graph reloaded; older change log entries keep the names used at the time); node labels in the diagram now use round brackets.

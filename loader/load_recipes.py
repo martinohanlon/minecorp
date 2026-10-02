@@ -359,7 +359,7 @@ def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str, 
 
     Uses MERGE throughout, so repeat runs are safe; `wipe` deletes all existing data first.
     ItemClass and Station nodes are Item nodes with an extra label. `wipe` also removes the authored MineCorp
-    model and the harvests: reload them afterwards with load_harvests.py and load_model.py.
+    model and the actions: reload them afterwards with load_actions.py and load_model.py.
     """
     from neo4j import GraphDatabase
 

@@ -51,7 +51,7 @@ A modelling rule decided in review: **things are domain; ways of changing things
 | **Technical** | Systems, data sources, data assets | `System` (Paper server, plugin, agent service, Neo4j); `DataSource` (server jar, minecraft.wiki, server state API); `DataAsset` (recipe JSON, tag JSON, loot table JSON, wiki article); attributes: how accessed, how fresh, who owns it, authoritative or not | Not started |
 | **Domain (business)** | The things: key entities and relationships | `Item`, `ItemClass` (categories of items), `Station` (an Item with an extra label: where work is done); next: `Block` (what can be mined), `Mob`, `Biome`, `Structure`, `Dimension`; MineCorp-level: `Facility`, `Product` | `Item`, `ItemClass`, `Station` built |
 | **Data product definitions** | The link from technical assets to domain and process concepts | "Recipe catalog" (jar -> Recipe), "Loot catalog" (loot tables and block tags -> mining and harvesting), "World state summary" (server state -> Facility/Station counts), "Player activity" (events -> Task completions) | Not started (series chapter 4) |
-| **Business process** | Tasks, activities, decision points, flows | Vanilla **transformation definitions**: `Recipe` (inputs -> outputs at a station), later `Harvest` (block or mob -> drops, with the tool needed). MineCorp layer: `Process -> Activity -> Task`, `NEXT {condition, outcome, isDefault}`, `HANDOFF_TO`, `ESCALATES_TO`, `automatable`; `Task -[:CRAFTED]-> Recipe` | Recipe built; Task, Player, `COMPLETED` built (sample data only) |
+| **Business process** | Tasks, activities, decision points, flows | Vanilla **definitions of how things change**: `Recipe` (inputs -> outputs at a station) and the gathering `Action`s (`Mine`, `Kill`, `Shear`: target -> drops, with the tool needed). MineCorp layer: `Process -> Activity -> Task`, `NEXT {condition, outcome, isDefault}`, `HANDOFF_TO`, `ESCALATES_TO`, `automatable`; `Task -[:HAS_ACTION {order, quantity}]-> Action` (verbs Craft, Smelt, Smith, Cut, Mine, Kill, Shear) | Built (recipes, 2,385 actions, one authored process) |
 | **Policy** | Rules for access and use | `Policy` nodes applying to `Role`, `Tool`, `DataProduct`; e.g. the agent is read-only, candidates need the owner's confirmation | Informal (permission node, read-only mode) |
 | **Organization** | Units, roles, ownership, responsibilities | `OrgUnit -> Role`, `Person` (the player) `FILLED_BY` a role with dates; one owner per process | Not started (series chapter 1) |
 
@@ -130,6 +130,7 @@ From the manifesto, on each request the serving side interprets intent against t
 - **Hybrid build:** "bottom-up discovery, where LLMs accelerate acquisition, meets top-down governance, where the organization defines what's authoritative."
 - **Candidate versus canonical:** extracted output is "a draft input, not a fact". It carries `source`, `extractedAt`, `confidence` and a status. "Extraction gives you candidates and governance decides what's true." Vanilla data is authoritative by construction and needs none of this.
 - **Ownership (federated):** domain owners own meaning, data products and mappings; the platform owns the substrate (reliable, queryable, versioned); governance sets cross-domain rules. See the single-player constraint below for how this works with one person.
+- **Rebuildable:** the graph can be rebuilt from source whenever required (the Paper jar plus the YAML in `model/`), in a fixed order (`loader/README.md`). What a rebuild cannot restore is anything not in source: task completions, future event data and agent memory.
 - **Versioned:** the ontology and its changes are versioned (here: `docs/ontology.md` with a change log).
 
 ## 4. Design constraint: one player
@@ -174,7 +175,7 @@ Illustrative; to be agreed before it becomes data. It must work with one player 
 | Access layer: tool-calling agent, six read-only graph tools, shared secret | Built |
 | Decision traces | Written to a file, not the graph |
 | Organization and MineCorp process (OrgUnit, Role, Process, Activity, Task, `NEXT`, handoffs, `CONFIRMED_BY`) | **Built (step 1):** 6 units, 9 roles all filled by the one player, one process (Iron tool line, 7 tasks), loaded from YAML in `model/` |
-| Harvest definitions from loot tables and block tags | **Built** for blocks (1,099), mobs killed (63) and shearing (4); fishing, bartering, hives and chests later |
+| Gathering and transforming actions (generated from the jar) | **Built:** 1,099 `Mine`, 63 `Kill`, 4 `Shear`, and 1,219 thin `Craft`, `Smelt`, `Smith`, `Cut`; fishing, bartering, hives and chests later |
 | Technical and policy ontology; data products | Not started |
 | Lexical and entity graphs (wiki) | Not started |
 | Agent memory | Not started (research deferred) |

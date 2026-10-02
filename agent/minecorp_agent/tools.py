@@ -295,15 +295,16 @@ class Route:
             self.mined[item_id] = self.graph.read(
                 """
                 MATCH (i:Item {id: $id})
-                WHERE NOT EXISTS { (:Block {id: $id})<-[:FROM_BLOCK]-(:Harvest)-[:CREATES {condition: 'default'}]->(i) }
-                MATCH (h:Harvest)-[c:CREATES]->(i)
-                OPTIONAL MATCH (h)-[:FROM_BLOCK]->(b:Block) WHERE b.id <> i.id
-                OPTIONAL MATCH (h)-[:FROM_MOB]->(m:Mob)
+                WHERE NOT EXISTS { (:Block {id: $id})<-[:REQUIRES {role: 'target'}]-(:Mine)-[:CREATES {condition: 'default'}]->(i) }
+                MATCH (h:Action)-[c:CREATES]->(i)
+                WHERE h:Mine OR h:Kill OR h:Shear
+                OPTIONAL MATCH (h)-[:REQUIRES {role: 'target'}]->(b:Block) WHERE b.id <> i.id
+                OPTIONAL MATCH (h)-[:REQUIRES {role: 'target'}]->(m:Mob)
                 WITH h, c, b, m
                 WHERE (b IS NOT NULL AND c.condition = 'default')
                    OR (m IS NOT NULL AND c.condition IN ['default', 'killed_by_player'])
                 OPTIONAL MATCH (h)-[:REQUIRES {role: 'tool'}]->(t:Item)
-                RETURN h.kind AS how, coalesce(b.name, m.name) AS source, t.name AS tool
+                RETURN CASE WHEN h:Mine THEN 'mine' WHEN h:Kill THEN 'kill' ELSE 'shear' END AS how, coalesce(b.name, m.name) AS source, t.name AS tool
                 ORDER BY (m IS NULL), (t IS NULL), source LIMIT 3
                 """, id=item_id)
         return self.mined[item_id]
@@ -319,14 +320,15 @@ class Route:
         if item_id not in self.sources:
             self.sources[item_id] = self.graph.read(
                 """
-                MATCH (h:Harvest)-[c:CREATES]->(i:Item {id: $id})
-                OPTIONAL MATCH (h)-[:FROM_BLOCK]->(b:Block)
-                OPTIONAL MATCH (h)-[:FROM_MOB]->(m:Mob)
+                MATCH (h:Action)-[c:CREATES]->(i:Item {id: $id})
+                WHERE h:Mine OR h:Kill OR h:Shear
+                OPTIONAL MATCH (h)-[:REQUIRES {role: 'target'}]->(b:Block)
+                OPTIONAL MATCH (h)-[:REQUIRES {role: 'target'}]->(m:Mob)
                 WITH h, c, i, b, m
                 WHERE (b IS NOT NULL AND c.condition = 'default')
                    OR (m IS NOT NULL AND c.condition IN ['default', 'killed_by_player'])
                 OPTIONAL MATCH (h)-[q:REQUIRES {role: 'tool'}]->(t:Item)
-                RETURN h.kind AS how, coalesce(b.name, m.name) AS source, t.name AS tool,
+                RETURN CASE WHEN h:Mine THEN 'mine' WHEN h:Kill THEN 'kill' ELSE 'shear' END AS how, coalesce(b.name, m.name) AS source, t.name AS tool,
                        coalesce(q.orBetter, false) AS orBetter, (b IS NOT NULL AND b.id = i.id) AS selfDrop
                 ORDER BY (m IS NULL), (NOT selfDrop), (t IS NULL), source LIMIT 4
                 """, id=item_id)
@@ -336,7 +338,7 @@ class Route:
         """True if mining only gives this item with silk touch (iron ore: the block drops raw iron)."""
         if item_id not in self.silk:
             rows = self.graph.read(
-                "MATCH (:Harvest)-[c:CREATES]->(:Item {id: $id}) RETURN collect(DISTINCT c.condition) AS conds", id=item_id)
+                "MATCH (a:Action)-[c:CREATES]->(:Item {id: $id}) WHERE a:Mine OR a:Kill OR a:Shear RETURN collect(DISTINCT c.condition) AS conds", id=item_id)
             conds = set(rows[0]["conds"]) if rows else set()
             self.silk[item_id] = bool(conds) and conds <= {"silk_touch"}
         return self.silk[item_id]
@@ -533,11 +535,12 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         WITH x, collect(DISTINCT m) AS members
         WITH CASE WHEN x:ItemClass THEN members ELSE [x] END AS items
         UNWIND items AS i
-        MATCH (h:Harvest)-[c:CREATES]->(i)
-        OPTIONAL MATCH (h)-[:FROM_BLOCK]->(b:Block)
-        OPTIONAL MATCH (h)-[:FROM_MOB]->(mob:Mob)
+        MATCH (h:Action)-[c:CREATES]->(i)
+        WHERE h:Mine OR h:Kill OR h:Shear
+        OPTIONAL MATCH (h)-[:REQUIRES {role: 'target'}]->(b:Block)
+        OPTIONAL MATCH (h)-[:REQUIRES {role: 'target'}]->(mob:Mob)
         OPTIONAL MATCH (h)-[q:REQUIRES {role: 'tool'}]->(t:Item)
-        WITH h.kind AS how, coalesce(b.name, mob.name) AS source, t.name AS tool, coalesce(q.orBetter, false) AS orBetter,
+        WITH CASE WHEN h:Mine THEN 'mine' WHEN h:Kill THEN 'kill' ELSE 'shear' END AS how, coalesce(b.name, mob.name) AS source, t.name AS tool, coalesce(q.orBetter, false) AS orBetter,
              c.condition AS condition, avg(c.count) AS count, collect(DISTINCT i.name) AS gives,
              max(CASE WHEN b IS NOT NULL AND b.id = i.id THEN 1 ELSE 0 END) AS selfDropFlag
         RETURN how, source, tool, orBetter, condition, count, gives, selfDropFlag = 1 AS selfDrop

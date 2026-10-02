@@ -23,10 +23,10 @@ $env:NEO4J_PASSWORD = "<same as .env>"
 
 Load everything (all recipes and item tags) with `--all --wipe`.
 
-**Then load the harvest definitions** (what blocks drop and the tool to mine them, what mobs drop when killed, and what shearing gives; Block, Mob and Harvest nodes; about 5 seconds). Run it after `load_recipes.py --all` and before `compute_routes.py`:
+**Then load the actions** (the gathering actions Mine, Kill and Shear from block, mob and shearing loot tables, with their targets, tools and drops; and one thin Craft, Smelt, Smith or Cut action per item from the recipes; about 5 seconds). Run it after `load_recipes.py --all` and before `load_model.py`:
 
 ```powershell
-.venv\Scripts\python loader\load_harvests.py            # --dry-run to preview
+.venv\Scripts\python loader\load_actions.py            # --dry-run to preview
 ```
 
 **Then load the MineCorp model** (organization and processes, authored as YAML in [model/](../model/); about 2 seconds). It checks every recipe and harvest id against the graph and fails with a list of problems without writing anything; `--dry-run` only validates:
@@ -48,7 +48,7 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-Order for a full rebuild: `load_recipes.py --all --wipe`, `load_harvests.py`, `load_model.py`, then `compute_routes.py`.
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, then `compute_routes.py`.
 
 The recipe loader is idempotent (it uses `MERGE`); `--wipe` deletes everything first.
 
@@ -78,7 +78,16 @@ RETURN i.name;
 MATCH (c:ItemClass) RETURN c.name, c.id, c.size ORDER BY c.size DESC LIMIT 25;
 
 // Tasks a player has completed
-MATCH (p:Player)-[c:COMPLETED]->(t:Task)-[:CRAFTED]->(r:Recipe) RETURN p.name, t.name, r.name, c.at;
+MATCH (t:Task)-[h:HAS_ACTION]->(a:Action) RETURN t.name, h.order, a.name, h.quantity ORDER BY t.name, h.order;
+
+// What a mining action needs and yields
+MATCH (a:Mine {id:'mine:minecraft:iron_ore'})-[:REQUIRES]->(x) MATCH (a)-[c:CREATES]->(i) RETURN a.name, labels(x)[0] AS needs, x.name, collect(i.name + ' [' + c.condition + ']') AS yields;
+
+// Every way to get an item: actions and recipes meet at the item
+MATCH (x)-[:CREATES]->(:Item {id:'minecraft:iron_ingot'}) RETURN labels(x) AS kind, x.name;
+
+// Tasks a player has completed
+MATCH (p:Player)-[c:COMPLETED]->(t:Task) RETURN p.name, t.name, c.at;
 ```
 
 ## Why Python

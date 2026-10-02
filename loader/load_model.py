@@ -5,10 +5,10 @@
 
 Reads model/org.yaml and model/processes/*.yaml. The YAML files are the source of truth for the
 organization and the processes: OrgUnit, Role, Process and Activity nodes are rebuilt on every run, and
-tasks are merged by id. A bad reference (unknown role, recipe or harvest id, unknown task in NEXT...)
+tasks are merged by id. A bad reference (unknown role, unknown action id, unknown task in NEXT...)
 fails the load with every error listed, and nothing is written.
 
-Run it after load_recipes.py and load_harvests.py (it checks recipe and harvest ids against the graph).
+Run it after load_recipes.py and load_actions.py (it checks the action ids against the graph).
 Players, COMPLETED history and anything else not defined in the YAML are left alone.
 """
 from __future__ import annotations
@@ -51,7 +51,7 @@ def read_model() -> tuple[dict, list[dict]]:
 
 # --------------------------------------------------------------------------- validate
 
-def validate(org: dict, processes: list[dict], recipe_ids: set, harvest_ids: set) -> list[str]:
+def validate(org: dict, processes: list[dict], action_ids: set) -> list[str]:
     """Return every problem found; empty means the model is consistent."""
     errors: list[str] = []
 
@@ -112,12 +112,12 @@ def validate(org: dict, processes: list[dict], recipe_ids: set, harvest_ids: set
                 tasks_here.add(tid)
                 if t.get("role") not in roles:
                     err(f"{f}: task {tid} role {t.get('role')} is not a role")
-                if t.get("recipe") and t.get("harvest"):
-                    err(f"{f}: task {tid} has both recipe and harvest")
-                if t.get("recipe") and t["recipe"] not in recipe_ids:
-                    err(f"{f}: task {tid} recipe {t['recipe']} is not in the graph")
-                if t.get("harvest") and t["harvest"] not in harvest_ids:
-                    err(f"{f}: task {tid} harvest {t['harvest']} is not in the graph")
+                for i, act in enumerate(t.get("actions", []), 1):
+                    if act.get("do") not in action_ids:
+                        err(f"{f}: task {tid} action {i} {act.get('do')} is not an action in the graph")
+                    q = act.get("quantity", 1)
+                    if not isinstance(q, int) or isinstance(q, bool) or q < 1:
+                        err(f"{f}: task {tid} action {i} quantity must be a whole number of 1 or more")
                 if t.get("escalates_to") and t["escalates_to"] not in roles:
                     err(f"{f}: task {tid} escalates_to unknown role {t['escalates_to']}")
         for n in doc.get("next", []):
@@ -128,24 +128,20 @@ def validate(org: dict, processes: list[dict], recipe_ids: set, harvest_ids: set
 
 
 def tool_gaps(processes: list[dict], graph: Graph) -> list[str]:
-    """Warn where a mining task needs a tool that no task in the same process makes."""
+    """Warn where a gathering action needs a tool that no action in the same process makes."""
     warnings = []
     for doc in processes:
-        recipes = [t["recipe"] for a in doc.get("activities", []) for t in a.get("tasks", []) if t.get("recipe")]
+        steps = [(t, act["do"]) for ac in doc.get("activities", []) for t in ac.get("tasks", []) for act in t.get("actions", [])]
         made = {r["id"] for r in graph.read(
-            "MATCH (r:Recipe)-[:CREATES]->(i:Item) WHERE r.id IN $ids RETURN DISTINCT i.id AS id", ids=recipes)}
-        for a in doc.get("activities", []):
-            for t in a.get("tasks", []):
-                if not t.get("harvest"):
-                    continue
-                need = graph.read(
-                    """MATCH (:Harvest {id: $id})-[:REQUIRES {role: 'tool'}]->(i:Item) RETURN i.id AS id, i.name AS name""",
-                    id=t["harvest"])
-                for n in need:
-                    tier, _, kind = n["id"].replace("minecraft:", "").partition("_")
-                    ok = {f"minecraft:{x}_{kind}" for x in TIERS[TIERS.index(tier):]} if tier in TIERS else {n["id"]}
-                    if not (ok & made):
-                        warnings.append(f"{t['id']}: needs a {n['name']} or better; no task in {doc['process']['id']} makes one")
+            "MATCH (a:Action)-[:CREATES]->(i:Item) WHERE a.id IN $ids RETURN DISTINCT i.id AS id", ids=[a for _, a in steps])}
+        for t, action_id in steps:
+            need = graph.read(
+                "MATCH (:Action {id: $id})-[:REQUIRES {role: 'tool'}]->(i:Item) RETURN i.id AS id, i.name AS name", id=action_id)
+            for n in need:
+                tier, _, kind = n["id"].replace("minecraft:", "").partition("_")
+                ok = {f"minecraft:{x}_{kind}" for x in TIERS[TIERS.index(tier):]} if tier in TIERS else {n["id"]}
+                if not (ok & made):
+                    warnings.append(f"{t['id']}: needs a {n['name']} or better; no action in {doc['process']['id']} makes one")
     return warnings
 
 
@@ -163,7 +159,8 @@ def rows(org: dict, processes: list[dict]) -> dict:
         "units": org.get("org_units", []),
         "roles": org.get("roles", []),
         "fills": fills,
-        "processes": [], "activities": [], "tasks": [], "nexts": [], "handoffs": [], "escalations": [], "confirmations": [],
+        "processes": [], "activities": [], "tasks": [], "task_actions": [], "nexts": [], "handoffs": [], "escalations": [],
+        "confirmations": [],
     }
     for doc in processes:
         p = doc["process"]
@@ -174,14 +171,15 @@ def rows(org: dict, processes: list[dict]) -> dict:
             out["activities"].append({"id": f"{p['id']}/{a['id']}", "process": p["id"], "name": a["name"], "seq": a["seq"]})
             for t in a.get("tasks", []):
                 role_of[t["id"]] = t["role"]
-                kind = "recipe" if t.get("recipe") else "harvest" if t.get("harvest") else "manual"
                 out["tasks"].append({
                     "id": t["id"], "activity": f"{p['id']}/{a['id']}", "name": t["name"],
-                    "description": t.get("description"), "role": t["role"], "type": kind,
-                    "recipe": t.get("recipe"), "harvest": t.get("harvest"),
+                    "description": t.get("description"), "role": t["role"],
                     "automatable": bool(t.get("automatable", False)), "status": status,
                     "source": doc.get("source"), "extractedAt": str(doc["extracted_at"]) if doc.get("extracted_at") else None,
                     "confidence": doc.get("confidence")})
+                for order, act in enumerate(t.get("actions", []), 1):
+                    out["task_actions"].append({"task": t["id"], "action": act["do"], "order": order,
+                                                "quantity": act.get("quantity", 1)})
                 if t.get("escalates_to"):
                     out["escalations"].append({"task": t["id"], "role": t["escalates_to"], "reason": t.get("escalation_reason")})
                 if status == "confirmed":
@@ -218,7 +216,7 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
                     notes.append(f"removed stale task {t['id']}")
 
             s.run("MATCH (n) WHERE n:OrgUnit OR n:Role OR n:Process OR n:Activity DETACH DELETE n")
-            s.run("""MATCH (t:Task)-[x:NEXT|HANDOFF_TO|ESCALATES_TO|CRAFTED|HARVESTED|USED_RECIPE|USED_HARVEST]->() WHERE t.id IN $ids DELETE x""",
+            s.run("""MATCH (t:Task)-[x:NEXT|HANDOFF_TO|ESCALATES_TO|HAS_ACTION|CRAFTED|HARVESTED|USED_RECIPE|USED_HARVEST]->() WHERE t.id IN $ids DELETE x""",
                   ids=task_ids)
 
             s.run("UNWIND $rows AS r MERGE (p:Player {uuid: r.uuid}) SET p.name = r.name", rows=r["players"])
@@ -235,16 +233,15 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
             s.run("""UNWIND $rows AS r CREATE (a:Activity {id: r.id, name: r.name, seq: r.seq})
                      WITH a, r MATCH (p:Process {id: r.process}) CREATE (p)-[:HAS_ACTIVITY]->(a)""", rows=r["activities"])
             s.run("""UNWIND $rows AS r MERGE (t:Task {id: r.id})
-                     SET t.name = r.name, t.description = r.description, t.type = r.type, t.status = r.status,
+                     SET t.name = r.name, t.description = r.description, t.status = r.status,
                          t.automatable = r.automatable, t.source = r.source, t.extractedAt = r.extractedAt,
                          t.confidence = r.confidence
+                     REMOVE t.type
                      WITH t, r
                      MATCH (a:Activity {id: r.activity}), (ro:Role {id: r.role})
                      CREATE (a)-[:HAS_TASK]->(t) CREATE (ro)-[:PERFORMS]->(t)""", rows=r["tasks"])
-            s.run("UNWIND $rows AS r WITH r WHERE r.recipe IS NOT NULL MATCH (t:Task {id: r.id}), (x:Recipe {id: r.recipe}) "
-                  "CREATE (t)-[:CRAFTED]->(x)", rows=r["tasks"])
-            s.run("UNWIND $rows AS r WITH r WHERE r.harvest IS NOT NULL MATCH (t:Task {id: r.id}), (x:Harvest {id: r.harvest}) "
-                  "CREATE (t)-[:HARVESTED]->(x)", rows=r["tasks"])
+            s.run("""UNWIND $rows AS r MATCH (t:Task {id: r.task}), (a:Action {id: r.action})
+                     CREATE (t)-[:HAS_ACTION {order: r.order, quantity: r.quantity}]->(a)""", rows=r["task_actions"])
             s.run("""UNWIND $rows AS r MATCH (a:Task {id: r.from}), (b:Task {id: r.to})
                      CREATE (a)-[:NEXT {condition: r.condition, outcome: r.outcome, isDefault: r.isDefault}]->(b)""", rows=r["nexts"])
             s.run("UNWIND $rows AS r MATCH (a:Task {id: r.from}), (b:Task {id: r.to}) CREATE (a)-[:HANDOFF_TO]->(b)", rows=r["handoffs"])
@@ -263,13 +260,12 @@ def main() -> int:
 
     s = get_settings()
     graph = Graph(s.neo4j_uri, s.neo4j_user, s.neo4j_password, s.neo4j_database)
-    recipe_ids = {r["id"] for r in graph.read("MATCH (r:Recipe) RETURN r.id AS id")}
-    harvest_ids = {r["id"] for r in graph.read("MATCH (h:Harvest) RETURN h.id AS id")}
-    if not recipe_ids:
-        sys.exit("No recipes in the graph. Run load_recipes.py --all and load_harvests.py first.")
+    action_ids = {r["id"] for r in graph.read("MATCH (a:Action) RETURN a.id AS id")}
+    if not action_ids:
+        sys.exit("No actions in the graph. Run load_recipes.py --all and load_actions.py first.")
 
     org, processes = read_model()
-    errors = validate(org, processes, recipe_ids, harvest_ids)
+    errors = validate(org, processes, action_ids)
     if errors:
         print(f"{len(errors)} problem(s) in the model; nothing written:")
         for e in errors:
@@ -279,6 +275,7 @@ def main() -> int:
     r = rows(org, processes)
     print(f"model OK: {len(r['units'])} org units, {len(r['roles'])} roles, {len(r['fills'])} role fills, "
           f"{len(r['processes'])} process(es), {len(r['activities'])} activities, {len(r['tasks'])} tasks, "
+          f"{len(r['task_actions'])} task actions, "
           f"{len(r['nexts'])} NEXT, {len(r['handoffs'])} handoffs, {len(r['escalations'])} escalations")
     for w in tool_gaps(processes, graph):
         print("  note:", w)
