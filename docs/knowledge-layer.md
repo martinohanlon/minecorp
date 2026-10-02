@@ -1,6 +1,6 @@
 # MineCorp enterprise knowledge layer
 
-Status: **v0.3, open items A-C decided (2026-10-02).** Describes the target design and where the project is today. Nothing here changes existing code. Agreed decisions are in section 8 and in [AGENTS.md](../AGENTS.md).
+Status: **v0.4, step 1 built (organization and process); open items A-C decided (2026-10-02).** Describes the target design and where the project is today. Nothing here changes existing code. Agreed decisions are in section 8 and in [AGENTS.md](../AGENTS.md).
 
 Sources: [The knowledge layer for enterprise AI](https://neo4j.com/blog/agentic-ai/enterprise-knowledge-layer/) (the manifesto) and [The knowledge layer for enterprise: Processes](https://neo4j.com/blog/genai/the-knowledge-layer-for-enterprise-processes/) (series chapter 2). The series has four chapters: 1 operating structure, 2 processes, 3 domain ontology (not yet published when read), 4 data products (not yet published). Where this document uses the posts' words it quotes them; the MineCorp content is our proposal.
 
@@ -49,9 +49,9 @@ A modelling rule decided in review: **things are domain; ways of changing things
 | Part | Holds | MineCorp content (proposal) | Status |
 |---|---|---|---|
 | **Technical** | Systems, data sources, data assets | `System` (Paper server, plugin, agent service, Neo4j); `DataSource` (server jar, minecraft.wiki, server state API); `DataAsset` (recipe JSON, tag JSON, loot table JSON, wiki article); attributes: how accessed, how fresh, who owns it, authoritative or not | Not started |
-| **Domain (business)** | The things: key entities and relationships | `Item`, `ItemClass` (categories of items), `Station` (the blocks where work is done); next: `Block` (what can be mined), `Mob`, `Biome`, `Structure`, `Dimension`; MineCorp-level: `Facility`, `Product` | `Item`, `ItemClass`, `Station` built |
+| **Domain (business)** | The things: key entities and relationships | `Item`, `ItemClass` (categories of items), `Station` (an Item with an extra label: where work is done); next: `Block` (what can be mined), `Mob`, `Biome`, `Structure`, `Dimension`; MineCorp-level: `Facility`, `Product` | `Item`, `ItemClass`, `Station` built |
 | **Data product definitions** | The link from technical assets to domain and process concepts | "Recipe catalog" (jar -> Recipe), "Loot catalog" (loot tables and block tags -> mining and harvesting), "World state summary" (server state -> Facility/Station counts), "Player activity" (events -> Task completions) | Not started (series chapter 4) |
-| **Business process** | Tasks, activities, decision points, flows | Vanilla **transformation definitions**: `Recipe` (inputs -> outputs at a station), later `Harvest` (block or mob -> drops, with the tool needed). MineCorp layer: `Process -> Activity -> Task`, `NEXT {condition, outcome, isDefault}`, `HANDOFF_TO`, `ESCALATES_TO`, `automatable`; `Task -[:USED_RECIPE]-> Recipe` | Recipe built; Task, Player, `COMPLETED` built (sample data only) |
+| **Business process** | Tasks, activities, decision points, flows | Vanilla **transformation definitions**: `Recipe` (inputs -> outputs at a station), later `Harvest` (block or mob -> drops, with the tool needed). MineCorp layer: `Process -> Activity -> Task`, `NEXT {condition, outcome, isDefault}`, `HANDOFF_TO`, `ESCALATES_TO`, `automatable`; `Task -[:CRAFTED]-> Recipe` | Recipe built; Task, Player, `COMPLETED` built (sample data only) |
 | **Policy** | Rules for access and use | `Policy` nodes applying to `Role`, `Tool`, `DataProduct`; e.g. the agent is read-only, candidates need the owner's confirmation | Informal (permission node, read-only mode) |
 | **Organization** | Units, roles, ownership, responsibilities | `OrgUnit -> Role`, `Person` (the player) `FILLED_BY` a role with dates; one owner per process | Not started (series chapter 1) |
 
@@ -70,6 +70,27 @@ Three process families, from review:
 | **Inventory management** | Storing, sorting and moving goods; keeping stock for a production line | No vanilla definition. MineCorp-authored tasks and rules, evidenced by live state (chests, inventories) |
 
 The first two families are largely *derivable* from vanilla data; the third is where MineCorp's own operating model carries the content.
+
+### 3.2a Where process knowledge comes from (from the posts)
+
+The process post (chapter 2, section "How to design it") names three places process knowledge lives, and says extraction from any of them gives candidates and not facts:
+
+> "Process knowledge lives in three places: Procedure documents. Official and versioned but unstructured knowledge. Good for the process outline: the process exists, it has roughly these stages. Workflow and ticket systems. What actually happened in the process. Captures the actual execution: the sequences, escalation and handoff points, the paths the documents sometimes miss. People. The conditions, the exceptions, the judgement calls and all the undocumented knowledge around specifics."
+
+> "extraction output is a draft input, not a fact. If you mine ticket histories for task sequences, or point a language model at the procedure library, what comes back is a candidate process... extraction gives you candidates and governance decides what's true."
+
+The manifesto adds that the business process ontology is built by importing from process platforms where they exist (it names Celonis, Camunda and SAP Signavio) and "otherwise, the same approach applies, reconstructing the flows by applying process-formalisation techniques and methodologies for knowledge acquisition", and that agent runs feed back: "when we capture that trace and the KL distills the recurring pattern into a reusable process, the next escalation starts from a known playbook instead of first principles."
+
+Both posts were read through a page-fetching tool that summarises, so the wording above should be checked against the pages before it is quoted elsewhere. The chapter 2 post links its code: <https://github.com/msenechal/enterprise-knowledge-layer-series> (`01-create-graph-type.cypher`, `02-load-data.cypher`, `03-queries.cypher`).
+
+Mapping to MineCorp (proposal):
+
+| Source in the posts | MineCorp equivalent | Status |
+|---|---|---|
+| Procedure documents (the outline: the process exists, with roughly these stages) | The vanilla definitions (recipes, harvests) and minecraft.wiki articles; the authored YAML for the Iron tool line | Recipes, harvests and one authored process built; wiki not started |
+| Workflow and ticket systems (what actually happened) | Plugin events: crafts, smelts, blocks mined, task completions | Not started |
+| People (conditions, exceptions, judgement) | The player, confirming and correcting through the Steward role | Done by hand in the YAML |
+| Agent traces distilled into playbooks | Decision traces that repeat (the same questions and routes) become candidate processes | Not started; traces are in a file |
 
 ### 3.3 Enterprise data
 
@@ -152,9 +173,9 @@ Illustrative; to be agreed before it becomes data. It must work with one player 
 | Process: recipes (vanilla transformation definitions) | Built and loaded (1,585 Recipe); route properties for ranking (ontology v0.5) |
 | Access layer: tool-calling agent, six read-only graph tools, shared secret | Built |
 | Decision traces | Written to a file, not the graph |
-| Process: MineCorp Process/Activity/Task/Role | `Task`, `Player`, `COMPLETED` only; sample data |
-| Harvest definitions (mining, shearing) from loot tables and block tags | Not started |
-| Technical, policy, organization ontology; data products | Not started |
+| Organization and MineCorp process (OrgUnit, Role, Process, Activity, Task, `NEXT`, handoffs, `CONFIRMED_BY`) | **Built (step 1):** 6 units, 9 roles all filled by the one player, one process (Iron tool line, 7 tasks), loaded from YAML in `model/` |
+| Harvest definitions from block loot tables and block tags | **Built** for blocks (1,099 harvests); shearing, mobs and crops later |
+| Technical and policy ontology; data products | Not started |
 | Lexical and entity graphs (wiki) | Not started |
 | Agent memory | Not started (research deferred) |
 | Live state and events | Not started |
@@ -188,13 +209,16 @@ Decided after the second review:
 5. **Wiki: lexical and entity graphs** with the candidate/confirm workflow (first real use of LLM extraction).
 6. **Live state and events**, then **agent memory** (inventory management needs live state).
 
-## Next actions
+## Next actions (revised)
 
-- Build step 1 of section 9: the organization and process model (org units, roles with the player filling all of them, owner roles, the three process families), including harvest definitions from loot tables and block tags. Update `docs/ontology.md` first (Recipe classified as process; new node types), then the loader.
-- With Enterprise Edition available, decide whether to use **graph types** to enforce the schema (the process post's `01-create-graph-type.cypher`) or stay with constraints.
+- Step 1 is built (section 7 table). Next in the agreed order: **technical ontology and data product definitions** (step 2), then traces into the graph (3), policy nodes (4), wiki (5), live state and events (6).
+- `Station` is now a marker label on `Item` (done), so a route could include building the station; routes do not do this yet.
+- Open: more authored processes (a collect-family and an inventory-family process, since only the Iron tool line exists), and the agent tools for the process layer (who owns, what is next, which tasks can be automated).
+- With Enterprise Edition running, decide whether to use **graph types** for schema enforcement (the process post's `01-create-graph-type.cypher`) or stay with constraints.
 
 ## Change log
 
+- **v0.4** (2026-10-02): step 1 built; section 3.2a added with the posts' own references on where process knowledge comes from and the link to their code; status table updated.
 - **v0.3** (2026-10-02): decisions 7-9 recorded (A leave as is, B record owner roles and the player fills all, C keep Recipe and Task separate). Neo4j moved to Enterprise Edition.
 - **v0.2** (2026-10-02): revised after review. KL boundary is the graph (access layer outside); recipes classified as process; three process families (collecting resources by mining and harvesting, crafting, inventory management) with their vanilla data; single-player constraint; decisions 1-6 recorded; open items A-C explained.
 - **v0.1 PROPOSAL** (2026-10-02): first draft.

@@ -257,6 +257,9 @@ class Route:
         shared = shared if shared is not None else {}
         self.recipes: dict[str, list[dict]] = shared.setdefault("recipes", {})
         self.reversal: dict[tuple[str, str], bool] = shared.setdefault("reversal", {})
+        self.silk: dict[str, bool] = shared.setdefault("silk", {})
+        self.mined: dict[str, list] = shared.setdefault("mined", {})
+        self.sources: dict[str, list] = shared.setdefault("sources", {})
         self.totals: dict[tuple[str, bool], dict] = {}   # (name, is_category) -> {"count", "examples"}
         self.steps: dict[str, dict] = {}                 # item id -> step, in the order they must be done
         self.levels = 0                                  # deepest chain of crafted items
@@ -280,8 +283,57 @@ class Route:
             self.reversal[key] = bool(rows and rows[0]["rev"])
         return self.reversal[key]
 
-    def choose(self, item_id: str, path: frozenset) -> tuple[dict | None, list[dict]]:
-        """Pick the preferred recipe for an item and return it with the other usable ones."""
+    def mined_from(self, item_id: str) -> list[dict]:
+        """Blocks whose normal drop is this item AND which are a different block (iron ore drops raw iron).
+
+        Used to decide where a route stops: an item that comes from a different block (raw iron from iron ore)
+        is a mined resource. Empty if a block of the same name also drops the item (a log, obsidian): the data
+        cannot tell a natural block from a placed one. For display use sources_of, which has no such exclusion.
+        """
+        if item_id not in self.mined:
+            self.mined[item_id] = self.graph.read(
+                """
+                MATCH (i:Item {id: $id})
+                WHERE NOT EXISTS { (:Block {id: $id})<-[:FROM_BLOCK]-(:Harvest)-[:CREATES {condition: 'default'}]->(i) }
+                MATCH (h:Harvest)-[c:CREATES {condition: 'default'}]->(i)
+                MATCH (h)-[:FROM_BLOCK]->(b:Block) WHERE b.id <> i.id
+                OPTIONAL MATCH (h)-[:REQUIRES {role: 'tool'}]->(t:Item)
+                RETURN b.name AS block, t.name AS tool ORDER BY (t IS NULL), b.name LIMIT 3
+                """, id=item_id)
+        return self.mined[item_id]
+
+    def sources_of(self, item_id: str) -> list[dict]:
+        """Every block that normally drops this item (including a block of the same name), for display.
+
+        Each entry has the block and the minimum tool for that block. Blocks that need a tool come first,
+        and a block that drops itself comes before others (obsidian before ender chest).
+        """
+        if item_id not in self.sources:
+            self.sources[item_id] = self.graph.read(
+                """
+                MATCH (h:Harvest)-[c:CREATES {condition: 'default'}]->(i:Item {id: $id})
+                MATCH (h)-[:FROM_BLOCK]->(b:Block)
+                OPTIONAL MATCH (h)-[:REQUIRES {role: 'tool'}]->(t:Item)
+                RETURN b.name AS block, t.name AS tool
+                ORDER BY (b.id <> i.id), (t IS NULL), b.name LIMIT 3
+                """, id=item_id)
+        return self.sources[item_id]
+
+    def silk_only(self, item_id: str) -> bool:
+        """True if mining only gives this item with silk touch (iron ore: the block drops raw iron)."""
+        if item_id not in self.silk:
+            rows = self.graph.read(
+                "MATCH (:Harvest)-[c:CREATES]->(:Item {id: $id}) RETURN collect(DISTINCT c.condition) AS conds", id=item_id)
+            conds = set(rows[0]["conds"]) if rows else set()
+            self.silk[item_id] = bool(conds) and conds <= {"silk_touch"}
+        return self.silk[item_id]
+
+    def choose(self, item_id: str, path: frozenset) -> tuple[dict | None, list[dict], bool]:
+        """Pick the preferred recipe for an item. Returns (recipe, other usable recipes, good).
+
+        `good` is False when the best recipe only reverses a compaction (raw iron from a raw iron block) or
+        needs an item that is only available with silk touch; such an item is better treated as mined.
+        """
         usable = []
         for r in self.recipes_for(item_id):
             if r["special"] or not r["reqs"]:
@@ -290,23 +342,30 @@ class Route:
             if ids & path:
                 continue  # would need something already on this route
             reversal = any(self.is_reversal(item_id, i) for i in ids)
-            usable.append((reversal, TYPE_PRIORITY.get(r["type"], 9), len(r["reqs"]), len(r["id"]), r["id"], r))
-        usable.sort(key=lambda x: x[:5])  # simplest recipe first: shorter id, then alphabetical
-        ordered = [u[5] for u in usable]
-        return (ordered[0] if ordered else None), ordered[1:]
+            # an input that mining only gives with silk touch is a poor route (smelt raw iron, not iron ore)
+            silk = any(self.silk_only(i) and not self.recipes_for(i) for i in ids)
+            usable.append((reversal, silk, TYPE_PRIORITY.get(r["type"], 9), len(r["reqs"]), len(r["id"]), r["id"], r))
+        usable.sort(key=lambda x: x[:6])  # simplest recipe first: shorter id, then alphabetical
+        ordered = [u[6] for u in usable]
+        good = bool(usable) and not usable[0][0] and not usable[0][1]
+        return (ordered[0] if ordered else None), ordered[1:], good
 
-    def _add_total(self, name: str, is_category: bool, count: int, examples: list | None = None) -> None:
-        entry = self.totals.setdefault((name, is_category), {"count": 0, "examples": examples or []})
+    def _add_total(self, name: str, is_category: bool, count: int, examples: list | None = None,
+                   item_id: str | None = None) -> None:
+        entry = self.totals.setdefault((name, is_category), {"count": 0, "examples": examples or [], "id": item_id})
         entry["count"] += count
 
     def build(self, item_id: str, name: str, needed: int, path: frozenset, depth: int) -> None:
         """Record what is needed to get `needed` of this item. Steps are stored children-first."""
         too_deep = depth >= self.max_depth
-        recipe, others = (None, []) if too_deep else self.choose(item_id, path | {item_id})
+        recipe, others, good = (None, [], False) if too_deep else self.choose(item_id, path | {item_id})
+        mined = depth > 0 and not good and bool(self.mined_from(item_id))   # a mined resource is a base material
+        if mined:
+            recipe, others = None, []
         if recipe is None:
-            if too_deep:
+            if too_deep and not mined:
                 self.not_expanded.add(name)
-            self._add_total(name, False, needed)
+            self._add_total(name, False, needed, item_id=item_id)
             return
         self.levels = max(self.levels, depth + 1)
         crafts = math.ceil(needed / (recipe["yields"] or 1))
@@ -362,6 +421,11 @@ class Route:
             entry = {("anyOf" if is_cat else "item"): name, "total": v["count"]}
             if is_cat and v["examples"]:
                 entry["examples"] = v["examples"]
+            if not is_cat and v.get("id"):
+                how = self.sources_of(v["id"])
+                if how:
+                    entry["mineFrom"] = [{"block": h["block"],
+                                          **({"tool": h["tool"] + " or better"} if h["tool"] else {})} for h in how]
             out.append(entry)
         return out
 

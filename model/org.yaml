@@ -1,0 +1,50 @@
+# MineCorp organization (authored). Loaded by loader/load_model.py. See docs/ontology.md v0.6.
+#
+# Tasks are performed by roles, not people. One player fills every role (docs/knowledge-layer.md,
+# section 4), so nothing here needs a second person.
+
+players:
+  - uuid: "12768920-f68b-4a4b-91de-eddcc065274d"
+    name: martinohanlon
+
+org_units:
+  - id: minecorp
+    name: MineCorp
+    description: The company. Turns raw materials into higher-value products.
+  - id: extraction
+    name: Extraction
+    part_of: minecorp
+    description: Collects raw materials by mining and harvesting.
+  - id: refining
+    name: Refining
+    part_of: minecorp
+    description: Smelts and cooks raw materials into refined ones.
+  - id: fabrication
+    name: Fabrication
+    part_of: minecorp
+    description: Crafts and smiths products.
+  - id: logistics
+    name: Logistics
+    part_of: minecorp
+    description: Stores and moves goods; keeps production lines stocked.
+  - id: governance
+    name: Governance
+    part_of: minecorp
+    description: Owns the processes and the knowledge layer, and confirms what is canonical.
+
+roles:
+  - {id: miner,       name: Miner,         unit: extraction,  kind: operational, description: Mines blocks and harvests resources.}
+  - {id: smelter,     name: Smelter,       unit: refining,    kind: operational, description: Smelts and cooks materials in furnaces.}
+  - {id: crafter,     name: Crafter,       unit: fabrication, kind: operational, description: Crafts items at a crafting table.}
+  - {id: smith,       name: Smith,         unit: fabrication, kind: operational, description: Upgrades and trims gear at a smithing table.}
+  - {id: storekeeper, name: Storekeeper,   unit: logistics,   kind: operational, description: Stores goods and keeps stock levels.}
+  - {id: process-owner,  name: Process Owner,  unit: governance, kind: governance, description: Owns a process end to end.}
+  - {id: domain-owner,   name: Domain Owner,   unit: governance, kind: governance, description: Owns the meaning and mappings of a domain.}
+  - {id: platform-owner, name: Platform Owner, unit: governance, kind: governance, description: Keeps the graph platform reliable and versioned.}
+  - {id: steward,        name: Steward,        unit: governance, kind: governance, description: Confirms or rejects candidates.}
+
+# Who fills which roles, and since when. `roles: all` means every role.
+filled_by:
+  - player: martinohanlon
+    roles: all
+    from: "2026-10-02"

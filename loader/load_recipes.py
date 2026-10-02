@@ -354,13 +354,12 @@ def to_graph(chosen: dict, tags: dict, used_tags: set, seeds: list[str]):
 
 # --------------------------------------------------------------------------- write
 
-def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str,
-                   sample_tasks: list, wipe: bool):
+def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str, wipe: bool):
     """Write the graph to Neo4j in batches, creating uniqueness constraints first.
 
     Uses MERGE throughout, so repeat runs are safe; `wipe` deletes all existing data first.
-    ItemClass nodes are Item nodes with an extra label. Optionally adds the sample Tasks
-    (status 'candidate') and a test Player.
+    ItemClass and Station nodes are Item nodes with an extra label. `wipe` also removes the authored MineCorp
+    model and the harvests: reload them afterwards with load_harvests.py and load_model.py.
     """
     from neo4j import GraphDatabase
 
@@ -383,7 +382,10 @@ def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str,
             s.run("""UNWIND $rows AS r MERGE (n:Item {id: r.id}) SET n:ItemClass,
                          n.name = r.name, n.inline = r.inline, n.size = r.size""",
                   rows=g["classes"])
-            s.run("UNWIND $rows AS r MERGE (n:Station {id: r.id}) SET n.name = r.name",
+            # A station is an Item with an extra label (the crafting table you craft is the one recipes use).
+            # Older graphs held separate Station nodes; remove those before labelling the items.
+            s.run("MATCH (n:Station) WHERE NOT n:Item DETACH DELETE n")
+            s.run("UNWIND $rows AS r MERGE (n:Item {id: r.id}) SET n:Station, n.name = r.name",
                   rows=g["stations"])
             s.run("""UNWIND $rows AS r MERGE (n:Recipe {id: r.id})
                      SET n.type = r.type, n.category = r.category, n.group = r.group,
@@ -400,27 +402,6 @@ def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str,
                      MERGE (a)-[c:REQUIRES {role: r.role, slot: r.slot}]->(b)
                      SET c.count = r.count, c.excludes = r.excludes, c.excludesNames = r.excludesNames""",
                   rows=g["requires"])
-            if sample_tasks:
-                s.run("""UNWIND $rows AS r
-                         MERGE (t:Task {id: r.id}) SET t.name = r.name, t.description = r.description,
-                             t.status = 'candidate'
-                         WITH t, r MATCH (rc:Recipe {id: r.recipe}) MERGE (t)-[:USED_RECIPE]->(rc)""",
-                      rows=sample_tasks)
-                s.run("""MERGE (p:Player {uuid: 'test-player-0001'}) SET p.name = 'TestPlayer'
-                         WITH p MATCH (t:Task {id: 'task-smelt-raw-iron'}) MERGE (p)-[c:COMPLETED]->(t)
-                         SET c.at = datetime(), c.count = 1""")
-
-
-SAMPLE_TASKS = [
-    {"id": "task-craft-iron-pickaxe", "name": "Craft an iron pickaxe",
-     "description": "Combine 3 iron ingots and 2 sticks at a crafting table.",
-     "recipe": "minecraft:iron_pickaxe"},
-    {"id": "task-smelt-raw-iron", "name": "Smelt raw iron",
-     "description": "Smelt raw iron in a furnace to get an iron ingot.",
-     "recipe": "minecraft:iron_ingot_from_smelting_raw_iron"},
-    {"id": "task-craft-sticks", "name": "Craft sticks",
-     "description": "Make sticks from planks.", "recipe": "minecraft:stick"},
-]
 
 
 def main():
@@ -433,7 +414,6 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="parse and report; do not touch Neo4j")
     ap.add_argument("--out", type=Path, help="also write the subset graph as JSON")
     ap.add_argument("--wipe", action="store_true", help="delete everything in the database first")
-    ap.add_argument("--no-samples", action="store_true", help="skip sample Task/Player nodes")
     a = ap.parse_args()
 
     seeds = a.seed or ["minecraft:iron_pickaxe"]
@@ -464,8 +444,7 @@ def main():
     pw = os.environ.get("NEO4J_PASSWORD")
     if not pw:
         sys.exit("Set NEO4J_PASSWORD (and optionally NEO4J_URI / NEO4J_USER / NEO4J_DATABASE), e.g. from .env.")
-    samples = [] if a.no_samples else [t for t in SAMPLE_TASKS if t["recipe"] in chosen]
-    load_into_neo4j(g, uri, user, pw, database, samples, a.wipe)
+    load_into_neo4j(g, uri, user, pw, database, a.wipe)
     print("loaded.")
 
 

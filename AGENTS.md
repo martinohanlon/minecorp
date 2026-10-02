@@ -44,6 +44,7 @@ Record: date, decision, rationale. "Leaning" = direction, not yet confirmed.
 - 2026-10-01 Domain graph design is PAUSED until the server is up. The server holds crafting recipes as JSON; use that as the recipe source rather than the wiki.
 - 2026-10-02 Architecture decisions 1-7 agreed (see docs/architecture.md): own-process agent over plain HTTP; purpose-built graph tools; local; OpenAI model with no framework; shared-secret auth; live-state access path revisited later.
 - 2026-10-02 Knowledge layer (docs/knowledge-layer.md v0.2): the KL is the graph only; tools, policy and agent are the access layer outside it. Recipes belong to the process ontology (things = domain, transformations = process). Business processes in Minecraft: collecting resources (mining/harvesting), crafting, inventory management. Operating model is fine but every solution must work with a single player. Order of work agreed (org and process first). Neo4j moved to Enterprise Edition (2026.09.0-enterprise; licence accepted by the user in .env; done 2026-10-02). No per-node provenance on vanilla data (candidates only). Owner/steward roles are recorded as data and the single player fills all of them. Recipe (vanilla definition) and Task (MineCorp unit of work) stay separate.
+- 2026-10-02 Ontology v0.6 decisions: mining is a `Harvest` node parallel to `Recipe`; tool requirement is the minimum tool item with `orBetter`; first load is blocks only (done); org units and roles fine for now.
 - 2026-10-02 Plugin interface: `/agent` command first (e.g. `/agent <question>`); reading normal chat messages comes later, if at all.
 - 2026-10-01 Leaning: world state kept as a summary in the graph, specifics fetched from the server on demand (TBC).
 - 2026-10-01 Leaning: agent uses both the knowledge graph and the Minecraft API (TBC).
@@ -72,7 +73,7 @@ Implications for MineCorp (proposed, not yet agreed):
 
 ## Ontology
 
-Graph data model and ontology: [docs/ontology.md](docs/ontology.md) (versioned; update it as the model changes and log changes there).
+Graph data model and ontology: [docs/ontology.md](docs/ontology.md) (versioned; update it as the model changes and log changes there). v0.6 is BUILT and loaded: harvests (`load_harvests.py`) and the organization and process model authored as YAML in `model/` (`load_model.py`; 6 units, 9 roles all filled by the one player, Iron tool line with 7 tasks). Full rebuild order: `load_recipes.py --all --wipe`, `load_harvests.py`, `load_model.py`, `compute_routes.py`. `Station` is a marker label on `Item` (one node, two labels; decision 8, done). Route rules: stop at mined resources, avoid silk-touch-only inputs, show `mineFrom` with the tool needed.
 
 Loader (Python) and local Neo4j (docker-compose.yml): see [loader/README.md](loader/README.md). Full graph loaded with ontology v0.4 on 2026-10-02 for review.
 

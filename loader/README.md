@@ -23,6 +23,20 @@ $env:NEO4J_PASSWORD = "<same as .env>"
 
 Load everything (all recipes and item tags) with `--all --wipe`.
 
+**Then load the harvest definitions** (what each block drops and the tool needed to mine it; Block, Harvest nodes; about 5 seconds). Run it after `load_recipes.py --all` and before `compute_routes.py`:
+
+```powershell
+.venv\Scripts\python loader\load_harvests.py            # --dry-run to preview
+```
+
+**Then load the MineCorp model** (organization and processes, authored as YAML in [model/](../model/); about 2 seconds). It checks every recipe and harvest id against the graph and fails with a list of problems without writing anything; `--dry-run` only validates:
+
+```powershell
+.venv\Scripts\python loader\load_model.py
+```
+
+Edit `model/org.yaml` or `model/processes/*.yaml` and re-run; the YAML is the source of truth and the run is repeatable. `COMPLETED` history and players are left alone.
+
 **After every full load, compute the route properties** (steps, chain length and base materials per craftable item; about 10 seconds). The agent's `rank_recipes` tool needs them, and a `--wipe` removes them:
 
 ```powershell
@@ -32,9 +46,11 @@ Load everything (all recipes and item tags) with `--all --wipe`.
 
 Use `--dry-run` to see the numbers without writing.
 
-Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`, `--no-samples`.
+Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-The loader is idempotent (it uses `MERGE`); `--wipe` deletes everything first.
+Order for a full rebuild: `load_recipes.py --all --wipe`, `load_harvests.py`, `load_model.py`, then `compute_routes.py`.
+
+The recipe loader is idempotent (it uses `MERGE`); `--wipe` deletes everything first.
 
 ## Sample queries (Neo4j Browser at http://localhost:7474)
 
@@ -62,7 +78,7 @@ RETURN i.name;
 MATCH (c:ItemClass) RETURN c.name, c.id, c.size ORDER BY c.size DESC LIMIT 25;
 
 // Tasks a player has completed
-MATCH (p:Player)-[c:COMPLETED]->(t:Task)-[:USED_RECIPE]->(r:Recipe) RETURN p.name, t.name, r.name, c.at;
+MATCH (p:Player)-[c:COMPLETED]->(t:Task)-[:CRAFTED]->(r:Recipe) RETURN p.name, t.name, r.name, c.at;
 ```
 
 ## Why Python
