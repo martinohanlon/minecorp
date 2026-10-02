@@ -1,0 +1,16 @@
+name: MineCorp
+version: '${project.version}'
+main: com.minecorp.plugin.MineCorpPlugin
+api-version: '26.2'
+description: Connects Minecraft chat to the MineCorp agent.
+
+commands:
+  agent:
+    description: Ask the MineCorp agent a question
+    usage: /agent <question>
+    permission: minecorp.agent
+
+permissions:
+  minecorp.agent:
+    description: Allows asking the MineCorp agent questions
+    default: true

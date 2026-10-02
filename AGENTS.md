@@ -42,6 +42,8 @@ Record: date, decision, rationale. "Leaning" = direction, not yet confirmed.
 - 2026-10-01 Agent is read-only to start (answers, directions; no world actions).
 - 2026-10-01 Graph model agreed: domain, lexical, entity, agent memory (built in that order).
 - 2026-10-01 Domain graph design is PAUSED until the server is up. The server holds crafting recipes as JSON; use that as the recipe source rather than the wiki.
+- 2026-10-02 Architecture decisions 1-7 agreed (see docs/architecture.md): own-process agent over plain HTTP; purpose-built graph tools; local; OpenAI model with no framework; shared-secret auth; live-state access path revisited later.
+- 2026-10-02 Plugin interface: `/agent` command first (e.g. `/agent <question>`); reading normal chat messages comes later, if at all.
 - 2026-10-01 Leaning: world state kept as a summary in the graph, specifics fetched from the server on demand (TBC).
 - 2026-10-01 Leaning: agent uses both the knowledge graph and the Minecraft API (TBC).
 
@@ -72,6 +74,25 @@ Implications for MineCorp (proposed, not yet agreed):
 Graph data model and ontology: [docs/ontology.md](docs/ontology.md) (versioned; update it as the model changes and log changes there).
 
 Loader (Python) and local Neo4j (docker-compose.yml): see [loader/README.md](loader/README.md). Full graph loaded with ontology v0.4 on 2026-10-02 for review.
+
+## Architecture
+
+[docs/architecture.md](docs/architecture.md) (v0.2, decisions agreed). Summary: thin Java plugin -> plain HTTP -> Python agent service (own process, hand-written tool-calling loop, OpenAI model, no framework) -> purpose-built read-only graph tools (`get_recipe`, ...) over Neo4j. Live-Minecraft tools and event ingest come later; MCP is deferred (the core stays transport-neutral so `ask` can be exposed as MCP later). Runs locally; plugin-to-service auth is a shared secret.
+
+## Agent service
+
+[agent/](agent/): Python FastAPI service with a hand-written OpenAI tool-calling loop (`agent.py`) and five read-only graph tools (`tools.py`): `find_item`, `get_recipes`, `what_do_i_need`, `get_uses`, `class_members`. Default model `gpt-5.4-mini` (`OPENAI_MODEL`). Each question writes a decision trace to `agent/logs/traces.jsonl` (git-ignored; writing traces to the graph comes later). Run with [scripts/run-agent.ps1](scripts/run-agent.ps1); details in [agent/README.md](agent/README.md). `what_do_i_need` returns an ordered `steps` list plus a `gather` list; `get_recipes` and `what_do_i_need` include an `overview` (craftingSteps, chainLength, baseMaterials, stations). Quality check: `cd agent; python -m evals.run_evals -v` (15 questions, 14/15 pass on 2026-10-02, ~43k tokens). `recommend-hard-recipe` fails on purpose until a complexity ranking tool exists (the agent picks an item from memory). OpenAI key, `AGENT_SHARED_SECRET` live in `.env`.
+
+### Backlog / notes for later
+
+- **Next:** complexity ranking. Store the route overview (steps, chain length, base materials) on `Item` via a separate write job (the agent stays read-only) and add a `hardest_recipes`-style tool. Needs an ontology update first.
+- Item name lookup: use a Neo4j **full-text index** (user request, 2026-10-02) instead of the current `CONTAINS` word match in `tools.search_items`.
+- Category names such as "Stone Crafting Materials" are unfriendly; the prompt asks the model to give examples. Consider curated display names.
+- `what_do_i_need` picks a main route by a simple rule (non-reversible, simplest recipe first); alternatives are listed, but it does not know what is easiest to obtain in the world.
+
+## Plugin
+
+[plugin/](plugin/) is the thin Paper plugin (Maven, Java 25, `paper-api 26.2.build.129-stable`, kept in step with the server build). `/agent <question>` POSTs to the agent service (stub reply for now) asynchronously with a shared secret. Build and install with [scripts/build-plugin.ps1](scripts/build-plugin.ps1) (copies the jar to `server/plugins`). How to build and use it: [plugin/README.md](plugin/README.md). Not yet tested on a running server.
 
 ## Server
 

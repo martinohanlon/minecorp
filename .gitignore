@@ -25,3 +25,9 @@ __pycache__/
 # Loader debug output (python loader/load_recipes.py --out ...)
 subset.json
 full.json
+
+# Java / Maven build output
+target/
+
+# Agent traces (contain player questions)
+agent/logs/

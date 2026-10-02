@@ -1,0 +1,11 @@
+# MineCorp plugin settings.
+# scripts/build-plugin.ps1 creates this file on the server with the secret from .env.
+
+# Base URL of the MineCorp agent service (plain HTTP, localhost for now).
+agent-url: "http://127.0.0.1:8080"
+
+# Must match AGENT_SHARED_SECRET in the project .env. Never commit a real secret.
+shared-secret: ""
+
+# How long to wait for the agent before telling the player it is taking too long.
+timeout-seconds: 30

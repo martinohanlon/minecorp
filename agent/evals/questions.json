@@ -1,0 +1,171 @@
+[
+  {
+    "id": "craft-iron-pickaxe",
+    "question": "How do I craft an iron pickaxe?",
+    "expect_tools": [
+      "get_recipes"
+    ],
+    "expect_all": [
+      "iron ingot",
+      "stick",
+      "crafting table"
+    ]
+  },
+  {
+    "id": "scratch-iron-pickaxe",
+    "question": "What do I need to make an iron pickaxe from scratch?",
+    "expect_tools": [
+      "what_do_i_need"
+    ],
+    "expect_all": [
+      "iron",
+      "stick",
+      "furnace"
+    ]
+  },
+  {
+    "id": "brown-bed-from-bed",
+    "question": "Can I turn another colour of bed into a brown bed?",
+    "expect_all": [
+      "brown dye",
+      "bed"
+    ],
+    "expect_none": [
+      "brown bed and brown bed"
+    ]
+  },
+  {
+    "id": "uses-diamond",
+    "question": "What can I make with diamonds?",
+    "expect_tools": [
+      "get_uses"
+    ],
+    "expect_any": [
+      "diamond pickaxe",
+      "diamond block",
+      "diamond sword"
+    ]
+  },
+  {
+    "id": "planks-members",
+    "question": "What counts as planks?",
+    "expect_tools": [
+      "class_members"
+    ],
+    "expect_all": [
+      "oak",
+      "spruce"
+    ]
+  },
+  {
+    "id": "smelt-station",
+    "question": "Where do I turn raw iron into ingots?",
+    "expect_all": [
+      "furnace"
+    ]
+  },
+  {
+    "id": "netherite-upgrade",
+    "question": "What do I need to upgrade a diamond pickaxe to netherite?",
+    "expect_all": [
+      "smithing table",
+      "netherite ingot",
+      "template"
+    ]
+  },
+  {
+    "id": "make-bed",
+    "question": "How do I make a bed?",
+    "expect_all": [
+      "wool",
+      "planks"
+    ]
+  },
+  {
+    "id": "off-topic",
+    "question": "What is the capital of France?",
+    "expect_no_tools": true,
+    "expect_any": [
+      "minecraft",
+      "minecorp"
+    ],
+    "expect_none": [
+      "paris"
+    ]
+  },
+  {
+    "id": "unknown-item",
+    "question": "How do I craft a flurble?",
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "not find",
+      "no item",
+      "don't know",
+      "not aware",
+      "unable to find"
+    ]
+  },
+  {
+    "id": "ambiguous-pickaxe",
+    "question": "How do I make a pickaxe?",
+    "expect_any": [
+      "wooden",
+      "stone",
+      "iron",
+      "diamond",
+      "which"
+    ]
+  },
+  {
+    "id": "inventory-question",
+    "question": "What is in my inventory?",
+    "expect_any": [
+      "cannot see",
+      "can't see",
+      "not able",
+      "unable",
+      "do not have access",
+      "don't have access",
+      "cannot"
+    ]
+  },
+  {
+    "id": "walkthrough-netherite-pickaxe",
+    "question": "Walk me through making a netherite pickaxe.",
+    "expect_tools": [
+      "what_do_i_need"
+    ],
+    "expect_all": [
+      "smithing table",
+      "netherite"
+    ]
+  },
+  {
+    "id": "how-complicated-beacon",
+    "question": "How complicated is it to make a beacon?",
+    "expect_any": [
+      "step",
+      "stage"
+    ]
+  },
+  {
+    "id": "recommend-hard-recipe",
+    "question": "Give me a really hard recipe to make.",
+    "expect_any": [
+      "can't rank",
+      "cannot rank",
+      "can't recommend",
+      "cannot recommend",
+      "can't pick",
+      "cannot pick",
+      "don't have",
+      "not able",
+      "unable",
+      "can't"
+    ],
+    "expect_none": [
+      "nether star"
+    ]
+  }
+]
