@@ -48,9 +48,9 @@ Every node label and relationship that is built, and nothing else: properties ar
          +----------------+   +----------------+
          v                                     v
      (Recipe) --USES_STATION--> (Item)      (Harvest) --FROM_BLOCK--> (Block)
-         |                                     |
+         |                                     |   \--FROM_MOB----> (Mob)
          | CREATES                             | CREATES
-         | REQUIRES                            | REQUIRES  (the tool, "or better")
+         | REQUIRES                            | REQUIRES  (the tool; "or better" for pickaxes etc.)
          v                                     v
        (Item) <--------------------------------+
          ^
@@ -68,7 +68,7 @@ Every node label and relationship that is built, and nothing else: properties ar
 - A `Task` points at one definition: a `Recipe`, a `Harvest`, or neither (a manual task).
 - Candidates (not yet confirmed) carry `source`, `extractedAt`, `confidence`; confirmed tasks have `CONFIRMED_BY`.
 
-Loaded today (2026-10-02): `Item` 1,623 (of which `ItemClass` 234), `Recipe` 1,585, `Item:Station` 7, `Block` 1,113, `Harvest` 1,099, `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 7. Stations are `Item:Station` nodes, so a station has its own recipe. Craftable items also carry computed route properties (see "Route properties").
+Loaded today (2026-10-02): `Item` 1,628 (of which `ItemClass` 234), `Recipe` 1,585, `Item:Station` 7, `Block` 1,113, `Mob` 63, `Harvest` 1,166, `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 7. Stations are `Item:Station` nodes, so a station has its own recipe. Craftable items also carry computed route properties (see "Route properties").
 
 ## v0.5 model (v0.4 plus route properties)
 
@@ -232,7 +232,9 @@ Vanilla process addition (parallel to `Recipe`):
 
 | Label | Key | Properties | Notes |
 |---|---|---|---|
-| `Harvest` | `id` (the loot table, e.g. `minecraft:blocks/iron_ore`) | `name` ("Mine Iron Ore"), `kind` (`mine`), `tool` (`pickaxe`, `axe`, `shovel`, `hoe` or none), `minTier` (`wooden`, `stone`, `copper`, `iron`, `diamond`, `netherite` or none) | One per block loot table. Derived: a harvest is to a block what a recipe is to a station. |
+| `Block` | `id` (e.g. `minecraft:iron_ore`) | `name` | Blocks that have a loot table. Same id string as the matching `Item` but a different label. |
+| `Mob` | `id` (e.g. `minecraft:spider`) | `name` | A mob that drops something when killed or sheared. |
+| `Harvest` | `id` (the loot table, e.g. `minecraft:blocks/iron_ore`, `minecraft:entities/spider`, `minecraft:shearing/sheep`) | `name` ("Mine Iron Ore", "Kill Spider", "Shear Sheep"), `kind` (`mine`, `kill`, `shear`), `tool` (`pickaxe`, `axe`, `shovel`, `hoe`, `shears` or none), `minTier` (`wooden`, `stone`, `copper`, `iron`, `diamond`, `netherite` or none), `toolRequired` | One per loot table. A harvest is to a block or mob what a recipe is to a station. |
 
 MineCorp organization (authored):
 
@@ -255,8 +257,9 @@ MineCorp process (authored):
 | Relationship | From -> To | Properties | Meaning |
 |---|---|---|---|
 | `FROM_BLOCK` | `Harvest` -> `Block` | | What is mined |
-| `CREATES` | `Harvest` -> `Item` | `count` (typical), `condition` (`default` or `silk_touch`) | What it yields; same relationship as `Recipe -[:CREATES]->` so routes can follow both |
-| `REQUIRES` | `Harvest` -> `Item` | `role: 'tool'`, `orBetter: true` | The minimum tool item (for example Stone Pickaxe); any higher tier also works |
+| `FROM_MOB` | `Harvest` -> `Mob` | | What is killed or sheared |
+| `CREATES` | `Harvest` -> `Item` | `count` (typical), `condition` (blocks: `default`, `silk_touch`, `shears`, `state`, `chance`; mobs: `default` or a `+`-joined mix of `killed_by_player`, `chance`, `state`) | What it yields; same relationship as `Recipe -[:CREATES]->` so routes can follow both |
+| `REQUIRES` | `Harvest` -> `Item` | `role: 'tool'`, `orBetter` | The minimum tool item (for example Stone Pickaxe; `orBetter: true`, any higher tier also works) or Shears for shearing (`orBetter: false`). Killing a mob needs no tool. |
 | `PART_OF` | `OrgUnit` -> `OrgUnit` | | Org structure |
 | `IN_UNIT` | `Role` -> `OrgUnit` | | Where a role sits |
 | `FILLED_BY` | `Role` -> `Player` | `from`, `to` (null while current) | Who holds a role, with dates. The one player may fill many roles at once. |
@@ -327,7 +330,8 @@ Every role is filled by the one player, so nothing here needs two people. `HANDO
 | | Count |
 |---|---|
 | `Block` | 1,113 (every block with a loot table) |
-| `Harvest` | 1,099 (14 blocks drop nothing and get none) |
+| `Harvest` | 1,166: 1,099 mine (14 blocks drop nothing and get none), 63 kill, 4 shear |
+| `Mob` | 63 (30 of the 93 mob loot tables drop nothing, such as allays and armor stands) |
 | Harvest `CREATES` edges | 1,229 (981 default, 143 silk touch, 59 block-state, 34 chance, 12 shears) |
 | Tool `REQUIRES` edges | 502 (all pickaxe blocks) |
 | New `Item` nodes | 52 (drops no recipe uses, such as saplings); `Item` total 1,623 |
@@ -340,7 +344,8 @@ Spot checks against the game: iron ore needs a Stone Pickaxe, diamond ore an Iro
 - The jar does not say whether a block drops anything *without* the right tool (stone gives nothing by hand; logs do). Rule used: `toolRequired` is true for pickaxe blocks and for any block needing better than wooden. Axe, shovel and hoe blocks only mine faster with the tool. A few pickaxe blocks do drop by hand; those would need a correction from the wiki (as a candidate).
 - Drops: `count` is the typical number from `set_count` (1 when unspecified); fortune and looting bonuses are ignored. `condition` is one of `default`, `silk_touch`, `shears`, `state` (block state, for example fully grown crops) or `chance` (random extras such as saplings and apples).
 - Wool has no tool type in the data (shears are fastest, no tag says so), so wool blocks show no tool.
-- Mob drops, shearing sheep and crops are not loaded yet.
+- Mob drops and shearing are loaded (2026-10-02). Looting, fortune and enchantments are ignored. A sheep's wool colour and a mooshroom's variant only decide which item drops, so they are not conditions. A negative random range (spider eye, -1 to 1) counts as none, so its typical count is 0.5. Crops are in the block loot with a `state` condition.
+- Fishing, bartering, hive and berry harvests, carving, brushing and chests are not loaded. See "Other harvest sources" below.
 
 ### Organization and process: built (2026-10-02)
 
@@ -359,7 +364,27 @@ Authoring the example exposed a real error: mining an iron ore block drops **raw
 
 ### Route rules (agent `what_do_i_need` and the stored route properties)
 
-The route picks one recipe per item: simplest first, skipping recipes that only reverse a compaction (ingot from nuggets), and skipping recipes whose input is only available with silk touch (iron ore item). It stops at a **mined resource**: an item that a *different* block drops, with no good recipe (raw iron from iron ore, diamond from diamond ore, glowstone dust). Items that a block of the same name drops (logs, obsidian) are ordinary base materials. For display, each base material lists the blocks it can be mined from with the tool each needs (`mineFrom`: Obsidian needs a Diamond Pickaxe or better; an Ender Chest also drops it). The jar cannot tell a natural block from a placed one, so hints such as `Tripwire` for string appear; they are true but not always sensible. Route properties were recomputed with these rules: the hardest items are now Lime Glazed Terracotta (8 steps), then Lime Banner and Lime Stained Glass Pane (7), and the netherite tools (6).
+The route picks one recipe per item: simplest first, skipping recipes that only reverse a compaction (ingot from nuggets), and skipping recipes whose input is only available with silk touch (iron ore item). It stops at a **gathered resource**: an item that a *different* block drops, or that a mob drops when killed or sheared (not a rare or conditional drop), with no good recipe (raw iron from iron ore, diamond from diamond ore, glowstone dust, string from spiders, gunpowder from creepers). Items that a block of the same name drops (logs, obsidian) are ordinary base materials. For display, each base material lists ways to get it (`getFrom`: mine, kill or shear, what from, and the tool needed; for example Obsidian needs a Diamond Pickaxe or better, and an Ender Chest also drops it). Mobs come first. The jar cannot tell a natural block from a placed one, and sources are listed alphabetically, so odd ones appear (a cat or a strider for string alongside spiders); they are true but not always sensible. The `how_to_get` agent tool lists every way, with conditions such as "only when a player kills it". Route properties were recomputed with these rules: the hardest items are now Lime Glazed Terracotta (8 steps), then Lime Banner and Lime Stained Glass Pane (7), and the netherite tools (6).
+
+### Other harvest sources (mobs and shearing built 2026-10-02; the rest surveyed, not built)
+
+Mobs killed and shearing are loaded (see above). The jar holds more, all as loot tables in the same JSON format, so they would fit the existing `Harvest` model:
+
+| Source | Loot tables | What it is | Needs |
+|---|---|---|---|
+| Mobs killed (**built**) | `entities/` (93 mobs; 63 drop something) | Drops when a mob dies; some depend on how (killed by a player, rare chance drops) | No tool (a weapon is faster; looting ignored) |
+| Shearing (**built**) | `shearing/` (4 mobs: sheep, mooshroom, snow golem, bogged; the per-colour tables are folded in) | Wool and similar without killing the mob | Shears |
+| Plants and hives | `harvest/` (beehive, cave vine, sweet berry bush); crops such as wheat are already in `blocks/` (block-state condition) | Honey, glow berries, sweet berries | Sometimes shears or a bottle |
+| Gameplay | `gameplay/` (fishing: fish, junk, treasure; piglin bartering; chicken lay; sniffer digging; armadillo shed; turtle grow; cat gift; panda sneeze; hero of the village gifts) | Drops from an action, not a block or a death | Fishing rod, gold ingots, etc. |
+| Carving, brushing | `carve/pumpkin`, `brush/armadillo`, `archaeology/` (7) | Carved pumpkin, scutes, suspicious-sand finds | Shears or brush |
+| Chests | `chests/` (59) | Loot found in generated structures; not a repeatable harvest | none |
+| Other | `charged_creeper` (mob heads), `spawners`, `pots`, `dispensers`, `equipment` | Special cases | n/a |
+
+Why it mattered: a route stops at "base materials", and before mobs were loaded only items that blocks drop could say how to get them. Now string comes from spiders, cave spiders, cats and striders, gunpowder from creepers, ghasts and witches, blaze rods from blazes (only when a player kills one), rabbit hide from rabbits, and wool by shearing a sheep. The agent shows this as `getFrom` in `what_do_i_need` and through the `how_to_get` tool.
+
+Where to find things is also in the jar: ore placement (`worldgen/placed_feature/ore_*`, for example iron generates between y -24 and 56, ten veins per chunk) and mob spawn lists per biome (`worldgen/biome/*.json`, for example plains spawns sheep, pigs, chickens and cows). Neither is modelled; they would add `Biome` and placement data.
+
+Mob design (built): a domain node `Mob`; `Harvest.kind` is `kill` or `shear`; an `FROM_MOB` edge parallel to `FROM_BLOCK`; the same `CREATES {count, condition}`; Shears as the tool for shearing.
 
 ### Questions for review
 
@@ -421,6 +446,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 
 ## Change log
 
+- **v0.6.4** (2026-10-02): mob harvests built: `Mob` (63), `Harvest` kinds `kill` (63) and `shear` (4), `FROM_MOB`; loader handles loot tables that reference other tables (sheep colours). Agent: `getFrom` in routes, new `how_to_get` tool, route stop rule extended to mob sources. 1,166 harvests in total; `Item` 1,628.
 - **v0.6.3** (2026-10-02): `Station` is now a marker label on `Item` (like `ItemClass`) instead of a separate node; `USES_STATION` points at the item (decision 8). Node labels table repaired: `Recipe` and `Item:Station` rows restored, and a garbled paragraph about duplicate class names corrected.
 - **v0.6.2** (2026-10-02): relationships renamed `USED_RECIPE` -> `CRAFTED` and `USED_HARVEST` -> `HARVESTED` (graph reloaded; older change log entries keep the names used at the time); node labels in the diagram now use round brackets.
 - **v0.6.1** (2026-10-02): graph model diagram replaced by one current picture of the whole built model (organization, MineCorp process, vanilla definitions, domain, computed route properties, reading rules); the two older partial diagrams removed.

@@ -192,7 +192,7 @@ def tool_get_recipes(graph: Graph, args: dict) -> dict:
     recipes = fetch_recipes(graph, item["id"])
     if not recipes:
         return {"item": item["name"], "recipes": [],
-                "note": "No recipe creates this item. It is probably found, mined or dropped in the world."}
+                "note": "No recipe creates this item. It is gathered from the world: use how_to_get."}
     out = {"item": item["name"], "note": READING_NOTE, "recipes": [_recipe_view(r) for r in recipes]}
     overview = route_overview(graph, item["id"])
     if overview:
@@ -284,38 +284,51 @@ class Route:
         return self.reversal[key]
 
     def mined_from(self, item_id: str) -> list[dict]:
-        """Blocks whose normal drop is this item AND which are a different block (iron ore drops raw iron).
+        """Sources that make this item a gathered resource: a DIFFERENT block drops it (iron ore drops raw
+        iron), or a mob drops it when killed or sheared (spiders drop string).
 
-        Used to decide where a route stops: an item that comes from a different block (raw iron from iron ore)
-        is a mined resource. Empty if a block of the same name also drops the item (a log, obsidian): the data
-        cannot tell a natural block from a placed one. For display use sources_of, which has no such exclusion.
+        Used to decide where a route stops. Empty if a block of the same name also drops the item (a log,
+        obsidian): the data cannot tell a natural block from a placed one. Mob drops that are rare or
+        conditional (an iron ingot from a zombie) do not count. For display use sources_of.
         """
         if item_id not in self.mined:
             self.mined[item_id] = self.graph.read(
                 """
                 MATCH (i:Item {id: $id})
                 WHERE NOT EXISTS { (:Block {id: $id})<-[:FROM_BLOCK]-(:Harvest)-[:CREATES {condition: 'default'}]->(i) }
-                MATCH (h:Harvest)-[c:CREATES {condition: 'default'}]->(i)
-                MATCH (h)-[:FROM_BLOCK]->(b:Block) WHERE b.id <> i.id
+                MATCH (h:Harvest)-[c:CREATES]->(i)
+                OPTIONAL MATCH (h)-[:FROM_BLOCK]->(b:Block) WHERE b.id <> i.id
+                OPTIONAL MATCH (h)-[:FROM_MOB]->(m:Mob)
+                WITH h, c, b, m
+                WHERE (b IS NOT NULL AND c.condition = 'default')
+                   OR (m IS NOT NULL AND c.condition IN ['default', 'killed_by_player'])
                 OPTIONAL MATCH (h)-[:REQUIRES {role: 'tool'}]->(t:Item)
-                RETURN b.name AS block, t.name AS tool ORDER BY (t IS NULL), b.name LIMIT 3
+                RETURN h.kind AS how, coalesce(b.name, m.name) AS source, t.name AS tool
+                ORDER BY (m IS NULL), (t IS NULL), source LIMIT 3
                 """, id=item_id)
         return self.mined[item_id]
 
     def sources_of(self, item_id: str) -> list[dict]:
-        """Every block that normally drops this item (including a block of the same name), for display.
+        """Ways to get this item from the world, for display: blocks that drop it (including a block of the
+        same name), and mobs that drop it when killed or sheared.
 
-        Each entry has the block and the minimum tool for that block. Blocks that need a tool come first,
-        and a block that drops itself comes before others (obsidian before ender chest).
+        Each entry has how (mine, kill, shear), the source, and the tool if one is needed (`orBetter` says a
+        better tool also works). Mobs come first, then a block that drops itself (obsidian before ender
+        chest), then blocks that need a tool.
         """
         if item_id not in self.sources:
             self.sources[item_id] = self.graph.read(
                 """
-                MATCH (h:Harvest)-[c:CREATES {condition: 'default'}]->(i:Item {id: $id})
-                MATCH (h)-[:FROM_BLOCK]->(b:Block)
-                OPTIONAL MATCH (h)-[:REQUIRES {role: 'tool'}]->(t:Item)
-                RETURN b.name AS block, t.name AS tool
-                ORDER BY (b.id <> i.id), (t IS NULL), b.name LIMIT 3
+                MATCH (h:Harvest)-[c:CREATES]->(i:Item {id: $id})
+                OPTIONAL MATCH (h)-[:FROM_BLOCK]->(b:Block)
+                OPTIONAL MATCH (h)-[:FROM_MOB]->(m:Mob)
+                WITH h, c, i, b, m
+                WHERE (b IS NOT NULL AND c.condition = 'default')
+                   OR (m IS NOT NULL AND c.condition IN ['default', 'killed_by_player'])
+                OPTIONAL MATCH (h)-[q:REQUIRES {role: 'tool'}]->(t:Item)
+                RETURN h.kind AS how, coalesce(b.name, m.name) AS source, t.name AS tool,
+                       coalesce(q.orBetter, false) AS orBetter, (b IS NOT NULL AND b.id = i.id) AS selfDrop
+                ORDER BY (m IS NULL), (NOT selfDrop), (t IS NULL), source LIMIT 4
                 """, id=item_id)
         return self.sources[item_id]
 
@@ -424,8 +437,9 @@ class Route:
             if not is_cat and v.get("id"):
                 how = self.sources_of(v["id"])
                 if how:
-                    entry["mineFrom"] = [{"block": h["block"],
-                                          **({"tool": h["tool"] + " or better"} if h["tool"] else {})} for h in how]
+                    entry["getFrom"] = [{"how": h["how"], "from": h["source"],
+                                         **({"tool": h["tool"] + (" or better" if h["orBetter"] else "")} if h["tool"] else {})}
+                                        for h in how]
             out.append(entry)
         return out
 
@@ -493,6 +507,82 @@ def tool_rank_recipes(graph: Graph, args: dict) -> dict:
                      "Use what_do_i_need on one of these items for the full steps.")}
 
 
+# --------------------------------------------------------------------------- how to get
+
+WHEN_WORDS = {"killed_by_player": "only when a player kills it", "chance": "rare drop", "state": "only in some cases",
+              "silk_touch": "only with silk touch", "shears": "only with shears"}
+
+
+def when_text(condition: str) -> str | None:
+    """Plain words for a drop condition; None for a normal drop."""
+    if condition == "default":
+        return None
+    return ", ".join(WHEN_WORDS.get(part, part) for part in condition.split("+"))
+
+
+def tool_how_to_get(graph: Graph, args: dict) -> dict:
+    """how_to_get: blocks to mine and mobs to kill or shear to get an item (or any item of a category)."""
+    item, err = resolve_item(graph, str(args.get("item", "")))
+    if err:
+        return err
+    category = bool(item["isCategory"])
+    rows = graph.read(
+        """
+        MATCH (x:Item {id: $id})
+        OPTIONAL MATCH (x)-[:INCLUDES*]->(m:Item) WHERE NOT m:ItemClass
+        WITH x, collect(DISTINCT m) AS members
+        WITH CASE WHEN x:ItemClass THEN members ELSE [x] END AS items
+        UNWIND items AS i
+        MATCH (h:Harvest)-[c:CREATES]->(i)
+        OPTIONAL MATCH (h)-[:FROM_BLOCK]->(b:Block)
+        OPTIONAL MATCH (h)-[:FROM_MOB]->(mob:Mob)
+        OPTIONAL MATCH (h)-[q:REQUIRES {role: 'tool'}]->(t:Item)
+        WITH h.kind AS how, coalesce(b.name, mob.name) AS source, t.name AS tool, coalesce(q.orBetter, false) AS orBetter,
+             c.condition AS condition, avg(c.count) AS count, collect(DISTINCT i.name) AS gives,
+             max(CASE WHEN b IS NOT NULL AND b.id = i.id THEN 1 ELSE 0 END) AS selfDropFlag
+        RETURN how, source, tool, orBetter, condition, count, gives, selfDropFlag = 1 AS selfDrop
+        ORDER BY (condition <> 'default'), (how = 'mine'), source LIMIT 14
+        """, id=item["id"])
+    crafted = False
+    if not category:
+        crafted = bool(graph.read("MATCH (:Recipe)-[:CREATES]->(:Item {id: $id}) RETURN 1 AS x LIMIT 1", id=item["id"]))
+    if category:  # a category has one self-dropping block per member: noise, unless nothing else gives it
+        rows = [r for r in rows if not r["selfDrop"]] or rows
+    ways = []
+    for r in rows:
+        way = {"how": r["how"], "from": r["source"]}
+        if r["tool"]:
+            way["tool"] = r["tool"] + (" or better" if r["orBetter"] else "")
+        if r["how"] == "kill":
+            way["tool"] = "none needed"
+        when = when_text(r["condition"])
+        if when:
+            way["when"] = when
+        if r["count"]:
+            way["typicalCount"] = round(r["count"], 1)
+        if category:
+            way["gives"] = r["gives"][:5] + (["..."] if len(r["gives"]) > 5 else [])
+        if r["selfDrop"]:
+            way["note"] = "the block drops itself"
+        ways.append(way)
+    out: dict = {"item": item["name"], "ways": ways}
+    if category:
+        out["category"] = True
+        out["note"] = "This is a category: each way gives some of its items (see 'gives')."
+    if not ways:
+        out["note"] = "No block or mob in the data drops this item." + (" It can be crafted: use get_recipes." if crafted else "")
+        out["alsoCraftable"] = crafted
+        return out
+    out["alsoCraftable"] = crafted
+    out["howToRead"] = ("'how' is mine (break a block), kill (a mob dies) or shear (shears on a mob). Counts are typical and "
+                        "ignore looting or fortune. The data does not say where in the world to find the blocks or mobs.")
+    if crafted:
+        out["tip"] = ("This item can also be crafted. Call what_do_i_need to see the usual route, including where its "
+                      "raw materials come from, and lead with it when the ways above are unusual or rare (iron golems, "
+                      "rare drops).")
+    return out
+
+
 # --------------------------------------------------------------------------- registry
 
 TOOLS: list[Tool] = [
@@ -514,6 +604,13 @@ TOOLS: list[Tool] = [
              "quantity": {"type": "integer", "description": "how many to make (default 1)"}},
           "required": ["item"], "additionalProperties": False},
          tool_what_do_i_need),
+    Tool("how_to_get",
+         "How to get an item from the world without crafting it: blocks to mine, mobs to kill or shear, and the tool "
+         "needed. Use for 'how do I get / where does X come from' about raw materials such as gunpowder, string, "
+         "wool, leather, iron or diamonds.",
+         {"type": "object", "properties": {"item": {"type": "string", "description": "item name or id"}},
+          "required": ["item"], "additionalProperties": False},
+         tool_how_to_get),
     Tool("rank_recipes",
          "Craftable items ranked by how big the job is (crafting steps, base materials, chain length). Use "
          "when the player asks for a hard, easy, long or short recipe, or wants a challenge. Then offer to "

@@ -23,7 +23,7 @@ $env:NEO4J_PASSWORD = "<same as .env>"
 
 Load everything (all recipes and item tags) with `--all --wipe`.
 
-**Then load the harvest definitions** (what each block drops and the tool needed to mine it; Block, Harvest nodes; about 5 seconds). Run it after `load_recipes.py --all` and before `compute_routes.py`:
+**Then load the harvest definitions** (what blocks drop and the tool to mine them, what mobs drop when killed, and what shearing gives; Block, Mob and Harvest nodes; about 5 seconds). Run it after `load_recipes.py --all` and before `compute_routes.py`:
 
 ```powershell
 .venv\Scripts\python loader\load_harvests.py            # --dry-run to preview

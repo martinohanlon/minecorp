@@ -165,5 +165,32 @@
     "expect_tools": [
       "rank_recipes"
     ]
+  },
+  {
+    "id": "get-gunpowder",
+    "question": "How do I get gunpowder?",
+    "expect_tools": [
+      "how_to_get"
+    ],
+    "expect_any": [
+      "creeper"
+    ]
+  },
+  {
+    "id": "get-wool-shear",
+    "question": "How can I get wool without crafting it?",
+    "expect_any": [
+      "shear"
+    ]
+  },
+  {
+    "id": "get-iron",
+    "question": "How do I get iron?",
+    "expect_any": [
+      "pickaxe"
+    ],
+    "expect_all": [
+      "iron"
+    ]
   }
 ]

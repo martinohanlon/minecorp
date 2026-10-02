@@ -174,7 +174,7 @@ Illustrative; to be agreed before it becomes data. It must work with one player 
 | Access layer: tool-calling agent, six read-only graph tools, shared secret | Built |
 | Decision traces | Written to a file, not the graph |
 | Organization and MineCorp process (OrgUnit, Role, Process, Activity, Task, `NEXT`, handoffs, `CONFIRMED_BY`) | **Built (step 1):** 6 units, 9 roles all filled by the one player, one process (Iron tool line, 7 tasks), loaded from YAML in `model/` |
-| Harvest definitions from block loot tables and block tags | **Built** for blocks (1,099 harvests); shearing, mobs and crops later |
+| Harvest definitions from loot tables and block tags | **Built** for blocks (1,099), mobs killed (63) and shearing (4); fishing, bartering, hives and chests later |
 | Technical and policy ontology; data products | Not started |
 | Lexical and entity graphs (wiki) | Not started |
 | Agent memory | Not started (research deferred) |
