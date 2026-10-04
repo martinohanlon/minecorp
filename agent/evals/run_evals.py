@@ -29,6 +29,9 @@ def check(case: dict, answer: str, tools: list[str]) -> list[str]:
     for t in case.get("expect_tools", []):
         if t not in tools:
             failures.append(f"tool not used: {t}")
+    for t in case.get("expect_not_tools", []):
+        if t in tools:
+            failures.append(f"tool used but not wanted: {t}")
     if case.get("expect_no_tools") and tools:
         failures.append(f"tools used but none expected: {tools}")
     for s in case.get("expect_all", []):

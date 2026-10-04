@@ -1,6 +1,6 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.**
+Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.** v0.8 (wiki lexical graph) has its loader built and tested (2026-10-04); no wiki page is loaded into the real database yet.
 
 ## Source evidence (Paper 26.2, vanilla)
 
@@ -514,6 +514,57 @@ Loaded: 6 tasks, 6 `HAS_ACTION` links, 5 `NEXT`, 4 handoffs. Checked in the grap
 | Tools are ordinary Items; no separate `Tool` node. |
 | The graph can be rebuilt from source if required. |
 
+## v0.8: lexical graph of the Minecraft wiki (designed and loader built 2026-10-04)
+
+An experiment: turn wiki pages into a lexical graph (pages, sections, overlapping chunks, embeddings) in the same database, so the agent can later combine text retrieval with the domain graph (GraphRAG). First test page: https://minecraft.wiki/w/Tutorial:Beginner%27s_guide. The wiki text is CC BY-NC-SA, so every node keeps its source URL for attribution. Wiki content is **candidate** knowledge, not authoritative like the jar data.
+
+### The model
+
+```
+(Wiki {url, name})
+  -[:HAS_PAGE]-> (Page {url, title, revisionId, fetchedAt})
+      -[:HAS_SECTION]-> (Section {url, title, level, order})        top-level sections only
+            -[:HAS_SUBSECTION]-> (Section)                          the tree, as deep as the wiki goes
+
+(Chunk {id, index, text, tokens, textHash, embedding, embeddingModel})
+      -[:PART_OF]-> (Section)                                       the section the text came from
+      -[:NEXT]-> (Chunk)                                            reading order across the whole page
+```
+
+### Nodes and properties
+
+| Label | Properties | Notes |
+|---|---|---|
+| `Wiki` | `url`, `name` | unique `url` |
+| `Page` | `url`, `title`, `revisionId`, `fetchedAt` | unique `url`; title decoded (`%27` is an apostrophe) |
+| `Section` | `url`, `title`, `level`, `order` | unique `url` (page URL plus `#anchor`); text before the first heading is a section titled with the page title, `order` 0 |
+| `Chunk` | `id`, `index`, `text`, `tokens`, `textHash`, `embedding`, `embeddingModel` | unique `id` (section url plus position); `index` is the position on the page; `text` is the raw chunk |
+
+### Rules
+
+- **One kind of chunk:** fixed size, overlapping, **300 tokens with a 50-token overlap** (`tiktoken`, `cl100k_base`); both are command-line options.
+- A chunk is built **within one section** and never crosses a heading, so `PART_OF` is exact; overlap exists only between chunks of the same section.
+- A section of 300 tokens or fewer is **one chunk**, no overlap.
+- Cuts fall at sentence boundaries, falling back to word boundaries for a very long sentence.
+- `NEXT` follows reading order across section boundaries, so the chain runs through the whole page.
+- **Embedded text** is the heading path plus the chunk text (for example "Beginner's guide > Shelter > ..."); the heading path does not count towards the 300 tokens and is not stored in `text`.
+- Embedding model `text-embedding-3-small` (1536 dimensions, cosine). One vector index on `Chunk.embedding`.
+- Constraints: unique `Wiki.url`, `Page.url`, `Section.url`, `Chunk.id`.
+- **Embedding cache:** a local `shelve` store (git-ignored, `loader/cache/`), keyed by model, dimensions and the sha256 of the exact embedded text, holding the vector as float32 bytes. A rebuild (wipe, reload) therefore makes no OpenAI calls for unchanged text.
+- **Provenance:** `revisionId` and `fetchedAt` on `Page`; `textHash`, `embeddingModel` and `tokens` on `Chunk`.
+- Pages come from the MediaWiki API (`action=parse`) with a polite User-Agent, not by scraping.
+- Same database as the rest of the graph. The loader's `--wipe` removes only `Wiki`, `Page`, `Section` and `Chunk` nodes.
+
+### Agent tools (built 2026-10-04)
+
+`search_wiki(question, limit)` embeds the question with the model the chunks carry (`embeddingModel`) and runs the vector index with the Cypher `SEARCH` clause (the older `db.index.vector.queryNodes` procedure is deprecated in Neo4j 2026.09). Hits in the same section are merged into one passage (the overlap between chunks is not repeated); each result has the page, the section path, `sectionUrl` and a score. `read_section(section, before, after)` returns a whole section by URL or unique title, its subsections, and optionally the chunks before and after it in reading order (`NEXT`, never across pages). The wiki is candidate (community) knowledge: results carry a source note and the agent attributes answers to the wiki; recipes, ingredients and drops stay with the game-data tools.
+
+### Not in v0.8
+
+- `(Chunk)-[:MENTIONS]->(Item|Block|Mob)` and links from guide sections to `Task` and `Activity`: the link that makes it GraphRAG; added once retrieval works.
+- A full-text index on `Chunk.text` (for hybrid search).
+- Judging the chunk size: compare with about 10 questions whose answer section is known (is it in the top 3?); change the size or overlap if it fragments too much.
+
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
 | Knowledge-layer concept | MineCorp candidate |
@@ -541,6 +592,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-04 | v0.8 (loader built): wiki lexical graph `Wiki` > `Page` > `Section` tree, with `Chunk` `PART_OF` a section and linked by `NEXT`; one chunk kind, 300 tokens with 50 overlap within a section (small section = one chunk); `text-embedding-3-small`; local `shelve` cache of `{hash: embedding}` for rebuilds; provenance stored; MediaWiki API; same database. |
 | 2026-10-02 | v0.7: `Action` node with a verb label replaces `Harvest` and the direct Task-to-Recipe link; `HAS_ACTION {order, quantity}`; thin transforming actions generated for every verb and item; no recipe pin; built. |
 | 2026-10-02 | The graph can be rebuilt from source if required (Paper jar plus `model/`); the rebuild order is the rule. |
 | 2026-10-02 | v0.6: mining modelled as a `Harvest` node parallel to `Recipe`; tool requirement is the minimum tool item with `orBetter`; first load blocks only; org units and roles accepted for now. Built for harvests. |
@@ -561,6 +613,9 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 
 ## Change log
 
+- **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
+- **v0.8 loader built** (2026-10-04): `loader/load_wiki.py` with 112 unit and 24 graph tests; the test page gives 34 sections and 43 chunks (median 230 tokens, max 300) for about $0.0002 of embedding. Noted while building: recipe pictures (`mcui`, `invslot`) and zero-width characters are removed; an intro with no text is not a node; `NEXT` links chunks within one page; `load_recipes.py --wipe` also removes the wiki nodes, so the wiki is reloaded last (its embeddings come from the cache).
+- **v0.8 DESIGNED** (2026-10-04): lexical graph of the Minecraft wiki (`Wiki`, `Page`, `Section` tree, `Chunk` with embedding, `PART_OF`, `NEXT`); chunking, embedding, cache and provenance rules decided. First test page: Tutorial:Beginner's guide. Not built.
 - **v0.7** (2026-10-02): built. `Action` node with a verb label (Craft, Smelt, Smith, Cut, Mine, Kill, Shear) between `Task` and the vanilla `Recipe` nodes; `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED` removed (Mine, Kill and Shear actions carry target, tool and drops); transforming actions are thin and meet their `Recipe` nodes at the `Item`; `HAS_ACTION {order, quantity}`; several ordered actions per task with one role; no recipe pin; 2,385 actions generated; full rebuild from source in 30 seconds. `load_harvests.py` renamed `load_actions.py`.
 - **v0.6.4** (2026-10-02): mob harvests built: `Mob` (63), `Harvest` kinds `kill` (63) and `shear` (4), `FROM_MOB`; loader handles loot tables that reference other tables (sheep colours). Agent: `getFrom` in routes, new `how_to_get` tool, route stop rule extended to mob sources. 1,166 harvests in total; `Item` 1,628.
 - **v0.6.3** (2026-10-02): `Station` is now a marker label on `Item` (like `ItemClass`) instead of a separate node; `USES_STATION` points at the item (decision 8). Node labels table repaired: `Recipe` and `Item:Station` rows restored, and a garbled paragraph about duplicate class names corrected.

@@ -192,5 +192,113 @@
     "expect_all": [
       "iron"
     ]
+  },
+  {
+    "id": "wiki-first-night",
+    "question": "What should I do on my first night?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "shelter",
+      "bed",
+      "mine",
+      "mining",
+      "wood",
+      "light",
+      "torch"
+    ]
+  },
+  {
+    "id": "wiki-skip-night",
+    "question": "How do I skip the night?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_all": [
+      "bed"
+    ],
+    "expect_any": [
+      "sleep",
+      "interact"
+    ]
+  },
+  {
+    "id": "wiki-sprint",
+    "question": "How do I sprint?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "control",
+      "ctrl"
+    ]
+  },
+  {
+    "id": "wiki-villager-drops",
+    "question": "Do villagers drop anything when they die?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "nothing",
+      "no drops",
+      "not drop",
+      "don't drop",
+      "doesn't drop"
+    ]
+  },
+  {
+    "id": "wiki-shelter",
+    "question": "How should I build a shelter on my first day?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "wood",
+      "stone",
+      "bed",
+      "furnace",
+      "crafting"
+    ]
+  },
+  {
+    "id": "wiki-attributed",
+    "question": "Why should I not attack villagers?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "according to the wiki",
+      "the wiki"
+    ]
+  },
+  {
+    "id": "recipe-not-wiki",
+    "question": "How do I craft an oak fence gate?",
+    "expect_tools": [
+      "get_recipes"
+    ],
+    "expect_not_tools": [
+      "search_wiki"
+    ],
+    "expect_all": [
+      "stick",
+      "planks"
+    ]
+  },
+  {
+    "id": "wiki-unknown",
+    "question": "What does the wiki say about the Ender Dragon's health?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "can't find",
+      "cannot find",
+      "not find"
+    ]
   }
 ]

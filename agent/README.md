@@ -50,6 +50,18 @@ agent/
 
 `core.answer()` is the only place that will change as the agent grows.
 
+## Tools
+
+Nine read-only tools, defined once in `minecorp_agent/tools.py` and `minecorp_agent/wiki.py`:
+
+| Tool | Answers |
+|---|---|
+| `find_item`, `get_recipes`, `what_do_i_need`, `how_to_get`, `get_uses`, `class_members`, `rank_recipes` | recipes, routes, drops and difficulty, from the game data (authoritative; built from the Paper jar) |
+| `search_wiki` | advice and how-to questions (first night, shelter, controls, mob behaviour) by vector search over the wiki chunks; returns passages with page and section |
+| `read_section` | the whole text of a wiki section (by the `sectionUrl` of a hit, or its title), optionally with the passages before and after |
+
+The wiki tools need the wiki loaded (`python loader/load_wiki.py`, see [loader/README.md](../loader/README.md)). The question is embedded with the model the chunks used (`EMBEDDING_MODEL`, default `text-embedding-3-small`; a mismatch is reported, not searched). Results carry a source note and the prompt tells the model to say "according to the wiki"; recipes, ingredients and where an item comes from still come from the game-data tools, and the wiki is only a fallback for those (for example what a mob drops). If the wiki is not loaded, `search_wiki` says so and the other tools carry on.
+
 ## Use with the plugin
 
 See [plugin/README.md](../plugin/README.md): build the plugin, start this service, start the Minecraft server, then type `/agent <question>`.
@@ -64,9 +76,11 @@ Two kinds, and they answer different questions.
 |---|---|---|
 | `test_tools_unit.py` | nothing | the tool registry and the specs sent to the model are valid; how recipes, requirements and routes are written as text; how conditions are put into words |
 | `test_agent_loop.py` | nothing | the tool-calling loop against a scripted fake model: tool calls and results, a tool that raises, over-long results cut at the cap, the turn limit (last turn forbids tools, fallback answer), model failures, trace lines written |
+| `test_wiki_unit.py` | nothing (scripted fake graph) | `search_wiki` and `read_section`: merging and stitching of chunks, ordering, limits, error messages, neighbours |
 | `test_config.py` | nothing | `.env` reading (never overrides real variables) and the settings: secret of 16+ characters, safe defaults (localhost), overrides and types |
 | `test_app.py` | nothing | `/health`, the secret check (exact match only, done before the body is read), field limits, one request id per call, start-up problems turned into a friendly message |
 | `test_tools_graph.py` (marker `integration`) | Neo4j Enterprise and the Paper jar | every tool against the real graph, rebuilt from source in a throwaway database: name resolution and ambiguity, recipe shapes, categories and exclusions, limit clamping, `how_to_get` wording and ordering, and `what_do_i_need` on 47 items to prove every step only uses things gathered or made before it |
+| `test_wiki_graph.py` (marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the wiki tools against two pages loaded into a throwaway database with fake embeddings: the real vector query, section paths, subsections, neighbours, a missing index |
 
 **Evals** (`agent/evals`, calls the model, costs tokens) check that the model chooses the right tools and gives a good answer. Run them after changing the prompt or a tool description, not on every change:
 

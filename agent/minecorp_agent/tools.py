@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .graph import Graph
+from .wiki import tool_read_section, tool_search_wiki
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
                 "use any ONE of its options (except those listed in 'except').")
@@ -635,5 +636,25 @@ TOOLS: list[Tool] = [
          {"type": "object", "properties": {"category": {"type": "string", "description": "category name"}},
           "required": ["category"], "additionalProperties": False},
          tool_class_members),
+    Tool("search_wiki",
+         "Search the Minecraft Wiki (community-written guides and explanations) for advice, strategy and how-to "
+         "questions that are not about a recipe or a drop: what to do on the first night, how to build a shelter, "
+         "how to get started, controls, mob behaviour. Returns the best passages with their page and section. Do "
+         "not use it for exact recipes, ingredients or drops: use the game-data tools for those.",
+         {"type": "object", "properties": {
+             "question": {"type": "string", "description": "the question or topic, in the player's words"},
+             "limit": {"type": "integer", "description": "how many passages (default 5, max 8)"}},
+          "required": ["question"], "additionalProperties": False},
+         tool_search_wiki),
+    Tool("read_section",
+         "Read a whole wiki section, optionally with the passages just before or after it. Use after search_wiki "
+         "when a passage is cut short or you need the rest. Give the sectionUrl from a search_wiki hit (a section "
+         "title also works when it is unique).",
+         {"type": "object", "properties": {
+             "section": {"type": "string", "description": "the sectionUrl from a search_wiki hit, or a section title"},
+             "before": {"type": "integer", "description": "passages to add before the section (0-3, default 0)"},
+             "after": {"type": "integer", "description": "passages to add after the section (0-3, default 0)"}},
+          "required": ["section"], "additionalProperties": False},
+         tool_read_section),
 ]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
