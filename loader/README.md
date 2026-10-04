@@ -48,7 +48,40 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, then `compute_routes.py`.
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py` (free when the embedding cache is intact).
+
+## Wiki loader: a lexical graph of minecraft.wiki (v0.8)
+
+`load_wiki.py` turns a wiki page into pages, a section tree and overlapping chunks with embeddings, in the same database. Design and rules: [docs/ontology.md](../docs/ontology.md) (v0.8).
+
+```powershell
+.venv\Scripts\pip install -r loader\requirements.txt
+
+# fetch, split, chunk and report; no OpenAI, no database (shows the tree, chunk sizes, cost, cache hits)
+.venv\Scripts\python loader\load_wiki.py --dry-run
+
+# embed (cache first) and load; needs OPENAI_API_KEY and the NEO4J_* settings in .env
+.venv\Scripts\python loader\load_wiki.py
+.venv\Scripts\python loader\load_wiki.py --page "Tutorial:Beginner's guide" --size 300 --overlap 50 --wipe
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--page` | `Tutorial:Beginner's guide` | a page title or a minecraft.wiki URL |
+| `--size`, `--overlap` | 300, 50 | tokens per chunk and tokens repeated from the previous chunk (tiktoken `cl100k_base`) |
+| `--model` | `text-embedding-3-small` | OpenAI embedding model (1536 dimensions, cosine) |
+| `--cache` | `loader/cache/embeddings` | the local embedding cache (a Python `shelve` file, git-ignored) |
+| `--dry-run` | off | report only |
+| `--wipe` | off | first remove every `Wiki`, `Page`, `Section` and `Chunk` node (nothing else) |
+
+Loading a page again replaces that page's sections and chunks; other pages and the game graph are untouched. A chunk never crosses a heading, and a section that fits in `--size` tokens is one chunk. The embedded text is the heading path plus the chunk. Because vectors are cached by model and the hash of the exact embedded text, a rebuild makes no OpenAI calls for unchanged text, and changing `--size` only pays for the chunks that changed. Edit links, references, navigation boxes and recipe pictures are left out of the text. Fetching uses the MediaWiki API with a User-Agent that names this project (wiki text is CC BY-NC-SA).
+
+Try it once loaded (vector search from a question's embedding, then walk to the section and the next chunk):
+
+```cypher
+MATCH (c:Chunk)-[:PART_OF]->(s:Section)<-[:HAS_SECTION|HAS_SUBSECTION*]-(:Page)
+RETURN s.title, c.index, c.tokens, left(c.text, 80) ORDER BY c.index
+```
 
 The recipe loader is idempotent (it uses `MERGE`); `--wipe` deletes everything first.
 
@@ -110,6 +143,8 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 | `test_load_actions.py` (40) | nothing (builds a tiny jar in a temp folder) | tool tiers and the "required" rule, loot conditions, rolls and negative ranges, loot tables that point at other tables, the action rows that come out |
 | `test_load_model.py` (42) | nothing | every validation error in the YAML model, plus the real `model/` files |
 | `test_real_jar.py` (37, marker `jar`) | the Paper jar | rules that hold for any version, and known vanilla facts that act as canaries when the server version changes |
+| `test_load_wiki.py` (112) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the report and the command line (a dry run touches nothing) |
+| `test_wiki_integration.py` (24, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the wiki graph written into its own throwaway database `minecorpwikitest`: tree, chunks, `PART_OF`, one `NEXT` chain, constraints, the vector index and a vector search, reloading a page, a second page, and `--wipe` leaving the game graph alone |
 | `test_graph_integration.py` (34, marker `integration`) | Neo4j Enterprise and the jar | the whole rebuild in order into the `minecorptest` database, which is dropped afterwards; shape, counts, the model, and the rebuild contract |
 
 The database fixtures (`built`, `db`) live in `tests/conftest.py` and `tests/graphdb.py`, and are shared with the agent's graph tests, so the graph is built once per run.

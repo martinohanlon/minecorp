@@ -26,6 +26,9 @@ __pycache__/
 subset.json
 full.json
 
+# Wiki loader embedding cache (rebuildable, but costs OpenAI calls to recreate)
+loader/cache/
+
 # Java / Maven build output
 target/
 
