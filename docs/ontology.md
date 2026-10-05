@@ -1,6 +1,6 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.** v0.8 (wiki lexical graph) has its loader built and tested (2026-10-04); no wiki page is loaded into the real database yet.
+Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.** v0.8 (wiki lexical graph) and v0.9 (linking it to the game graph) are built and tested (2026-10-04); the Beginner's guide page is loaded with its links, and the link job has only been run as a dry run.
 
 ## Source evidence (Paper 26.2, vanilla)
 
@@ -559,11 +559,46 @@ An experiment: turn wiki pages into a lexical graph (pages, sections, overlappin
 
 `search_wiki(question, limit)` embeds the question with the model the chunks carry (`embeddingModel`) and runs the vector index with the Cypher `SEARCH` clause (the older `db.index.vector.queryNodes` procedure is deprecated in Neo4j 2026.09). Hits in the same section are merged into one passage (the overlap between chunks is not repeated); each result has the page, the section path, `sectionUrl` and a score. `read_section(section, before, after)` returns a whole section by URL or unique title, its subsections, and optionally the chunks before and after it in reading order (`NEXT`, never across pages). The wiki is candidate (community) knowledge: results carry a source note and the agent attributes answers to the wiki; recipes, ingredients and drops stay with the game-data tools.
 
-### Not in v0.8
+### Not in v0.8 (v0.9 covers the first two)
 
 - `(Chunk)-[:MENTIONS]->(Item|Block|Mob)` and links from guide sections to `Task` and `Activity`: the link that makes it GraphRAG; added once retrieval works.
 - A full-text index on `Chunk.text` (for hybrid search).
 - Judging the chunk size: compare with about 10 questions whose answer section is known (is it in the top 3?); change the size or overlap if it fragments too much.
+
+## v0.9: linking the wiki to the game graph (built 2026-10-04; links not yet written to the real database)
+
+The wiki chunks (v0.8) say useful things about items, mobs and blocks, but nothing connected the text to the game data. v0.9 keeps the wiki's own structure (its links and its redirects) as graph, and derives two relationships from it by following paths. Everything derived is a **candidate** (governance): a person reviews it.
+
+```
+(Chunk)-[:LINKS_TO {count, texts}]->(Page)-[:REDIRECTS_TO]->(Page)       the wiki, as found
+(Page)-[:ABOUT {method, match, ambiguous, candidates, status}]->(node)    a page is about the nodes its title names
+(Chunk)-[:MENTIONS {method, count, linkCount, surfaces, corroborated,
+                    ambiguous, candidates, status}]->(node)               a chunk is about the nodes it points at
+        node = (:Item) | (:Mob) | (:Block that is not also an Item)
+```
+
+- **One `Page` per URL.** A page that is only linked to is a stub `Page` (`url`, `title`; no `fetchedAt`, no sections). Loading it later fills in the same node, and the links to it stay. A redirect is a page too: **`(:Page {title: 'Black Bed'})-[:REDIRECTS_TO]->(:Page {title: 'Bed'})`**. A link goes to the page *as written*, never silently to where it lands, because a redirect can hide what was meant: "Black Bed" is the item Black Bed, not the category Bed. Links to files, categories, special pages, red links, external sites and the page itself are dropped; a link in the overlap of two chunks belongs to both; links never change chunk text or hashes.
+- **`ABOUT`**: a page is about every node whose name is its title (case-insensitive, plural and singular forms allowed; an exact name beats a plural). The node says what it is: its labels (`Item`, `ItemClass`, `Station`, `Mob`, `Block`) are the context, so nothing about the kind is copied onto the relationship. A block that is also an item (the torch) is not counted twice.
+- **`MENTIONS`** from a link follows a path: `(Chunk)-[:LINKS_TO]->(Page)-[:ABOUT]->(node)`, and when the linked page is about nothing the path may take one `REDIRECTS_TO` step first, so the nearest page that is about something wins ("Black Bed" decides before "Bed"; "Wood", which is about nothing, falls through to "Logs"). The editor said what the words mean, so shorthand works: "iron" linking to Iron Ingot is `linkCount: 1`.
+- **`MENTIONS`** from a name is found by scanning the chunk text (the one job the graph cannot do): longest name first, whole words, any case, plural forms but never singular ones (so the verb "leave" is not the category Leaves). The scan hands plain strings to the graph, which says which nodes carry each name.
+- **Ambiguity stays in the graph.** When a title or a name can mean several nodes of the same quality (the page "Chicken" is the mob and the item; "dirt" is the item and the category of dirt blocks) there is a relationship to **each** of them, with `ambiguous: true` and `candidates: n`. Whatever reads the graph next, with the chunk as context, decides.
+- **A link is evidence, and the absence of one says nothing**: editors link the first mention only (on the test page torch is mentioned 11 times and linked 3, chest 17 and 2, zombie 8 and 1). `corroborated` is true when the same wiki page links the node somewhere; name-only mentions that are not corroborated are the review list. Count distinct nodes per section, not sums: chunks overlap.
+- **Origin.** The job's relationships carry `origin: 'link_wiki'`; that is all it replaces. A relationship a person adds by hand (another origin) is kept, and an `ABOUT` made by hand is followed like any other.
+- **Human review file** `model/wiki_links.yaml`: `stoplist` (generic words the name scan ignores), `aliases` (other wording for a node: a string is an item id, `{mob: id}` and `{block: id}` name the others, a list names several) and `pages` (fixes to what a page is about; a fix is `status: confirmed`; `null` says the page is about nothing in the game). Neither list affects link evidence.
+
+### The job
+
+`loader/link_wiki.py` is a write job like `compute_routes.py`; no OpenAI; deterministic. The graph work is Cypher: titles to names, the link-and-redirect paths, merging the two kinds of evidence, corroboration. It runs in **one transaction** (old links are never removed without the new ones being written). `--dry-run` runs everything, reads the report from the result, and **rolls back**. The report lists the ambiguous pages, the linked pages that are about nothing in the game (a free list of concepts the ontology could add), the name-only mentions the page never links (where generic words show up), and the nodes found only through links. Rebuild order: the game graph, then `load_wiki.py`, then `link_wiki.py` (`load_recipes.py --wipe` removes the wiki nodes too).
+
+### Measured on the one test page (Tutorial:Beginner's guide), dry run
+
+The page links 302 times to 225 other pages, 63 of them redirects. 112 pages are about something in the game (118 `ABOUT` relationships; 103 exact, 15 plural or singular). 6 pages are ambiguous and linked to every candidate: Arrow, Chicken, Chickens, Compass, Sand and Terracotta (the item and its category, and for Chicken the item and the mob). 89 linked pages are about nothing in the game: Java Edition, Bedrock Edition, Crafting, Hay bale, Biomes, Controls, Hunger, Village... The chunks have 263 `MENTIONS` over 135 nodes (115 items, 15 mobs, 5 blocks): 29 from links only, 118 from names only, 116 from both; 40 are ambiguous. 24 nodes are found only through the wiki's links (Black Bed ... Yellow Bed, Iron Ingot, Copper Ingot, Wooden Sword, Wooden Shovel, Wooden Hoe, Boats, Dyes, Cactus, Carrot). 36 nodes are mentioned by name but never linked on the page: some real (leather, pumpkin, obsidian, apple), some generic words (axe, hoe, book, copper, wall). Precision has not been checked by hand; the stoplist, aliases and fixes are empty until you review the report.
+
+### Not in v0.9
+
+- A `wiki_about(item)` agent tool (the passages that mention a given node), the other direction of what `search_wiki` now does.
+- Linking to `Recipe`, and an LLM extractor (implied mentions, relationship types such as recommends or warns about), to be measured against this deterministic baseline.
+- Modelling the concept pages the wiki links (Biome, Hunger, Village, Controls).
 
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
@@ -592,6 +627,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-04 | v0.9 (built): one `Page` per URL with stubs for pages only linked to; redirects are pages with `REDIRECTS_TO`; `(Chunk)-[:LINKS_TO]->(Page)`; `(Page)-[:ABOUT]->(node)` and `(Chunk)-[:MENTIONS]->(node)` for Item, Mob and Block, derived by following paths, as candidates; an ambiguous title or name is linked to every candidate with `ambiguous` and `candidates` (the reader decides with context); nothing about the node kind is stored on the relationship; links are positive evidence only; human review file `model/wiki_links.yaml`. |
 | 2026-10-04 | v0.8 (loader built): wiki lexical graph `Wiki` > `Page` > `Section` tree, with `Chunk` `PART_OF` a section and linked by `NEXT`; one chunk kind, 300 tokens with 50 overlap within a section (small section = one chunk); `text-embedding-3-small`; local `shelve` cache of `{hash: embedding}` for rebuilds; provenance stored; MediaWiki API; same database. |
 | 2026-10-02 | v0.7: `Action` node with a verb label replaces `Harvest` and the direct Task-to-Recipe link; `HAS_ACTION {order, quantity}`; thin transforming actions generated for every verb and item; no recipe pin; built. |
 | 2026-10-02 | The graph can be rebuilt from source if required (Paper jar plus `model/`); the rebuild order is the rule. |
@@ -614,6 +650,8 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 ## Change log
 
 - **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
+- **v0.9 agent use** (2026-10-05): `search_wiki` hits and `read_section` list the nodes a passage is about (`mentions`: name, kind from the node's labels, id, `linked`, `ambiguous`), read by following `MENTIONS`; ambiguous words list every candidate so the model chooses from the passage; the model follows a mention to `get_recipes` and the other game-data tools. 83 unit and 40 graph tests for the wiki tools; all 29 eval questions pass (the wiki-then-recipe question chains search_wiki, read_section and get_recipes).
+- **v0.9 built** (2026-10-04): `LINKS_TO`, `REDIRECTS_TO`, stub pages, `ABOUT`, `MENTIONS`, built graph-native (the job is Cypher over paths; Python only scans text); ambiguity kept as a relationship to every candidate; targets Item, Mob and Block; `load_wiki.py` keeps links and redirects as pages and relationships; `loader/link_wiki.py` and `model/wiki_links.yaml` (stoplist, aliases, page fixes). 59 unit and 89 graph tests for the job, plus link tests for the loader. Bugs found while building: a text-less icon link shifted every later link out of place (fixed, and a test pins that links never change chunk text); redirects first collapsed every coloured bed into the category Bed (now redirects are pages); the first job write was lazy and not committed on return (now one transaction); wordings on a mention were in a different order on each run (now sorted). Not yet run for real: `link_wiki.py` was only run as a dry run on the real database.
 - **v0.8 loader built** (2026-10-04): `loader/load_wiki.py` with 112 unit and 24 graph tests; the test page gives 34 sections and 43 chunks (median 230 tokens, max 300) for about $0.0002 of embedding. Noted while building: recipe pictures (`mcui`, `invslot`) and zero-width characters are removed; an intro with no text is not a node; `NEXT` links chunks within one page; `load_recipes.py --wipe` also removes the wiki nodes, so the wiki is reloaded last (its embeddings come from the cache).
 - **v0.8 DESIGNED** (2026-10-04): lexical graph of the Minecraft wiki (`Wiki`, `Page`, `Section` tree, `Chunk` with embedding, `PART_OF`, `NEXT`); chunking, embedding, cache and provenance rules decided. First test page: Tutorial:Beginner's guide. Not built.
 - **v0.7** (2026-10-02): built. `Action` node with a verb label (Craft, Smelt, Smith, Cut, Mine, Kill, Shear) between `Task` and the vanilla `Recipe` nodes; `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED` removed (Mine, Kill and Shear actions carry target, tool and drops); transforming actions are thin and meet their `Recipe` nodes at the `Item`; `HAS_ACTION {order, quantity}`; several ordered actions per task with one role; no recipe pin; 2,385 actions generated; full rebuild from source in 30 seconds. `load_harvests.py` renamed `load_actions.py`.

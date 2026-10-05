@@ -22,9 +22,14 @@ VECTOR_INDEX = "chunk_embedding"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 MAX_HIT_CHARS = 1200        # one search hit, so five fit in a tool result
 MAX_SECTION_CHARS = 6000    # one whole section
+MAX_MENTIONS = 8            # game nodes listed per passage
 MIN_OVERLAP = 8             # characters; shorter shared endings are not treated as the overlap between chunks
 SOURCE_NOTE = ("Minecraft Wiki: community-written advice, not the game data. Say 'according to the wiki'. "
                "The wiki also covers other editions (Bedrock); this server is Java Edition.")
+
+MENTIONS_NOTE = ("'mentions' lists the game items, mobs and blocks a passage is about ('linked': the wiki itself links to it). "
+                 "When a name could mean several (an item and a mob, an item and its category) every candidate is listed and marked "
+                 "'ambiguous': choose from the passage. Look a mention up with the game-data tools for facts such as recipes.")
 
 _client = None
 _client_lock = threading.Lock()
@@ -82,6 +87,49 @@ def clamp(value, default: int, low: int, high: int) -> int:
     return max(low, min(number, high))
 
 
+def kind_of(labels: list[str]) -> str:
+    """Item, Category (an item category), Station, Mob or Block: what a node says about itself."""
+    for label in ("Mob", "Block", "ItemClass", "Station"):
+        if label in labels:
+            return {"ItemClass": "Category"}.get(label, label)
+    return "Item"
+
+
+def mentions_of(graph: Graph, chunk_ids: list[str]) -> dict[str, list[dict]]:
+    """The game nodes each chunk is about: {chunk id: [mention rows]}, following (Chunk)-[:MENTIONS]->(node).
+
+    The node's own labels say whether it is an item, a category, a station, a mob or a block, so the relationship
+    carries no kind. Empty when the wiki has not been linked to the game graph (link_wiki.py has not been run)."""
+    if not chunk_ids:
+        return {}
+    out: dict[str, list[dict]] = {}
+    for r in graph.read("""
+            MATCH (c:Chunk)-[m:MENTIONS]->(n) WHERE c.id IN $ids
+            RETURN c.id AS chunk, n.name AS name, n.id AS id, labels(n) AS labels, m.linkCount AS links, m.count AS count,
+                   m.ambiguous AS ambiguous
+            """, ids=chunk_ids):
+        out.setdefault(r["chunk"], []).append(r)
+    return out
+
+
+def summarise_mentions(rows: list[dict], limit: int = MAX_MENTIONS) -> list[dict]:
+    """One entry per node for a passage (its chunks put together): {name, kind, id, linked?, ambiguous?}.
+
+    `linked` means the wiki itself links to it; `ambiguous` means the same wording can name several nodes (an item and
+    a mob, an item and its category) and every candidate is listed, so the reader chooses from the passage. Linked
+    nodes come first, then the most often named."""
+    merged: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r["id"], kind_of(r["labels"]))
+        e = merged.setdefault(key, {"name": r["name"], "kind": key[1], "id": r["id"], "links": 0, "count": 0, "ambiguous": False})
+        e["links"] += r["links"] or 0
+        e["count"] += r["count"] or 0
+        e["ambiguous"] = e["ambiguous"] or bool(r["ambiguous"])
+    ranked = sorted(merged.values(), key=lambda e: (-(e["links"] > 0), -e["count"], e["name"], e["kind"]))
+    return [{"name": e["name"], "kind": e["kind"], "id": e["id"], **({"linked": True} if e["links"] else {}),
+             **({"ambiguous": True} if e["ambiguous"] else {})} for e in ranked[:limit]]
+
+
 def path_text(page: str, trail: list[str]) -> str:
     """'Page > Section > Subsection'; the intro section (titled like the page) is just the page."""
     return page if not trail or trail == [page] else " > ".join([page] + trail)
@@ -102,7 +150,7 @@ def tool_search_wiki(graph: Graph, args: dict) -> dict:
             SEARCH c IN (VECTOR INDEX {VECTOR_INDEX} FOR $vector LIMIT $k) SCORE AS score
             MATCH (c)-[:PART_OF]->(s:Section)
             MATCH path = (p:Page)-[:HAS_SECTION]->(:Section)-[:HAS_SUBSECTION*0..]->(s)
-            RETURN c.index AS idx, c.text AS text, c.embeddingModel AS model, score,
+            RETURN c.id AS id, c.index AS idx, c.text AS text, c.embeddingModel AS model, score,
                    s.url AS section, p.title AS page, [n IN nodes(path) WHERE n:Section | n.title] AS trail
             ORDER BY score DESC
             """, k=limit * 4, vector=embed_query(question))
@@ -120,6 +168,7 @@ def tool_search_wiki(graph: Graph, args: dict) -> dict:
     groups: dict[str, list[dict]] = {}
     for r in rows:
         groups.setdefault(r["section"], []).append(r)
+    about = mentions_of(graph, [r["id"] for r in rows])
     hits = []
     for url, rs in groups.items():
         rs.sort(key=lambda r: r["idx"])
@@ -130,11 +179,16 @@ def tool_search_wiki(graph: Graph, args: dict) -> dict:
             else:
                 runs.append([r])
         text, _ = clip("\n[...]\n".join(stitch([r["text"] for r in run]) for run in runs), MAX_HIT_CHARS)
-        hits.append({"page": rs[0]["page"], "section": path_text(rs[0]["page"], rs[0]["trail"]), "sectionUrl": url,
-                     "text": text, "score": round(max(r["score"] for r in rs), 3)})
+        hit = {"page": rs[0]["page"], "section": path_text(rs[0]["page"], rs[0]["trail"]), "sectionUrl": url,
+               "text": text, "score": round(max(r["score"] for r in rs), 3)}
+        found = summarise_mentions([m for r in rs for m in about.get(r["id"], [])])
+        if found:
+            hit["mentions"] = found
+        hits.append(hit)
     hits.sort(key=lambda h: -h["score"])
     return {"question": question, "source": SOURCE_NOTE, "hits": hits[:limit],
-            "note": "A passage may be cut short or be part of a longer section: call read_section with its sectionUrl to read more."}
+            "note": "A passage may be cut short or be part of a longer section: call read_section with its sectionUrl to read more. "
+                    + MENTIONS_NOTE}
 
 
 # --------------------------------------------------------------------------- read_section
@@ -188,6 +242,11 @@ def tool_read_section(graph: Graph, args: dict) -> dict:
         out["text"], cut = clip(stitch([c["text"] for c in chunks]), MAX_SECTION_CHARS)
         if cut:
             out["truncated"] = True
+        about = mentions_of(graph, [c["id"] for c in chunks])
+        found = summarise_mentions([m for c in chunks for m in about.get(c["id"], [])])
+        if found:
+            out["mentions"] = found
+            out["note"] = MENTIONS_NOTE
         if before:
             out["before"] = _neighbours(graph, chunks[0]["id"], before, before=True)
         if after:

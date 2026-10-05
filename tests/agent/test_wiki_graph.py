@@ -51,6 +51,7 @@ def vector(text: str) -> list[float]:
 
 def load(page_html: str, title: str, db: dict) -> dict:
     g = lw.build(title, 1, page_html, "2026-10-04T12:00:00+00:00", Words(), 20, 5)
+    lw.apply_links(g, {})
     for c in g["chunks"]:
         c["embedding"] = lw.decode_vector(lw.encode_vector(vector(c["embedText"])))
     lw.write(g, MODEL, db["uri"], db["user"], db["password"], db["database"])
@@ -65,7 +66,8 @@ def wikidb():
 @pytest.fixture(scope="module")
 def pages(wikidb):
     """Two pages loaded once for the whole module."""
-    return {"guide": load(HTML, "Guide", wikidb), "other": load(OTHER, "Other", wikidb)}
+    return {"guide": load(HTML, "Guide", wikidb), "other": load(OTHER, "Other", wikidb),
+            "linker": load("<p>See the <a href='/w/Torch'>torch</a> page.</p>", "Linker", wikidb)}      # Torch is only a stub
 
 
 @pytest.fixture(scope="module")
@@ -208,6 +210,80 @@ class TestReadSection:
     @pytest.mark.parametrize("section", ["Shelter", "Walls", "Roof", "Food", "Bread"])
     def test_every_section_of_the_page_can_be_read_by_its_search_hit_url(self, graph, pages, section):
         assert "error" not in wiki.tool_read_section(graph, {"section": f"{BASE}#{section}"})
+
+
+@pytest.fixture(scope="module")
+def linked(wikidb, pages):
+    """Game nodes the pages talk about (the chicken is both an item and a mob), then the real link job run over the wiki."""
+    from neo4j import GraphDatabase
+
+    import link_wiki as lk
+    db = wikidb["db"]
+    db.q("UNWIND $rows AS r CREATE (:Item {id: r[0], name: r[1]})", rows=[["minecraft:bread", "Bread"], ["minecraft:wheat", "Wheat"],
+                                                                          ["minecraft:torch", "Torch"], ["minecraft:chicken", "Chicken"]])
+    db.q("CREATE (:Mob {id: 'minecraft:chicken', name: 'Chicken'})")
+    farm = load("<p>Cook a chicken.</p>", "Farm", wikidb)
+    with GraphDatabase.driver(wikidb["uri"], auth=(wikidb["user"], wikidb["password"])) as driver:
+        with driver.session(database=wikidb["database"]) as session:
+            lk.run(session, {"stoplist": set(), "aliases": {}, "pages": {}}, "2026-10-04T12:00:00+00:00", dry_run=False)
+    return {"farm": farm}
+
+
+class TestMentions:
+    """What the link job wrote, read back through the tools: the graph says what each passage is about."""
+
+    def hit_for(self, graph, monkeypatch, chunk, section_title=None):
+        result = wiki.tool_search_wiki(graph, {"question": ask_like(monkeypatch, chunk)})
+        return result["hits"][0]
+
+    def test_a_passage_lists_the_game_nodes_it_is_about(self, graph, pages, linked, monkeypatch):
+        top = self.hit_for(graph, monkeypatch, chunk_of(pages, "Bread"))
+        assert top["section"] == "Guide > Food > Bread"
+        assert {(m["name"], m["kind"]) for m in top["mentions"]} == {("Bread", "Item"), ("Wheat", "Item")}
+        assert all("linked" not in m for m in top["mentions"]), "nothing links them: the passage only names them"
+
+    def test_a_link_makes_a_mention_that_says_so(self, graph, pages, linked, monkeypatch):
+        top = self.hit_for(graph, monkeypatch, pages["linker"]["chunks"][0])
+        assert top["mentions"] == [{"name": "Torch", "kind": "Item", "id": "minecraft:torch", "linked": True}]
+
+    def test_an_ambiguous_word_gives_the_item_and_the_mob(self, graph, pages, linked, monkeypatch):
+        top = self.hit_for(graph, monkeypatch, linked["farm"]["chunks"][0])
+        assert sorted((m["kind"], m["ambiguous"]) for m in top["mentions"]) == [("Item", True), ("Mob", True)]
+        assert {m["id"] for m in top["mentions"]} == {"minecraft:chicken"}
+
+    def test_a_passage_about_nothing_in_the_game_has_no_mentions(self, graph, pages, linked, monkeypatch):
+        top = self.hit_for(graph, monkeypatch, chunk_of(pages, "Walls"))
+        assert top["text"] == "Walls keep mobs out." and "mentions" not in top
+
+    def test_the_whole_section_lists_them_too(self, graph, pages, linked):
+        result = wiki.tool_read_section(graph, {"section": f"{BASE}#Bread"})
+        assert {m["name"] for m in result["mentions"]} == {"Bread", "Wheat"} and "ambiguous" in result["note"]
+
+    def test_the_tool_only_reads(self, wikidb, graph, pages, linked, monkeypatch):
+        before = wikidb["db"].one("MATCH ()-[m:MENTIONS]->() RETURN count(m)")
+        self.hit_for(graph, monkeypatch, chunk_of(pages, "Bread"))
+        wiki.tool_read_section(graph, {"section": f"{BASE}#Bread"})
+        assert wikidb["db"].one("MATCH ()-[m:MENTIONS]->() RETURN count(m)") == before > 0
+
+
+class TestStubPages:
+    """Pages that are only linked to (no text loaded) must be invisible to the wiki tools."""
+
+    def test_a_stub_exists_in_the_graph(self, graph):
+        assert graph.read("MATCH (p:Page {title: 'Torch'}) RETURN p.fetchedAt AS at") == [{"at": None}]
+
+    def test_a_stub_is_never_a_search_hit(self, graph, pages, monkeypatch):
+        result = wiki.tool_search_wiki(graph, {"question": ask_like(monkeypatch, chunk_of(pages, "Walls")), "limit": 8})
+        assert all(h["page"] != "Torch" for h in result["hits"]) and result["hits"][0]["section"] == "Guide > Shelter > Walls"
+
+    def test_reading_a_stub_by_url_or_title_finds_no_section(self, graph, pages):
+        assert "No wiki section matches" in wiki.tool_read_section(graph, {"section": "https://minecraft.wiki/w/Torch"})["error"]
+        assert "No wiki section matches" in wiki.tool_read_section(graph, {"section": "Torch"})["error"]
+
+    def test_the_linking_page_itself_is_searchable(self, graph, pages, monkeypatch):
+        target = next(c for c in pages["linker"]["chunks"])
+        result = wiki.tool_search_wiki(graph, {"question": ask_like(monkeypatch, target)})
+        assert result["hits"][0]["page"] == "Linker" and result["hits"][0]["text"] == "See the torch page."
 
 
 class TestNotLoaded:

@@ -300,5 +300,26 @@
       "cannot find",
       "not find"
     ]
+  },
+  {
+    "id": "wiki-chickens",
+    "question": "What does the wiki say about chickens?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "chicken"
+    ]
+  },
+  {
+    "id": "wiki-then-recipe",
+    "question": "What should I do before my first night, and what do I need to craft the bed it tells me to make?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "wool",
+      "planks"
+    ]
   }
 ]

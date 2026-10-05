@@ -37,11 +37,16 @@ def fake_embedder(monkeypatch):
 
 
 def hit(idx, text, section="https://w/Guide#Shelter", score=0.9, page="Guide", trail=("Shelter",), model="text-embedding-3-small"):
-    return {"idx": idx, "text": text, "model": model, "score": score, "section": section, "page": page, "trail": list(trail)}
+    return {"id": f"chunk-{idx}", "idx": idx, "text": text, "model": model, "score": score, "section": section, "page": page, "trail": list(trail)}
 
 
-def search(rows, **args):
-    graph = FakeGraph(**{"SEARCH c IN": rows})
+def about(chunk, name, id_, labels=("Item",), links=0, count=1, ambiguous=False):
+    """A row for (Chunk)-[:MENTIONS]->(node): the node's own labels say what it is."""
+    return {"chunk": chunk, "name": name, "id": id_, "labels": list(labels), "links": links, "count": count, "ambiguous": ambiguous}
+
+
+def search(rows, mentions=None, **args):
+    graph = FakeGraph(**{"SEARCH c IN": rows, "MENTIONS": mentions or []})
     return wiki.tool_search_wiki(graph, {"question": "how do I build a shelter?", **args}), graph
 
 
@@ -207,7 +212,7 @@ class TestSearchWiki:
 URL = "https://w/Guide#Shelter"
 
 
-def section_graph(chunks=(), subsections=(), trail=("Shelter",), before=(), after=(), titles=None):
+def section_graph(chunks=(), subsections=(), trail=("Shelter",), before=(), after=(), titles=None, mentions=()):
     """A graph for read_section. `titles` maps a title to the section urls with that title."""
     def trail_rows(params):
         known = {URL, "https://w/Guide#Food"} | {u for urls in (titles or {}).values() for u in urls}
@@ -216,11 +221,119 @@ def section_graph(chunks=(), subsections=(), trail=("Shelter",), before=(), afte
     return FakeGraph(**{
         "toLower": lambda params: [{"url": u} for u in (titles or {}).get(params["t"].lower(), [])],
         "RETURN p.title AS page": trail_rows,
+        "MENTIONS": list(mentions),
         "(c:Chunk)-[:PART_OF]->": [{"id": f"c{i}", "text": t} for i, t in enumerate(chunks)],
         "HAS_SUBSECTION]->(c:Section)": [{"title": t, "url": u} for t, u in subsections],
         "(b:Chunk)-[:NEXT*1..3]->(:Chunk {id: $id})": [{"section": s, "text": t, "d": d} for s, t, d in before],
         "(:Chunk {id: $id})-[:NEXT*1..3]->(b:Chunk)": [{"section": s, "text": t, "d": d} for s, t, d in after],
     })
+
+
+class TestKindOf:
+    @pytest.mark.parametrize("labels,kind", [(["Item"], "Item"), (["Item", "ItemClass"], "Category"), (["Item", "Station"], "Station"),
+                                             (["Mob"], "Mob"), (["Block"], "Block"), ([], "Item")])
+    def test_the_node_says_what_it_is(self, labels, kind):
+        assert wiki.kind_of(labels) == kind
+
+
+class TestSearchMentions:
+    def test_a_hit_lists_the_game_nodes_its_chunk_is_about(self):
+        result, _ = search([hit(1, "Place a torch.")], mentions=[about("chunk-1", "Torch", "minecraft:torch")])
+        assert result["hits"][0]["mentions"] == [{"name": "Torch", "kind": "Item", "id": "minecraft:torch"}]
+
+    def test_the_kind_comes_from_the_nodes_own_labels(self):
+        rows = [about("chunk-1", "Sheep", "minecraft:sheep", ("Mob",), count=5), about("chunk-1", "Powder Snow", "minecraft:powder_snow", ("Block",), count=4),
+                about("chunk-1", "Planks", "#minecraft:planks", ("Item", "ItemClass"), count=3),
+                about("chunk-1", "Crafting Table", "minecraft:crafting_table", ("Item", "Station"), count=2), about("chunk-1", "Torch", "minecraft:torch", count=1)]
+        kinds = {m["name"]: m["kind"] for m in search([hit(1, "x")], mentions=rows)[0]["hits"][0]["mentions"]}
+        assert kinds == {"Sheep": "Mob", "Powder Snow": "Block", "Planks": "Category", "Crafting Table": "Station", "Torch": "Item"}
+
+    def test_linked_and_ambiguous_are_shown_only_when_true(self):
+        rows = [about("chunk-1", "Torch", "minecraft:torch", links=2), about("chunk-1", "Stick", "minecraft:stick", count=1)]
+        found = {m["name"]: m for m in search([hit(1, "x")], mentions=rows)[0]["hits"][0]["mentions"]}
+        assert found["Torch"]["linked"] is True and "linked" not in found["Stick"]
+        assert "ambiguous" not in found["Torch"] and "ambiguous" not in found["Stick"]
+
+    def test_an_ambiguous_word_lists_every_candidate_each_marked(self):
+        rows = [about("chunk-1", "Chicken", "minecraft:chicken", ("Item",), count=1, ambiguous=True),
+                about("chunk-1", "Chicken", "minecraft:chicken", ("Mob",), count=1, ambiguous=True)]
+        found = search([hit(1, "Cook a chicken.")], mentions=rows)[0]["hits"][0]["mentions"]
+        assert sorted((m["kind"], m["ambiguous"]) for m in found) == [("Item", True), ("Mob", True)]
+        assert {m["id"] for m in found} == {"minecraft:chicken"}, "the same id is two nodes: they must not be merged into one"
+
+    def test_the_chunks_of_one_passage_put_their_mentions_together(self):
+        rows = [about("chunk-3", "Torch", "minecraft:torch", count=2), about("chunk-4", "Torch", "minecraft:torch", links=1, count=1),
+                about("chunk-4", "Stick", "minecraft:stick", count=1)]
+        result, _ = search([hit(3, "a"), hit(4, "b")], mentions=rows)
+        assert len(result["hits"]) == 1
+        assert result["hits"][0]["mentions"] == [{"name": "Torch", "kind": "Item", "id": "minecraft:torch", "linked": True},
+                                                 {"name": "Stick", "kind": "Item", "id": "minecraft:stick"}]
+
+    def test_linked_nodes_come_first_then_the_most_often_named_then_by_name(self):
+        rows = [about("chunk-1", "Zebra", "z", count=9), about("chunk-1", "Apple", "a", count=1), about("chunk-1", "Mango", "m", count=1),
+                about("chunk-1", "Linked", "l", links=1, count=0)]
+        names = [m["name"] for m in search([hit(1, "x")], mentions=rows)[0]["hits"][0]["mentions"]]
+        assert names == ["Linked", "Zebra", "Apple", "Mango"]
+
+    def test_only_a_handful_are_listed_and_the_linked_ones_survive_the_cut(self):
+        rows = [about("chunk-1", f"Thing {i:02}", f"id{i}", count=10 - i % 3) for i in range(12)] + [about("chunk-1", "Linked", "linked", links=1, count=0)]
+        found = search([hit(1, "x")], mentions=rows)[0]["hits"][0]["mentions"]
+        assert len(found) == wiki.MAX_MENTIONS == 8 and found[0]["name"] == "Linked"
+
+    def test_a_hit_with_nothing_mentioned_has_no_mentions_key(self):
+        result, _ = search([hit(1, "x"), hit(5, "y", section="https://w/Guide#Food")], mentions=[about("chunk-1", "Torch", "minecraft:torch")])
+        by_section = {h["sectionUrl"]: h for h in result["hits"]}
+        assert "mentions" in by_section["https://w/Guide#Shelter"] and "mentions" not in by_section["https://w/Guide#Food"]
+
+    def test_when_the_wiki_has_not_been_linked_nothing_changes_for_the_model(self):
+        result, _ = search([hit(1, "Place a torch.")])
+        assert "mentions" not in result["hits"][0] and result["hits"][0]["text"] == "Place a torch."
+
+    def test_mentions_are_fetched_in_one_query_for_the_chunks_that_were_found(self):
+        _, graph = search([hit(1, "a"), hit(2, "b", section="s2"), hit(3, "c", section="s3")])
+        queries = [(q, p) for q, p in graph.calls if "MENTIONS" in q]
+        assert len(queries) == 1 and sorted(queries[0][1]["ids"]) == ["chunk-1", "chunk-2", "chunk-3"]
+
+    def test_a_relationship_made_by_hand_without_counts_does_not_break_it(self):
+        rows = [{"chunk": "chunk-1", "name": "Torch", "id": "minecraft:torch", "labels": ["Item"], "links": None, "count": None, "ambiguous": None}]
+        assert search([hit(1, "x")], mentions=rows)[0]["hits"][0]["mentions"] == [{"name": "Torch", "kind": "Item", "id": "minecraft:torch"}]
+
+    def test_the_note_tells_the_model_how_to_read_them(self):
+        note = search([hit(1, "x")])[0]["note"]
+        assert "mentions" in note and "ambiguous" in note and "read_section" in note
+
+    def test_the_text_is_not_changed_by_mentions(self):
+        result, _ = search([hit(1, "Place a torch.")], mentions=[about("chunk-1", "Torch", "minecraft:torch")])
+        assert result["hits"][0]["text"] == "Place a torch."
+
+
+class TestReadSectionMentions:
+    def test_the_section_lists_what_it_is_about(self):
+        graph = section_graph(["Place a torch."], mentions=[about("c0", "Torch", "minecraft:torch", links=1)])
+        result = wiki.tool_read_section(graph, {"section": URL})
+        assert result["mentions"] == [{"name": "Torch", "kind": "Item", "id": "minecraft:torch", "linked": True}]
+        assert "ambiguous" in result["note"]
+
+    def test_all_the_chunks_of_the_section_count(self):
+        graph = section_graph(["One two three four.", "three four. Five."], mentions=[
+            about("c0", "Torch", "minecraft:torch", count=1), about("c1", "Torch", "minecraft:torch", count=2), about("c1", "Stick", "minecraft:stick", count=1)])
+        result = wiki.tool_read_section(graph, {"section": URL})
+        assert [m["name"] for m in result["mentions"]] == ["Torch", "Stick"]
+        assert next(q for q, _ in graph.calls if "MENTIONS" in q) and next(p for q, p in graph.calls if "MENTIONS" in q)["ids"] == ["c0", "c1"]
+
+    def test_ambiguous_candidates_are_all_listed(self):
+        graph = section_graph(["Cook a chicken."], mentions=[about("c0", "Chicken", "minecraft:chicken", ("Item",), ambiguous=True),
+                                                             about("c0", "Chicken", "minecraft:chicken", ("Mob",), ambiguous=True)])
+        assert sorted(m["kind"] for m in wiki.tool_read_section(graph, {"section": URL})["mentions"]) == ["Item", "Mob"]
+
+    def test_a_section_with_nothing_mentioned_has_neither_mentions_nor_note(self):
+        result = wiki.tool_read_section(section_graph(["Plain text."]), {"section": URL})
+        assert "mentions" not in result and "note" not in result
+
+    def test_a_section_with_no_text_asks_for_nothing(self):
+        graph = section_graph([], subsections=[("Wood", "u")])
+        result = wiki.tool_read_section(graph, {"section": URL})
+        assert "mentions" not in result and not any("MENTIONS" in q for q, _ in graph.calls)
 
 
 class TestReadSection:

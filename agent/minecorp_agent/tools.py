@@ -639,8 +639,9 @@ TOOLS: list[Tool] = [
     Tool("search_wiki",
          "Search the Minecraft Wiki (community-written guides and explanations) for advice, strategy and how-to "
          "questions that are not about a recipe or a drop: what to do on the first night, how to build a shelter, "
-         "how to get started, controls, mob behaviour. Returns the best passages with their page and section. Do "
-         "not use it for exact recipes, ingredients or drops: use the game-data tools for those.",
+         "how to get started, controls, mob behaviour. Returns the best passages with their page and section, and the "
+         "game items, mobs and blocks each passage is about (mentions). Do not use it for exact recipes, ingredients "
+         "or drops: use the game-data tools for those.",
          {"type": "object", "properties": {
              "question": {"type": "string", "description": "the question or topic, in the player's words"},
              "limit": {"type": "integer", "description": "how many passages (default 5, max 8)"}},
