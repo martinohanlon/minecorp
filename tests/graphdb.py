@@ -14,6 +14,7 @@ from neo4j import GraphDatabase
 import compute_routes
 import load_actions as la
 import load_model as lm
+import load_world as lwd
 import load_recipes as lr
 from minecorp_agent.config import load_dotenv
 
@@ -96,6 +97,9 @@ def build_test_graph(jar_path):
         action_graph = la.build(jar_path)
         la.write(action_graph, uri, user, password, TEST_DB)
 
+        world_graph = lwd.build(jar_path)                              # needs the Block and Mob nodes the actions made
+        lwd.write(world_graph, uri, user, password, TEST_DB)
+
         org, processes = lm.read_model()
         action_ids = {rec["id"] for rec in driver.execute_query("MATCH (a:Action) RETURN a.id AS id", database_=TEST_DB).records}
         assert lm.validate(org, processes, action_ids) == []
@@ -113,7 +117,7 @@ def build_test_graph(jar_path):
             assert compute_routes.main() == 0
 
         yield {"db": Db(driver), "uri": uri, "user": user, "password": password, "normalised": normalised,
-               "recipe_graph": recipe_graph, "action_graph": action_graph, "model_rows": model_rows}
+               "recipe_graph": recipe_graph, "action_graph": action_graph, "world_graph": world_graph, "model_rows": model_rows}
     finally:
         try:
             driver.execute_query(f"DROP DATABASE {TEST_DB} IF EXISTS WAIT", database_="system")

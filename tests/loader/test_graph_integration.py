@@ -28,7 +28,8 @@ class TestGraphShape:
             assert db.one(f"MATCH (a:Action:{verb}) RETURN count(a)") == n, verb
         assert db.one("MATCH (a:Action) RETURN count(a)") == sum(verbs.values())
         assert db.one("MATCH (b:Block) RETURN count(b)") == len(ag["blocks"])
-        assert db.one("MATCH (m:Mob) RETURN count(m)") == len(ag["mobs"])
+        assert db.one("MATCH (m:Mob) RETURN count(m)") == len(built["world_graph"]["mobs"]) > len(ag["mobs"]), \
+            "the world loader adds the creatures that drop nothing to the ones the actions made"
         assert db.one("MATCH (r:Recipe) RETURN count(r)") == len(built["normalised"])
 
     def test_old_model_is_gone(self, db):
@@ -74,7 +75,8 @@ class TestGraphShape:
         assert db.one("MATCH (i:Item) WHERE i.name IS NULL RETURN count(i)") == 0
 
     def test_includes_edges_leave_a_class_and_reach_an_item(self, db):
-        assert db.one("MATCH (a)-[:INCLUDES]->(b) WHERE NOT (a:ItemClass AND b:Item) RETURN count(*)") == 0
+        assert db.one("MATCH (a:Item)-[:INCLUDES]->(b) WHERE NOT (a:ItemClass AND b:Item) RETURN count(*)") == 0
+        assert db.one("MATCH (a:ItemClass)-[:INCLUDES]->(b) WHERE NOT b:Item RETURN count(*)") == 0, "mob and biome classes use INCLUDES too, but never reach an item"
 
     def test_unique_constraints_exist(self, db):
         rows = db.q("SHOW CONSTRAINTS YIELD labelsOrTypes, properties, type WHERE type CONTAINS 'UNIQUENESS' RETURN labelsOrTypes[0] AS label, properties[0] AS prop")
