@@ -17,10 +17,11 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **World graph tests** | `tests/loader/test_world_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 5 s (on the shared rebuild) | 28 |
 | **Wiki graph tests** | `tests/loader/test_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 10 s | 37 |
 | **Link job graph tests** | `tests/loader/test_link_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 25 s | 100 |
+| **Chat stub tests** | `tests/scripts/test_chat.py` | pytest | nothing (mock HTTP, or the real app with a fake agent) | about 1 s | 93 |
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,189 tests (1,152 Python, 37 Java). The fast set is 777 Python tests plus the Java ones.
+Counts as of 2026-10-05: 1,282 tests (1,245 Python, 37 Java). The fast set is 870 Python tests plus the Java ones.
 
 ## Running
 
@@ -53,6 +54,8 @@ Or by hand: `.venv\Scripts\python -m pytest` (fast set; `pytest.ini` leaves out 
 **Agent wiki tool tests** (`search_wiki` and `read_section`). The unit tests use a scripted stand-in for the graph and check what the tools do with the rows: passages from one section are merged and the overlap between chunks is not repeated (stitching the loader's chunks gives the section text back exactly), best hit first, limits clamped, the embedding-model mismatch and the "wiki not loaded" messages, ambiguous section titles, and neighbours fetched only when asked. The graph tests load two pages into a throwaway database with fake embeddings and run the real queries (the `SEARCH` vector clause, the walk to the section path, the tree, `NEXT` neighbours that never cross pages). The mentions on each passage are checked both ways: the unit tests with scripted rows (kind from the node's labels, linked and ambiguous flags, every candidate listed, merged per passage, capped), and the graph tests with the real link job run over the loaded pages. Whether real OpenAI embeddings rank well, and whether the model picks these tools and follows a mention to the game-data tools, is covered by the wiki questions in the evals.
 
 **Agent tool tests** call every tool directly against the real graph in the same throwaway database, with no model involved. They check name resolution and ambiguity, recipe shapes (grid, categories, exclusions, items nobody crafts), limit clamping, the wording and ordering of `how_to_get`, and `what_do_i_need`: the exact iron pickaxe route, quantities multiplied through, raw iron rather than the silk-touch-only ore, no loops through nuggets and blocks, and, for 47 different items, that every step only uses things gathered or made earlier and the answer stays small. They also check the stored route numbers against a fresh calculation. Whether the *model* picks the right tool is not tested here; that is what the evals are for.
+
+**Chat stub tests** cover `scripts/chat.py`, the terminal stand-in for the plugin: that it sends exactly what the plugin sends (method, path, secret header, the four body fields, the player's uuid as the session id), applies the plugin's rules in the same order (usage, 500 characters, not configured), shows the plugin's messages and splits the answer into lines the way the plugin does; that every failure (a refusal, a timeout, a refused connection, a reply that is not an answer) becomes the player's "not available" message with the reason in grey; the style check, the trace lookup and its layout, the chat commands, the command line, and the stub talking to the real FastAPI app.
 
 **Plugin unit tests** cover the pieces that hold the rules, without a Minecraft server:
 - `AskGuard`: empty question, 500-character limit (exactly 500 is allowed), not configured, one question at a time per sender, the order the rules are checked in, and a concurrency test (only one of 16 simultaneous attempts is accepted).
