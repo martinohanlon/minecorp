@@ -6,6 +6,7 @@ stand in. One test checks the real tiktoken tokenizer and is skipped if its enco
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from array import array
 
@@ -116,7 +117,7 @@ def parse(html: str, title: str = "Page") -> list[dict]:
 class TestParseSections:
     def test_the_text_before_the_first_heading_is_the_intro(self):
         s = parse(PAGE_HTML, "Guide")
-        assert s[0] == {"title": "Guide", "level": 1, "anchor": "", "blocks": ["Intro paragraph. It has two sentences."]}
+        assert s[0] == {"title": "Guide", "level": 1, "anchor": "", "blocks": ["Intro paragraph. It has two sentences."], "links": []}
 
     def test_headings_make_sections_in_order_with_their_levels_and_anchors(self):
         s = parse(PAGE_HTML)
@@ -184,6 +185,127 @@ class TestParseSections:
     def test_nested_lists_each_item_on_its_own_line(self):
         s = parse("<ul><li>One<ul><li>Inner</li></ul></li><li>Two</li></ul>")
         assert s[0]["blocks"] == ["- One", "- Inner", "- Two"]
+
+
+def spans_ok(section: dict) -> bool:
+    """Every link's recorded text is exactly what sits at its recorded position in the section text."""
+    text = "\n".join(section["blocks"])
+    return all(text[l["start"]:l["end"]] == l["text"] for l in section["links"])
+
+
+class TestLinkTitle:
+    @pytest.mark.parametrize("href,title", [
+        ("/w/Torch", "Torch"), ("/w/Crafting_table#Recipe", "Crafting table"), ("/w/Tutorial:Beginner%27s_guide", "Tutorial:Beginner's guide"),
+        ("/index.php?title=Torch", "Torch"), ("/w/Iron_golem", "Iron golem"), ("/w/Brewing_(Java_Edition)", "Brewing (Java Edition)"),
+        ("/w/Tutorial:Mining", "Tutorial:Mining")])
+    def test_article_links_give_the_page_title(self, href, title):
+        assert lw.link_title(href, []) == title
+
+    @pytest.mark.parametrize("href", ["", "#Shelter", "https://example.com/x", "//example.com", "mailto:a@b.c", "/other/path", "/w/",
+                                      "/w/File:Torch.png", "/w/file:Torch.png", "/w/Category:Items", "/w/Special:Search",
+                                      "/w/Template:Infobox", "/w/Help:Editing", "/w/User:Someone"])
+    def test_things_that_are_not_article_links_give_nothing(self, href):
+        assert lw.link_title(href, []) is None
+
+    @pytest.mark.parametrize("cls", ["new", "external", "image"])
+    def test_red_external_and_image_links_give_nothing(self, cls):
+        assert lw.link_title("/w/Torch", [cls]) is None
+        assert lw.link_title("/w/Torch", ["a", cls]) is None
+
+
+class TestParseLinks:
+    def test_a_link_has_its_target_its_text_and_its_position(self):
+        s = parse('<p>Use a <a href="/w/Torch" title="Torch">torch</a> now.</p>')[0]
+        assert s["blocks"] == ["Use a torch now."]
+        assert s["links"] == [{"title": "Torch", "text": "torch", "start": 6, "end": 11}]
+
+    def test_the_link_text_can_differ_from_the_target(self):
+        s = parse('<p>Smelt <a href="/w/Iron_Ingot">iron</a>.</p>')[0]
+        assert [(l["title"], l["text"]) for l in s["links"]] == [("Iron Ingot", "iron")]
+
+    def test_positions_run_across_blocks_of_the_section(self):
+        s = parse('<p>One <a href="/w/A">alpha</a>.</p><ul><li><a href="/w/B">beta</a> item</li></ul><p>Then <a href="/w/C">gamma</a></p>')[0]
+        assert s["blocks"] == ["One alpha.", "- beta item", "Then gamma"]
+        assert [l["text"] for l in s["links"]] == ["alpha", "beta", "gamma"] and spans_ok(s)
+        assert s["links"][1]["start"] == len("One alpha.\n- ")
+
+    def test_links_belong_to_the_section_they_are_in(self):
+        s = parse('<p><a href="/w/I">intro link</a></p><h2 id="A">A</h2><p><a href="/w/X">in a</a></p><h2 id="B">B</h2><p>none</p>')
+        assert [[l["title"] for l in x["links"]] for x in s] == [["I"], ["X"], []]
+
+    def test_whitespace_inside_the_anchor_is_not_part_of_the_link_and_makes_no_double_spaces(self):
+        s = parse('<p>press <a href="/w/Mouse"> Left Mouse Button </a> now</p>')[0]
+        assert s["blocks"] == ["press Left Mouse Button now"]
+        assert s["links"][0]["text"] == "Left Mouse Button" and spans_ok(s)
+
+    def test_a_link_around_markup_keeps_all_its_text(self):
+        s = parse('<p>See <a href="/w/Bed"><b>the</b> <i>bed</i></a>!</p>')[0]
+        assert s["blocks"] == ["See the bed!"] and s["links"][0]["text"] == "the bed"
+
+    def test_a_link_in_a_table_cell(self):
+        s = parse('<table><tr><td>x</td><td><a href="/w/Torch">Torch</a></td></tr></table>')[0]
+        assert s["blocks"] == ["x | Torch"] and spans_ok(s) and s["links"][0]["start"] == 4
+
+    def test_links_that_are_not_to_articles_keep_their_text_but_are_not_recorded(self):
+        html = ('<p><a href="https://x.org/">outside</a> <a href="/index.php?title=Nope&action=edit&redlink=1" class="new">red</a> '
+                '<a href="#Top">top</a> <a href="/w/File:X.png">file</a> <a href="/w/Torch">kept</a></p>')
+        s = parse(html)[0]
+        assert s["blocks"] == ["outside red top file kept"]
+        assert [l["title"] for l in s["links"]] == ["Torch"] and spans_ok(s)
+
+    def test_an_icon_link_with_no_text_is_not_recorded_and_leaves_no_trace(self):
+        s = parse('<p>Before <a href="/w/Torch"><img src="t.png"></a>after</p>')[0]
+        assert s["blocks"] == ["Before after"] and s["links"] == []
+
+    def test_a_link_only_block_is_not_lost_or_made_empty(self):
+        s = parse('<p><a href="/w/Torch"><img src="t.png"></a></p><p><a href="/w/Bed">bed</a></p>')[0]
+        assert s["blocks"] == ["bed"] and spans_ok(s)
+
+    def test_links_in_headings_are_ignored_but_the_heading_text_stays(self):
+        s = parse('<h2 id="Food"><a href="/w/Food">Food</a></h2><p>text</p>')
+        assert s[1]["title"] == "Food" and s[1]["links"] == []
+
+    @pytest.mark.parametrize("html", ['<div class="navbox"><a href="/w/Nav">nav</a></div><p>x</p>',
+                                      '<p>x<sup class="reference"><a href="/w/Ref">[1]</a></sup></p>',
+                                      '<span class="mw-editsection"><a href="/w/Edit">edit</a></span><p>x</p>'])
+    def test_links_in_skipped_regions_are_not_recorded(self, html):
+        s = parse(html)[0]
+        assert s["links"] == [] and s["blocks"] == ["x"]
+
+    def test_a_link_inside_a_link_keeps_both_whole(self):
+        s = parse('<p><a href="/w/A">x<a href="/w/B">y</a>z</a></p>')[0]
+        assert [l["title"] for l in s["links"]] == ["A", "B"] and spans_ok(s)
+
+    def test_a_link_that_runs_into_a_new_line_is_closed_there(self):
+        s = parse('<a href="/w/A">one<p>two</p></a>')[0]
+        assert s["blocks"] == ["one", "two"] and [l["text"] for l in s["links"]] == ["one"] and spans_ok(s)
+
+    def test_a_link_left_open_at_the_end_is_still_recorded(self):
+        s = parse('<p>see <a href="/w/A">alpha')[0]
+        assert s["blocks"] == ["see alpha"] and s["links"][0]["text"] == "alpha"
+
+    def test_entities_and_odd_characters_inside_link_text(self):
+        s = parse('<p><a href="/w/Fish_%26_Chips">Fish&nbsp;&amp;​ chips</a></p>')[0]
+        assert s["blocks"] == ["Fish & chips"] and s["links"][0]["title"] == "Fish & Chips" and spans_ok(s)
+
+    def test_the_text_is_exactly_the_same_with_or_without_the_links(self):
+        """Links must never change chunk text: that would change the embedding hashes."""
+        linked = (
+            '<p>Press <a href="/w/Mouse"> Left Mouse Button </a> on the <a href="/w/Log">logs</a>, then <a href="/w/Torch"><b>craft</b> a torch</a>.</p>'
+            '<ul><li><a href="/w/A">One</a> <a href="/w/B">two</a>, <a href="/w/C">three</a></li><li> <a href="/w/D">four </a></li></ul>'
+            '<table><tr><td><a href="/w/E">e</a> </td><td> <a href="/w/F">f</a></td></tr></table>'
+            '<h2 id="H"><a href="/w/H">Head</a></h2><p>x <a href="https://e.org">ext</a> <a class="new" href="/w/Z">red</a> y</p>')
+        plain = re.sub(r"</?a\b[^>]*>", "", linked)
+        assert [b for s in parse(linked) for b in s["blocks"]] == [b for s in parse(plain) for b in s["blocks"]]
+        assert [s["title"] for s in parse(linked)] == [s["title"] for s in parse(plain)]
+
+    def test_the_same_check_on_the_real_markup_style_of_the_wiki(self):
+        linked = ('<div class="mw-heading mw-heading2"><h2 id="Shelter">Shelter</h2></div>'
+                  '<p>Build with <a href="/w/Planks" title="Planks">wooden planks</a>, a <a href="/w/Crafting_table" title="Crafting table">crafting table</a>'
+                  ' and <a href="/w/Torch" title="Torch">torches</a>.</p>')
+        plain = re.sub(r"</?a\b[^>]*>", "", linked)
+        assert parse(linked)[1]["blocks"] == parse(plain)[1]["blocks"]
+        assert [l["title"] for l in parse(linked)[1]["links"]] == ["Planks", "Crafting table", "Torch"]
 
 
 class TestBuildTree:
@@ -399,6 +521,208 @@ class TestBuild:
         assert first_b["text"].startswith("S0 ")
 
 
+class TestLocateChunks:
+    def test_each_chunk_is_found_at_its_position_in_order(self):
+        text = "alpha beta gamma delta epsilon"
+        assert lw.locate_chunks(text, ["alpha beta gamma", "gamma delta epsilon"]) == [0, 11]
+
+    def test_repeated_identical_chunks_get_successive_positions(self):
+        assert lw.locate_chunks("ab ab ab", ["ab", "ab", "ab"]) == [0, 3, 6]
+
+    def test_a_chunk_that_is_not_in_the_text_is_none_and_does_not_stop_the_rest(self):
+        assert lw.locate_chunks("one two three", ["one", "zzz", "three"]) == [0, None, 8]
+
+    def test_the_loaders_own_chunks_are_always_found(self):
+        text = "\n".join(" ".join(f"S{i}-{j} w w end." for j in range(5)) for i in range(8))
+        chunks = lw.chunk_text(text, TOK, 22, 10)
+        starts = lw.locate_chunks(text, chunks)
+        assert None not in starts and starts == sorted(starts) and all(text[s:s + len(c)] == c for s, c in zip(starts, chunks))
+
+
+def linked_html(n: int = 12) -> str:
+    """A section of n sentences, where sentence i links to Page<i> from its first word."""
+    return "<p>" + " ".join(f'<a href="/w/Page{i}">S{i}</a> w w w end.' for i in range(n)) + "</p>"
+
+
+class TestChunkLinks:
+    def build(self, html, size=12, overlap=5):
+        return lw.build("Guide", 7, html, "now", TOK, size, overlap)
+
+    def test_a_small_section_gives_its_one_chunk_all_its_links(self):
+        g = self.build("<p>Use a <a href='/w/Torch'>torch</a> and <a href='/w/Bed'>bed</a>.</p>", size=50)
+        assert [[l["title"] for l in c["rawLinks"]] for c in g["chunks"]] == [["Torch", "Bed"]]
+
+    def test_each_link_goes_to_the_chunk_that_holds_its_text(self):
+        g = self.build(linked_html(12))
+        assert len(g["chunks"]) > 3
+        for c in g["chunks"]:
+            for l in c["rawLinks"]:
+                assert l["text"] in c["text"], "a link is in the chunk that contains its text"
+        every = {l["title"] for c in g["chunks"] for l in c["rawLinks"]}
+        assert every == {f"Page{i}" for i in range(12)}, "no link is lost"
+
+    def test_a_link_in_the_overlap_belongs_to_both_chunks(self):
+        g = self.build(linked_html(12), size=12, overlap=5)
+        owners: dict[str, int] = {}
+        for c in g["chunks"]:
+            for l in c["rawLinks"]:
+                owners[l["title"]] = owners.get(l["title"], 0) + 1
+        assert max(owners.values()) == 2 and min(owners.values()) == 1
+
+    def test_the_links_of_a_chunk_are_in_reading_order_with_their_text(self):
+        g = self.build(linked_html(12))
+        first = g["chunks"][0]["rawLinks"]
+        assert first[0] == {"title": "Page0", "text": "S0"} and [l["title"] for l in first] == sorted((l["title"] for l in first), key=lambda t: int(t[4:]))
+
+    def test_links_do_not_cross_into_another_sections_chunks(self):
+        g = self.build('<h2 id="A">A</h2><p><a href="/w/X">x</a> text.</p><h2 id="B">B</h2><p><a href="/w/Y">y</a> more.</p>', size=50)
+        assert [[l["title"] for l in c["rawLinks"]] for c in g["chunks"]] == [["X"], ["Y"]]
+
+    def test_chunks_without_links_have_an_empty_list(self):
+        assert self.build("<p>No links here.</p>")["chunks"][0]["rawLinks"] == []
+
+    def test_chunk_text_hashes_and_ids_are_the_same_with_and_without_links(self):
+        linked = self.build(linked_html(12))
+        plain = self.build(re.sub(r"</?a\b[^>]*>", "", linked_html(12)))
+        key = lambda g: [(c["id"], c["text"], c["textHash"], c["tokens"]) for c in g["chunks"]]
+        assert key(linked) == key(plain)
+
+
+class TestResolveTitles:
+    def client(self, handler):
+        return httpx.Client(transport=httpx.MockTransport(handler))
+
+    @staticmethod
+    def answer(normalized=(), redirects=(), pages=()):
+        return {"query": {"normalized": [{"from": a, "to": b} for a, b in normalized],
+                          "redirects": [{"from": a, "to": b} for a, b in redirects],
+                          "pages": [dict(p) if isinstance(p, dict) else {"title": p} for p in pages]}}
+
+    def test_a_plain_page_is_itself_and_not_a_redirect(self):
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(pages=["Torch", "Bed"])))
+        assert lw.resolve_titles(["Torch", "Bed"], client) == {"Torch": {"page": "Torch", "target": None}, "Bed": {"page": "Bed", "target": None}}
+
+    def test_a_first_letter_is_capitalised_by_the_wiki(self):
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(normalized=[("crafting table", "Crafting table")], pages=["Crafting table"])))
+        assert lw.resolve_titles(["crafting table"], client) == {"crafting table": {"page": "Crafting table", "target": None}}
+
+    def test_a_redirect_is_kept_as_a_page_that_points_at_another(self):
+        """The linked page stays the linked page; where it redirects to is a separate fact."""
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(redirects=[("Black Bed", "Bed")], pages=["Bed"])))
+        assert lw.resolve_titles(["Black Bed"], client) == {"Black Bed": {"page": "Black Bed", "target": "Bed"}}
+
+    def test_normalising_and_redirecting_together(self):
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(normalized=[("log", "Log")], redirects=[("Log", "Logs")], pages=["Logs"])))
+        assert lw.resolve_titles(["log"], client) == {"log": {"page": "Log", "target": "Logs"}}
+
+    def test_a_page_that_does_not_exist_is_none(self):
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(pages=["Torch", {"title": "Nope", "missing": True}, {"title": "Bad|x", "invalid": True}])))
+        assert lw.resolve_titles(["Torch", "Nope", "Bad|x"], client) == {"Torch": {"page": "Torch", "target": None}, "Nope": None, "Bad|x": None}
+
+    def test_a_redirect_to_a_page_that_does_not_exist_is_a_page_with_no_target(self):
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(redirects=[("Old", "Gone")], pages=[{"title": "Gone", "missing": True}])))
+        assert lw.resolve_titles(["Old"], client) == {"Old": {"page": "Old", "target": None}}
+
+    def test_two_pages_that_redirect_to_the_same_page_stay_two_pages(self):
+        client = self.client(lambda r: httpx.Response(200, json=self.answer(redirects=[("Log", "Logs"), ("Wood log", "Logs")], pages=["Logs"])))
+        assert lw.resolve_titles(["Log", "Wood log"], client) == {"Log": {"page": "Log", "target": "Logs"}, "Wood log": {"page": "Wood log", "target": "Logs"}}
+
+    def test_the_request_asks_for_redirects_and_joins_the_titles(self):
+        seen = []
+
+        def handler(request):
+            seen.append(dict(request.url.params))
+            return httpx.Response(200, json=self.answer(pages=["A", "B"]))
+
+        lw.resolve_titles(["A", "B"], self.client(handler))
+        assert seen[0]["action"] == "query" and seen[0]["titles"] == "A|B" and seen[0]["redirects"] == "1"
+
+    def test_fifty_titles_at_a_time(self):
+        sizes = []
+
+        def handler(request):
+            titles = request.url.params["titles"].split("|")
+            sizes.append(len(titles))
+            return httpx.Response(200, json=self.answer(pages=titles))
+
+        titles = [f"Page {i}" for i in range(120)]
+        result = lw.resolve_titles(titles, self.client(handler))
+        assert sizes == [50, 50, 20] and result == {t: {"page": t, "target": None} for t in titles}
+
+    def test_no_titles_means_no_requests(self):
+        def handler(request):
+            pytest.fail("no request expected")
+
+        assert lw.resolve_titles([], self.client(handler)) == {}
+
+    def test_a_server_error_is_raised(self):
+        with pytest.raises(httpx.HTTPStatusError):
+            lw.resolve_titles(["A"], self.client(lambda r: httpx.Response(503)))
+
+
+def plain(*titles: str) -> dict:
+    """What resolve_titles gives for pages that exist and are not redirects."""
+    return {t: {"page": t, "target": None} for t in titles}
+
+
+class TestApplyLinks:
+    def graph(self):
+        return lw.build("Guide", 7, linked_html(4) + "<h2 id='B'>B</h2><p>See <a href='/w/Torch'>torch</a>, <a href='/w/Torch'>torches</a> and "
+                        "<a href='/w/Guide'>this page</a> and <a href='/w/Gone'>gone</a>.</p>", "now", TOK, 50, 5)
+
+    def resolved(self):
+        return {**plain("Page0", "Page1", "Page2", "Page3", "Torch", "Guide"), "Gone": None}
+
+    def test_links_become_entries_per_page_with_count_and_distinct_texts(self):
+        g = lw.apply_links(self.graph(), self.resolved())
+        assert g["chunks"][-1]["links"] == [{"url": "https://minecraft.wiki/w/Torch", "title": "Torch", "count": 2, "texts": ["torch", "torches"]}]
+
+    def test_links_to_the_page_itself_and_to_missing_pages_are_dropped(self):
+        g = lw.apply_links(self.graph(), self.resolved())
+        assert {l["title"] for c in g["chunks"] for l in c["links"]} == {"Page0", "Page1", "Page2", "Page3", "Torch"}
+
+    def test_a_link_goes_to_the_page_as_written_and_the_redirect_is_recorded_separately(self):
+        g = lw.build("Guide", 1, "<p><a href='/w/Black_Bed'>black</a> and <a href='/w/Red_Bed'>red</a></p>", "now", TOK, 50, 5)
+        lw.apply_links(g, {"Black Bed": {"page": "Black Bed", "target": "Bed"}, "Red Bed": {"page": "Red Bed", "target": "Bed"}})
+        base = "https://minecraft.wiki/w/"
+        assert [(l["title"], l["texts"]) for l in g["chunks"][0]["links"]] == [("Black Bed", ["black"]), ("Red Bed", ["red"])]
+        assert g["redirects"] == [{"url": base + "Black_Bed", "title": "Black Bed", "to": base + "Bed", "toTitle": "Bed"},
+                                  {"url": base + "Red_Bed", "title": "Red Bed", "to": base + "Bed", "toTitle": "Bed"}]
+        assert [p["title"] for p in g["linkedPages"]] == ["Bed", "Black Bed", "Red Bed"], "the target is a page involved too"
+
+    def test_black_bed_and_red_bed_never_merge_into_bed(self):
+        g = lw.build("Guide", 1, "<p><a href='/w/Black_Bed'>black</a>, <a href='/w/Red_Bed'>red</a>, <a href='/w/Black_Bed'>dark</a></p>", "now", TOK, 50, 5)
+        lw.apply_links(g, {"Black Bed": {"page": "Black Bed", "target": "Bed"}, "Red Bed": {"page": "Red Bed", "target": "Bed"}})
+        assert [(l["title"], l["count"], l["texts"]) for l in g["chunks"][0]["links"]] == [("Black Bed", 2, ["black", "dark"]), ("Red Bed", 1, ["red"])]
+
+    def test_the_same_title_written_with_different_capitals_is_one_entry(self):
+        g = lw.build("Guide", 1, "<p><a href='/w/Crafting_table'>a</a> <a href='/w/Crafting_Table'>b</a></p>", "now", TOK, 50, 5)
+        lw.apply_links(g, plain("Crafting table", "Crafting Table"))
+        assert [(l["title"], l["count"]) for l in g["chunks"][0]["links"]] == [("Crafting table", 2)]
+
+    def test_a_page_with_no_redirect_gives_no_redirect_entry(self):
+        assert lw.apply_links(self.graph(), self.resolved())["redirects"] == []
+
+    def test_a_redirect_to_the_page_itself_is_dropped(self):
+        g = lw.build("Guide", 1, "<p><a href='/w/Home'>home</a></p>", "now", TOK, 50, 5)
+        lw.apply_links(g, {"Home": {"page": "Home", "target": "Guide"}})
+        assert g["chunks"][0]["links"] == [] and g["redirects"] == [] and g["linkedPages"] == []
+
+    def test_the_linked_pages_are_unique_and_sorted_by_url(self):
+        g = lw.apply_links(self.graph(), self.resolved())
+        urls = [p["url"] for p in g["linkedPages"]]
+        assert urls == sorted(set(urls)) and len(urls) == 5
+
+    def test_a_title_the_resolver_was_not_asked_about_is_taken_as_it_is(self):
+        g = lw.apply_links(lw.build("Guide", 1, "<p><a href='/w/Torch'>t</a></p>", "now", TOK, 50, 5), {})
+        assert g["chunks"][0]["links"][0]["title"] == "Torch" and g["redirects"] == []
+
+    def test_the_url_is_the_canonical_page_url(self):
+        g = lw.build("Guide", 1, "<p><a href=\"/w/Beginner's_guide\">g</a></p>", "now", TOK, 50, 5)
+        lw.apply_links(g, plain("Beginner's guide"))
+        assert g["chunks"][0]["links"][0]["url"] == "https://minecraft.wiki/w/Beginner%27s_guide"
+
+
 class TestRealTokenizer:
     def test_counts_tokens_the_way_the_embedding_models_do(self):
         try:
@@ -592,6 +916,14 @@ class TestOpenAIEmbedder:
 
 # --------------------------------------------------------------------------- report and command line
 
+class TestReportLinks:
+    def test_the_report_counts_links_and_pages_once_links_are_applied(self):
+        g = lw.build("Guide", 1, "<p><a href='/w/Torch'>torch</a> and <a href='/w/Bed'>bed</a> and <a href='/w/Torch'>torch</a>.</p>", "now", TOK)
+        assert not any(l.startswith("links:") for l in lw.report(g, "m"))
+        lw.apply_links(g, {})
+        assert "links: 3 in chunks, to 2 other pages (stubs unless loaded)" in lw.report(g, "m")
+
+
 class TestReport:
     def graph(self):
         return lw.build("Guide", 7, PAGE_HTML, "now", TOK, 300, 50)
@@ -677,6 +1009,44 @@ class TestMain:
         monkeypatch.setattr(lw, "fetch_page", missing)
         with pytest.raises(SystemExit, match="could not fetch the page: no such page"):
             cli("--dry-run")
+
+    LINKED = "<p>Use a <a href='/w/Torch'>torch</a> or a <a href='/w/Log'>log</a>.</p>"
+
+    def test_links_are_resolved_through_the_api_and_reported(self, cli, monkeypatch, capsys):
+        asked = []
+        monkeypatch.setattr(lw, "fetch_page", lambda title: {"title": title, "revisionId": 1, "html": self.LINKED})
+        monkeypatch.setattr(lw, "resolve_titles", lambda titles: asked.append(titles) or {**plain("Torch"), "Log": {"page": "Log", "target": "Logs"}})
+        assert cli("--dry-run") == 0
+        assert asked == [["Log", "Torch"]]
+        out = capsys.readouterr().out
+        assert "links: 2 in chunks, to 3 other pages" in out, "Torch, Log and the page Log redirects to"
+        assert "1 of those pages are redirects (kept as REDIRECTS_TO): ['Log -> Logs']" in out
+
+    def test_a_page_with_no_links_makes_no_resolve_request(self, cli, monkeypatch):
+        monkeypatch.setattr(lw, "resolve_titles", lambda titles: pytest.fail("nothing to resolve"))
+        assert cli("--dry-run") == 0
+
+    def test_a_failure_resolving_links_is_a_clean_exit(self, cli, monkeypatch):
+        monkeypatch.setattr(lw, "fetch_page", lambda title: {"title": title, "revisionId": 1, "html": self.LINKED})
+
+        def down(titles):
+            raise httpx.ConnectError("no network")
+
+        monkeypatch.setattr(lw, "resolve_titles", down)
+        with pytest.raises(SystemExit, match="could not resolve the links"):
+            cli("--dry-run")
+
+    def test_the_written_page_carries_the_canonical_links(self, cli, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        written = {}
+        monkeypatch.setattr(lw, "fetch_page", lambda title: {"title": title, "revisionId": 1, "html": self.LINKED})
+        monkeypatch.setattr(lw, "resolve_titles", lambda titles: {**plain("Torch"), "Log": {"page": "Log", "target": "Logs"}})
+        monkeypatch.setattr(lw, "openai_embedder", lambda model: fake_embedder())
+        monkeypatch.setattr(lw, "write", lambda g, *a, **k: written.update(g=g))
+        assert cli() == 0
+        assert {l["title"] for l in written["g"]["chunks"][0]["links"]} == {"Log", "Torch"}, "the link goes to the page as written"
+        assert {p["title"] for p in written["g"]["linkedPages"]} == {"Log", "Logs", "Torch"}
+        assert [(r["title"], r["toTitle"]) for r in written["g"]["redirects"]] == [("Log", "Logs")]
 
     def test_a_full_run_embeds_through_the_cache_and_then_writes(self, cli, monkeypatch, capsys):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")

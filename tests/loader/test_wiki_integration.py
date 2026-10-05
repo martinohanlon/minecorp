@@ -42,8 +42,9 @@ def vector(text: str) -> list[float]:
     return [(b + 1) / 256 for b in hashlib.sha256(text.encode()).digest()[:DIMS]]
 
 
-def make(html: str = HTML, title: str = "Guide", revision: int = 1, size: int = 20, overlap: int = 5) -> dict:
+def make(html: str = HTML, title: str = "Guide", revision: int = 1, size: int = 20, overlap: int = 5, resolved: dict | None = None) -> dict:
     g = lw.build(title, revision, html, "2026-10-04T12:00:00+00:00", WordTokenizer(), size, overlap)
+    lw.apply_links(g, resolved or {})
     for c in g["chunks"]:
         c["embedding"] = lw.decode_vector(lw.encode_vector(vector(c["embedText"])))
     return g
@@ -188,6 +189,118 @@ class TestIndexesAndConstraints:
         row = clean.one("MATCH (c:Chunk {id: $id})-[:PART_OF]->(s:Section) OPTIONAL MATCH (c)-[:NEXT]->(n:Chunk) "
                         "RETURN s.title AS section, n.index AS next", id=walls["id"])
         assert row == {"section": "Walls", "next": walls["index"] + 1}
+
+
+LINKED_HTML = ("<p>Intro with a <a href='/w/Torch'>torch</a>.</p>"
+               "<h2 id='Shelter'>Shelter</h2><p>Use <a href='/w/Planks'>planks</a>, a <a href='/w/Torch'>torch</a> "
+               "and <a href='/w/Torch'>torches</a>; also <a href='/w/Log'>logs</a>.</p>"
+               "<h2 id='Other'>Other</h2><p>Nothing linked here.</p>")
+
+
+def pages(*titles: str, **redirects: str) -> dict:
+    """What the wiki API would say: these pages exist, and the keyword ones (Log="Logs") redirect to another page."""
+    out = {t: {"page": t, "target": None} for t in titles}
+    out.update({t.replace("_", " "): {"page": t.replace("_", " "), "target": target} for t, target in redirects.items()})
+    return out
+
+
+RESOLVED = pages("Torch", "Planks", "Biome", Log="Logs")
+
+
+class TestLinks:
+    def links(self, db):
+        return db.q("MATCH (c:Chunk)-[l:LINKS_TO]->(p:Page) RETURN c.id AS chunk, p.title AS page, p.url AS url, l.count AS count, l.texts AS texts "
+                    "ORDER BY c.index, p.title")
+
+    def test_chunks_link_to_the_pages_the_wiki_links_with_count_and_texts(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED, size=50))
+        base = "https://minecraft.wiki/w/Guide"
+        rows = {(r["chunk"], r["page"]): (r["count"], r["texts"]) for r in self.links(clean)}
+        assert rows == {(f"{base}~0", "Torch"): (1, ["torch"]),
+                        (f"{base}#Shelter~0", "Planks"): (1, ["planks"]),
+                        (f"{base}#Shelter~0", "Torch"): (2, ["torch", "torches"]),
+                        (f"{base}#Shelter~0", "Log"): (1, ["logs"])}, "nothing for the chunk with no links"
+
+    def test_a_page_that_is_only_linked_to_is_a_stub(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED))
+        stub = clean.one("MATCH (p:Page {title: 'Torch'}) RETURN p {.url, .title, .fetchedAt, .revisionId} AS p")
+        assert stub == {"url": "https://minecraft.wiki/w/Torch", "title": "Torch", "fetchedAt": None, "revisionId": None}
+        assert clean.one("MATCH (p:Page {title: 'Torch'}) RETURN size([(p)-[:HAS_SECTION]->() | 1])") == 0
+        assert clean.one("MATCH (:Wiki)-[:HAS_PAGE]->(p:Page {title: 'Torch'}) RETURN count(p)") == 1, "a stub belongs to the wiki too"
+
+    def test_a_redirect_is_a_page_that_redirects_and_the_link_goes_to_it(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED))
+        assert clean.one("MATCH (:Chunk)-[:LINKS_TO]->(:Page {title: 'Log'})-[:REDIRECTS_TO]->(t:Page) RETURN t.title") == "Logs"
+        assert clean.one("MATCH (:Chunk)-[:LINKS_TO]->(:Page {title: 'Logs'}) RETURN count(*)") == 0, "nothing links to the target directly"
+        assert clean.one("MATCH (p:Page {title: 'Logs'}) RETURN p.url") == "https://minecraft.wiki/w/Logs"
+
+    def test_two_redirect_pages_to_one_page_are_two_pages_with_one_target(self, wiki, write, clean):
+        html = "<p>Make <a href='/w/Black_Bed'>black</a> or <a href='/w/Red_Bed'>red</a>.</p>"
+        write(make(html, resolved=pages(Black_Bed="Bed", Red_Bed="Bed")))
+        assert clean.q("MATCH (p:Page)-[:REDIRECTS_TO]->(:Page {title: 'Bed'}) RETURN p.title AS t ORDER BY t") == [{"t": "Black Bed"}, {"t": "Red Bed"}]
+        assert clean.one("MATCH (p:Page {title: 'Bed'}) RETURN count(p)") == 1
+        assert clean.q("MATCH (:Chunk)-[l:LINKS_TO]->(p:Page) RETURN p.title AS t, l.texts AS texts ORDER BY t") == [
+            {"t": "Black Bed", "texts": ["black"]}, {"t": "Red Bed", "texts": ["red"]}]
+
+    def test_loading_twice_does_not_duplicate_a_redirect(self, wiki, write, clean):
+        g = make(LINKED_HTML, resolved=RESOLVED)
+        write(g)
+        write(g)
+        assert clean.one("MATCH (:Page)-[r:REDIRECTS_TO]->(:Page) RETURN count(r)") == 1
+
+    def test_each_linked_page_exists_once_however_often_it_is_linked(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED, size=8, overlap=3))
+        assert clean.one("MATCH (p:Page {title: 'Torch'}) RETURN count(p)") == 1
+        assert clean.one("MATCH (:Chunk)-[:LINKS_TO]->(:Page {title: 'Torch'}) RETURN count(*)") >= 2
+
+    def test_a_stub_later_loaded_becomes_the_same_node_and_keeps_its_incoming_links(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED))
+        stub_id = clean.one("MATCH (p:Page {title: 'Torch'}) RETURN elementId(p)")
+        write(make("<p>A torch gives light.</p>", title="Torch", revision=5))
+        assert clean.one("MATCH (p:Page {title: 'Torch'}) RETURN count(p)") == 1
+        row = clean.one("MATCH (p:Page {title: 'Torch'}) RETURN elementId(p) AS id, p.fetchedAt AS at, p.revisionId AS rev")
+        assert row["id"] == stub_id and row["at"] == "2026-10-04T12:00:00+00:00" and row["rev"] == 5
+        assert clean.one("MATCH (:Chunk)-[:LINKS_TO]->(:Page {title: 'Torch'}) RETURN count(*)") >= 1
+        assert clean.one("MATCH (:Page {title: 'Torch'})-[:HAS_SECTION]->(:Section) RETURN count(*)") == 1
+
+    def test_a_redirect_target_later_loaded_keeps_the_redirects_pointing_at_it(self, wiki, write, clean):
+        write(make("<p>Make <a href='/w/Black_Bed'>black</a>.</p>", resolved=pages(Black_Bed="Bed")))
+        write(make("<p>A bed lets you sleep.</p>", title="Bed", revision=3))
+        assert clean.one("MATCH (:Page {title: 'Black Bed'})-[:REDIRECTS_TO]->(b:Page) RETURN b.fetchedAt IS NOT NULL") is True
+        assert clean.one("MATCH (p:Page {title: 'Bed'}) RETURN count(p)") == 1
+
+    def test_loading_a_linked_to_page_that_is_already_loaded_does_not_disturb_it(self, wiki, write, clean):
+        write(make("<p>A torch gives light.</p>", title="Torch", revision=5))
+        write(make(LINKED_HTML, resolved=RESOLVED))
+        row = clean.one("MATCH (p:Page {title: 'Torch'}) RETURN p.revisionId AS rev, p.fetchedAt AS at")
+        assert row == {"rev": 5, "at": "2026-10-04T12:00:00+00:00"}
+        assert clean.one("MATCH (:Page {title: 'Torch'})-[:HAS_SECTION]->(:Section)<-[:PART_OF]-(c:Chunk) RETURN count(c)") == 1
+
+    def test_reloading_a_page_replaces_its_links_and_does_not_duplicate_them(self, wiki, write, clean):
+        g = make(LINKED_HTML, resolved=RESOLVED)
+        write(g)
+        before = self.links(clean)
+        write(g)
+        assert self.links(clean) == before
+        write(make("<p>No links any more.</p>", resolved=RESOLVED))
+        assert self.links(clean) == []
+        assert clean.one("MATCH (p:Page {title: 'Torch'}) RETURN count(p)") == 1, "the stub is kept"
+
+    def test_wipe_removes_stubs_and_redirects_too(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED))
+        write(make("<p>Fresh.</p>", title="Fresh"), wipe=True)
+        assert clean.one("MATCH (p:Page) RETURN count(p)") == 1
+        assert clean.one("MATCH ()-[r:REDIRECTS_TO]->() RETURN count(r)") == 0
+
+    def test_stubs_never_appear_as_sections_or_chunks(self, wiki, write, clean):
+        write(make(LINKED_HTML, resolved=RESOLVED))
+        assert clean.one("MATCH (p:Page) WHERE NOT (p)-[:HAS_SECTION]->() RETURN count(p)") == 4          # Torch, Planks, Log, Logs
+        assert clean.one("MATCH (c:Chunk) RETURN count(c)") == 3
+
+    def test_a_page_with_no_links_writes_none(self, wiki, write, clean):
+        write(make(HTML))
+        assert clean.one("MATCH ()-[l:LINKS_TO]->() RETURN count(l)") == 0
+        assert clean.one("MATCH (p:Page) RETURN count(p)") == 1
 
 
 class TestReloading:

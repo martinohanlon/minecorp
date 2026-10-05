@@ -128,29 +128,94 @@ def slug(title: str) -> str:
     return normalise_space(title).replace(" ", "_")
 
 
+LINK_START, LINK_END = "", ""        # private-use markers around link text while a page is parsed
+NON_ARTICLE_NAMESPACES = {"file", "category", "special", "template", "help", "user", "user talk", "talk", "mediawiki",
+                          "module", "draft"}
+
+
+def link_title(href: str, classes) -> str | None:
+    """The wiki page a link points to, as a title (spaces, no fragment), or None for links that are not to an article:
+    red links (no such page), external links, same-page anchors, icons, and file, category or special pages."""
+    if not href or {"new", "external", "image"} & set(classes) or href.startswith(("#", "http://", "https://", "//", "mailto:")):
+        return None
+    parsed = urlparse(href)
+    if parsed.path.startswith("/w/"):
+        title = unquote(parsed.path[3:])
+    elif parsed.path.endswith("index.php") and "title" in parse_qs(parsed.query):
+        title = parse_qs(parsed.query)["title"][0]
+    else:
+        return None
+    title = normalise_space(title.replace("_", " "))
+    if not title or title.split(":", 1)[0].lower() in NON_ARTICLE_NAMESPACES and ":" in title:
+        return None
+    return title
+
+
+def strip_link_markers(blocks: list[str], records: list[dict]) -> tuple[list[str], list[dict]]:
+    """Remove the link markers from a section's blocks and turn the recorded links into
+    [{title, text, start, end}], where start and end are character positions in "\\n".join(blocks) (markers gone)."""
+    out: list[str] = []
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for ch in "\n".join(blocks):
+        if ch == LINK_START:
+            start = len(out)
+        elif ch == LINK_END:
+            spans.append((start, len(out)))
+        else:
+            out.append(ch)
+    clean = "".join(out)
+    links = []
+    for record, (s, e) in zip(records, spans):
+        title = link_title(record["href"], record["classes"])
+        if title and e > s:
+            links.append({"title": title, "text": clean[s:e], "start": s, "end": e})
+    return (clean.split("\n") if clean else []), links
+
+
 class _SectionParser(HTMLParser):
     """Walks parsed wiki HTML and collects, per heading, the text blocks under it.
 
     Paragraphs, list items and table rows each become one line (list items start with "- ", table cells are
     separated by " | "). Edit links, references, navigation boxes, scripts and styles are left out.
+    Links are kept as markers around their text, resolved to positions by `strip_link_markers`.
     """
 
     def __init__(self, page_title: str):
         super().__init__(convert_charrefs=True)
-        self.sections = [{"title": page_title, "level": 1, "anchor": "", "blocks": []}]
+        self.sections = [{"title": page_title, "level": 1, "anchor": "", "blocks": [], "records": []}]
         self.current = self.sections[0]
         self.stack: list[tuple[str, bool]] = []       # (tag, started a skipped region)
         self.skip = 0
         self.buf: list[str] = []
         self.prefix = ""
         self.heading: dict | None = None
+        self.link: dict | None = None                 # the link being read: {href, classes}
 
     def flush(self) -> None:
+        self.end_link()                                        # a link never spans two lines
         text = normalise_space("".join(self.buf))
         self.buf = []
-        if text:
+        if text.replace(LINK_START, "").replace(LINK_END, "").strip():
             self.current["blocks"].append(self.prefix + text)
             self.prefix = ""
+
+    def end_link(self) -> None:
+        """Close the link being read, if any. The end marker goes right after the last visible character, so
+        whitespace inside the anchor but around its text stays outside the link (and collapses normally)."""
+        link, self.link = self.link, None
+        if link is None or not link["started"]:                # no visible text (an icon): nothing to record
+            return
+        tail = ""
+        while self.buf and not self.buf[-1].strip():
+            tail = self.buf.pop() + tail
+        last = self.buf.pop()
+        tail = last[len(last.rstrip()):] + tail
+        self.buf.append(last.rstrip())
+        self.buf.append(LINK_END)
+        if tail:
+            self.buf.append(tail)
+        self.current["records"].append(link)
 
     def handle_starttag(self, tag, attrs):
         if tag in VOID_TAGS:
@@ -167,6 +232,9 @@ class _SectionParser(HTMLParser):
             self.skip += 1
         if self.skip:
             return
+        if tag == "a" and self.heading is None:
+            self.end_link()                                    # a link inside a link is invalid; keep the outer one whole
+            self.link = {"href": a.get("href", ""), "classes": classes, "started": False}
         if tag in HEADING_TAGS:
             self.flush()
             self.heading = {"level": HEADING_TAGS[tag], "anchor": a.get("id"), "parts": []}
@@ -191,14 +259,17 @@ class _SectionParser(HTMLParser):
                 break
         if self.skip:
             return
+        if tag == "a":
+            self.end_link()
         if tag in HEADING_TAGS and self.heading is not None:
             title = normalise_space("".join(self.heading["parts"]))
             if title:
                 self.current = {"title": title, "level": self.heading["level"],
-                                "anchor": self.heading["anchor"] or slug(title), "blocks": []}
+                                "anchor": self.heading["anchor"] or slug(title), "blocks": [], "records": []}
                 self.sections.append(self.current)
             self.heading = None
         elif tag in BLOCK_TAGS:
+            self.end_link()                                    # a link never spans two lines
             self.flush()
             if tag == "li":
                 self.prefix = ""
@@ -206,18 +277,32 @@ class _SectionParser(HTMLParser):
     def handle_data(self, data):
         if self.skip:
             return
-        (self.heading["parts"] if self.heading is not None else self.buf).append(data)
+        if self.heading is not None:
+            self.heading["parts"].append(data)
+            return
+        if self.link is not None and not self.link["started"] and data.strip():
+            lead = data[:len(data) - len(data.lstrip())]       # the start marker goes before the first visible character
+            self.buf += [lead, LINK_START, data[len(lead):]]
+            self.link["started"] = True
+            return
+        self.buf.append(data)
 
     def close(self):
         super().close()
+        self.end_link()
         self.flush()
 
 
 def parse_sections(html_text: str, page_title: str) -> list[dict]:
-    """Split page HTML into sections in document order: [{title, level, anchor, blocks}]. The first is the intro."""
+    """Split page HTML into sections in document order: [{title, level, anchor, blocks, links}]. The first is the intro.
+
+    `links` are the article links in the section as [{title, text, start, end}] (positions in "\\n".join(blocks)).
+    """
     parser = _SectionParser(page_title)
     parser.feed(html_text)
     parser.close()
+    for section in parser.sections:
+        section["blocks"], section["links"] = strip_link_markers(section["blocks"], section.pop("records"))
     return parser.sections
 
 
@@ -240,7 +325,7 @@ def build_tree(raw: list[dict], page_title: str, url: str) -> list[dict]:
             if seen[anchor] > 1:
                 anchor = f"{anchor}_{seen[anchor]}"
         node = {"url": f"{url}#{anchor}" if anchor else url, "title": section["title"], "level": section["level"],
-                "order": len(out), "parent": None, "path": page_title, "text": text}
+                "order": len(out), "parent": None, "path": page_title, "text": text, "links": section.get("links", [])}
         if section["level"] > 1:
             while stack and stack[-1]["level"] >= section["level"]:
                 stack.pop()
@@ -344,21 +429,106 @@ def chunk_text(text: str, tok, size: int = CHUNK_TOKENS, overlap: int = OVERLAP_
     return chunks
 
 
+def locate_chunks(text: str, chunks: list[str]) -> list[int | None]:
+    """Where each chunk starts in the section text it was cut from (chunks are exact substrings, in order)."""
+    starts: list[int | None] = []
+    pos = 0
+    for chunk in chunks:
+        start = text.find(chunk, pos)
+        starts.append(start if start >= 0 else None)
+        if start >= 0:
+            pos = start + 1
+    return starts
+
+
 def build(title: str, revision_id: int, html_text: str, fetched_at: str, tok, size: int = CHUNK_TOKENS,
           overlap: int = OVERLAP_TOKENS) -> dict:
-    """Page HTML to the rows of the graph: wiki, page, sections (tree) and chunks (reading order, no embeddings yet)."""
+    """Page HTML to the rows of the graph: wiki, page, sections (tree) and chunks (reading order, no embeddings yet).
+
+    Each chunk carries `rawLinks`: the article links whose text starts inside it, as [{title, text}] with the titles as
+    written in the page. A link in the overlap between two chunks belongs to both. `apply_links` turns them into pages.
+    """
     url = page_url(title)
     sections = build_tree(parse_sections(html_text, title), title, url)
     chunks: list[dict] = []
     for section in sections:
-        for n, text in enumerate(chunk_text(section["text"], tok, size, overlap)):
+        texts = chunk_text(section["text"], tok, size, overlap)
+        for n, (text, start) in enumerate(zip(texts, locate_chunks(section["text"], texts))):
             embed_text = f"{section['path']}\n\n{text}"
+            raw = [] if start is None else [{"title": l["title"], "text": l["text"]} for l in section["links"]
+                                            if start <= l["start"] < start + len(text)]
             chunks.append({"id": f"{section['url']}~{n}", "section": section["url"], "index": len(chunks), "text": text,
-                           "tokens": tok.count(text), "embedText": embed_text,
+                           "tokens": tok.count(text), "embedText": embed_text, "rawLinks": raw,
                            "textHash": hashlib.sha256(embed_text.encode("utf-8")).hexdigest()})
     return {"wiki": {"url": WIKI_URL, "name": WIKI_NAME},
             "page": {"url": url, "title": title, "revisionId": revision_id, "fetchedAt": fetched_at},
             "sections": sections, "chunks": chunks, "size": size, "overlap": overlap}
+
+
+def resolve_titles(titles: list[str], client: httpx.Client | None = None) -> dict[str, dict | None]:
+    """What each link target is, through the MediaWiki API: {title as linked: {page, target}}.
+
+    `page` is the page that was linked (first letter capitalised by the wiki); `target` is the page it redirects to, or
+    None when it is not a redirect. The value is None for a page that does not exist. A redirect is a fact about the
+    wiki, not something to hide: "Black Bed" is a page that redirects to "Bed", and the link meant Black Bed.
+    Asks 50 titles at a time.
+    """
+    own = client is None
+    client = client or httpx.Client(headers={"User-Agent": USER_AGENT}, timeout=30.0)
+    out: dict[str, dict | None] = {}
+    try:
+        for i in range(0, len(titles), 50):
+            batch = titles[i:i + 50]
+            response = client.get(API_URL, params={"action": "query", "titles": "|".join(batch), "redirects": "1",
+                                                   "format": "json", "formatversion": "2"})
+            response.raise_for_status()
+            query = response.json().get("query", {})
+            normalised = {n["from"]: n["to"] for n in query.get("normalized", [])}
+            redirected = {r["from"]: r["to"] for r in query.get("redirects", [])}
+            exists = {p["title"]: not (p.get("missing") or p.get("invalid")) for p in query.get("pages", [])}
+            for title in batch:
+                page = normalised.get(title, title)
+                if page in redirected:
+                    target = redirected[page]
+                    out[title] = {"page": page, "target": target if exists.get(target, False) else None}
+                else:
+                    out[title] = {"page": page, "target": None} if exists.get(page, False) else None
+    finally:
+        if own:
+            client.close()
+    return out
+
+
+def apply_links(g: dict, resolved: dict[str, dict | None]) -> dict:
+    """Turn each chunk's `rawLinks` into `links` and list the pages and redirects they involve.
+
+    A link goes to the page that was linked, as written ("Black Bed"), never silently to where it redirects. A chunk gets
+    one entry per page: {url, title, count, texts}. If the page is a redirect, `g["redirects"]` has {url, title, to, toTitle}
+    so the graph can hold (Page)-[:REDIRECTS_TO]->(Page). `g["linkedPages"]` is every page involved, as [{url, title}].
+    Links to pages that do not exist and to the page itself (or a redirect to it) are dropped; a title the resolver was
+    not asked about is taken as it is.
+    """
+    own = g["page"]["title"]
+    pages: dict[str, str] = {}
+    redirects: dict[str, dict] = {}
+    for chunk in g["chunks"]:
+        grouped: dict[str, dict] = {}
+        for link in chunk.get("rawLinks", []):
+            info = resolved.get(link["title"], {"page": link["title"], "target": None})
+            if info is None or own in (info["page"], info["target"]):
+                continue
+            entry = grouped.setdefault(info["page"].lower(), {"url": page_url(info["page"]), "title": info["page"], "count": 0, "texts": []})
+            entry["count"] += 1
+            if link["text"] not in entry["texts"]:
+                entry["texts"].append(link["text"])
+            pages[entry["url"]] = entry["title"]
+            if info["target"]:
+                pages[page_url(info["target"])] = info["target"]
+                redirects[entry["url"]] = {"url": entry["url"], "title": entry["title"], "to": page_url(info["target"]), "toTitle": info["target"]}
+        chunk["links"] = list(grouped.values())
+    g["linkedPages"] = [{"url": u, "title": t} for u, t in sorted(pages.items())]
+    g["redirects"] = [redirects[u] for u in sorted(redirects)]
+    return g
 
 
 # --------------------------------------------------------------------------- embeddings and their cache
@@ -493,6 +663,18 @@ def write(g: dict, model: str, uri: str, user: str, password: str, database: str
                          WITH c, r MATCH (s:Section {url: r.section}) CREATE (c)-[:PART_OF]->(s)""", rows=rows, model=model)
             s.run("""UNWIND $pairs AS p MATCH (a:Chunk {id: p[0]}), (b:Chunk {id: p[1]}) CREATE (a)-[:NEXT]->(b)""",
                   pairs=[[a["id"], b["id"]] for a, b in zip(chunks, chunks[1:])])
+            # Pages that are only linked to become stubs (url and title, nothing fetched). A page that is already
+            # loaded keeps all its properties; loading a stub later fills in the same node.
+            s.run("""UNWIND $rows AS r
+                     MERGE (p:Page {url: r.url}) ON CREATE SET p.title = r.title
+                     WITH p MATCH (w:Wiki {url: $wiki}) MERGE (w)-[:HAS_PAGE]->(p)""",
+                  rows=g.get("linkedPages", []), wiki=g["wiki"]["url"])
+            links = [{"chunk": c["id"], **link} for c in chunks for link in c.get("links", [])]
+            for i in range(0, len(links), 500):
+                s.run("""UNWIND $rows AS r MATCH (c:Chunk {id: r.chunk}), (p:Page {url: r.url})
+                         CREATE (c)-[:LINKS_TO {count: r.count, texts: r.texts}]->(p)""", rows=links[i:i + 500])
+            s.run("""UNWIND $rows AS r MATCH (a:Page {url: r.url}), (b:Page {url: r.to}) MERGE (a)-[:REDIRECTS_TO]->(b)""",
+                  rows=g.get("redirects", []))
 
 
 # --------------------------------------------------------------------------- report
@@ -511,6 +693,12 @@ def report(g: dict, model: str) -> list[str]:
     tokens = [c["tokens"] for c in g["chunks"]]
     embed_tokens = sum(c["tokens"] for c in g["chunks"])
     lines.append(f"{len(g['sections'])} sections, {len(g['chunks'])} chunks")
+    if "linkedPages" in g:
+        total = sum(link["count"] for c in g["chunks"] for link in c.get("links", []))
+        lines.append(f"links: {total} in chunks, to {len(g['linkedPages'])} other pages (stubs unless loaded)")
+        if g.get("redirects"):
+            lines.append(f"{len(g['redirects'])} of those pages are redirects (kept as REDIRECTS_TO): "
+                         f"{[f'{r['title']} -> {r['toTitle']}' for r in g['redirects'][:6]]}")
     if tokens:
         lines.append(f"chunk tokens: min {min(tokens)}, median {int(statistics.median(tokens))}, max {max(tokens)}; "
                      f"sections with more than one chunk: {sum(1 for v in per_section.values() if len(v) > 1)}")
@@ -545,6 +733,11 @@ def main() -> int:
         sys.exit(f"could not fetch the page: {exc}")
     g = build(fetched["title"], fetched["revisionId"], fetched["html"],
               datetime.now(timezone.utc).isoformat(timespec="seconds"), TikTokenizer(), args.size, args.overlap)
+    raw_titles = sorted({link["title"] for c in g["chunks"] for link in c["rawLinks"]})
+    try:
+        apply_links(g, resolve_titles(raw_titles) if raw_titles else {})      # redirects followed, missing pages dropped
+    except httpx.HTTPError as exc:
+        sys.exit(f"could not resolve the links: {exc}")
     print("\n".join(report(g, args.model)))
     if args.dry_run:
         if cache_exists(args.cache) and g["chunks"]:
@@ -558,7 +751,7 @@ def main() -> int:
         stats = embed_chunks(g["chunks"], cache, args.model, openai_embedder(args.model))
     print(f"embeddings: {stats['fromCache']} chunks from the cache, {stats['embedded']} texts sent to OpenAI")
     write(g, args.model, s.neo4j_uri, s.neo4j_user, s.neo4j_password, s.neo4j_database, wipe=args.wipe)
-    print(f"loaded {len(g['sections'])} sections and {len(g['chunks'])} chunks into {s.neo4j_database}.")
+    print(f"loaded {len(g['sections'])} sections, {len(g['chunks'])} chunks and links to {len(g['linkedPages'])} pages into {s.neo4j_database}.")
     return 0
 
 
