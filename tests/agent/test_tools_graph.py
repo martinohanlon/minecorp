@@ -19,36 +19,66 @@ def call(graph, name, **args):
     return tools.TOOLS_BY_NAME[name].fn(graph, args)
 
 
-# --------------------------------------------------------------------------- find_item and name resolution
+# --------------------------------------------------------------------------- find and name resolution
 
-class TestFindItem:
+class TestFind:
     def test_the_exact_name_comes_first(self, agent_graph):
-        assert call(agent_graph, "find_item", query="iron pickaxe")["matches"][0] == {"id": "minecraft:iron_pickaxe", "name": "Iron Pickaxe"}
+        assert call(agent_graph, "find", query="iron pickaxe")["matches"][0] == {"id": "minecraft:iron_pickaxe", "name": "Iron Pickaxe", "kind": "item"}
 
     @pytest.mark.parametrize("query", ["iron_ingot", "minecraft:iron_ingot", "Iron Ingot", "IRON INGOT", "  iron   ingot  "])
     def test_ids_slugs_case_and_spacing_all_find_the_same_item(self, agent_graph, query):
-        assert call(agent_graph, "find_item", query=query)["matches"][0]["id"] == "minecraft:iron_ingot"
+        assert call(agent_graph, "find", query=query)["matches"][0]["id"] == "minecraft:iron_ingot"
 
     def test_words_can_be_in_any_order(self, agent_graph):
-        ids = [m["id"] for m in call(agent_graph, "find_item", query="pickaxe iron")["matches"]]
+        ids = [m["id"] for m in call(agent_graph, "find", query="pickaxe iron")["matches"]]
         assert "minecraft:iron_pickaxe" in ids
 
     def test_a_long_phrase_still_finds_items_with_two_of_its_words(self, agent_graph):
-        ids = {m["id"] for m in call(agent_graph, "find_item", query="netherite upgrade diamond pickaxe")["matches"]}
+        ids = {m["id"] for m in call(agent_graph, "find", query="netherite upgrade diamond pickaxe")["matches"]}
         assert {"minecraft:netherite_pickaxe", "minecraft:diamond_pickaxe"} <= ids
 
     def test_at_most_ten_matches(self, agent_graph):
-        assert len(call(agent_graph, "find_item", query="planks")["matches"]) <= 10
-        assert len(call(agent_graph, "find_item", query="pickaxe")["matches"]) == 8     # 7 pickaxes and their category
+        assert len(call(agent_graph, "find", query="planks")["matches"]) <= 10
+        assert len(call(agent_graph, "find", query="pickaxe")["matches"]) == 8     # 7 pickaxes and their category
 
     @pytest.mark.parametrize("query", ["flurble", "", "   "])
     def test_nothing_matched(self, agent_graph, query):
-        assert call(agent_graph, "find_item", query=query) == {"matches": [], "note": "Nothing matched."}
+        assert call(agent_graph, "find", query=query) == {"matches": [], "note": "Nothing matched."}
 
     def test_categories_are_marked_with_their_size(self, agent_graph):
-        matches = call(agent_graph, "find_item", query="planks")["matches"]
+        matches = call(agent_graph, "find", query="planks")["matches"]
         planks = next(m for m in matches if m["id"] == "#minecraft:planks")
-        assert planks == {"id": "#minecraft:planks", "name": "Planks", "category": True, "options": 12}
+        assert planks == {"id": "#minecraft:planks", "name": "Planks", "kind": "category", "category": True, "options": 12}
+
+
+class TestFindEveryKind:
+    @pytest.mark.parametrize("query,kind,id", [
+        ("creeper", "mob", "minecraft:creeper"), ("desert", "biome", "minecraft:desert"),
+        ("Diamond Ore", "block", "minecraft:diamond_ore"), ("village", "structure", None),
+        ("planks", "category", "#minecraft:planks")])
+    def test_each_kind_is_found_and_labelled(self, agent_graph, query, kind, id):
+        matches = call(agent_graph, "find", query=query)["matches"]
+        hit = next((m for m in matches if m["kind"] == kind and (id is None or m["id"] == id)), None)
+        assert hit, matches
+
+    def test_a_name_that_is_an_item_and_a_block_gives_both(self, agent_graph):
+        kinds = {m["kind"] for m in call(agent_graph, "find", query="Diamond Ore")["matches"] if m["name"] == "Diamond Ore"}
+        assert {"item", "block"} <= kinds
+
+    def test_the_kind_limits_the_search(self, agent_graph):
+        matches = call(agent_graph, "find", query="Diamond Ore", kind="block")["matches"]
+        assert matches and {m["kind"] for m in matches} == {"block"}
+
+    def test_an_unknown_kind_is_an_error_for_the_model(self, agent_graph):
+        assert "Unknown kind" in call(agent_graph, "find", query="creeper", kind="monster")["error"]
+
+    @pytest.mark.parametrize("query,expected", [("creepers", "Creeper"), ("dimond pickaxe", "Diamond Pickaxe"), ("pick", "Iron Pickaxe")])
+    def test_plurals_typos_and_prefixes_still_find_it(self, agent_graph, query, expected):
+        assert expected in [m["name"] for m in call(agent_graph, "find", query=query)["matches"]]
+
+    @pytest.mark.parametrize("query", ['iron AND (', 'a+b', '"quote', 'x*y?', 'name:creeper', "\\", '~', 'OR', '[a TO z]'])
+    def test_search_syntax_in_the_text_is_not_an_error(self, agent_graph, query):
+        assert isinstance(call(agent_graph, "find", query=query)["matches"], list)
 
 
 class TestResolveItem:
@@ -117,7 +147,16 @@ class TestGetRecipes:
 
     def test_unknown_and_ambiguous_names_are_errors_for_the_model(self, agent_graph):
         assert "No item matches" in call(agent_graph, "get_recipes", item="flurble")["error"]
-        assert "ambiguous" in call(agent_graph, "get_recipes", item="pickaxe")["error"]
+
+    def test_a_generic_name_shows_every_item_it_fits_in_one_call(self, agent_graph):
+        r = call(agent_graph, "get_recipes", item="pickaxe")
+        assert "error" not in r
+        assert {i["item"] for i in r["items"]} >= {"Iron Pickaxe", "Diamond Pickaxe", "Netherite Pickaxe"}
+        assert all(i["recipes"] for i in r["items"])
+
+    def test_a_name_that_fits_too_many_items_is_ambiguous(self, agent_graph):
+        r = call(agent_graph, "get_recipes", item="ore")
+        assert "ambiguous" in r["error"] and r["candidates"]
 
     def test_a_category_name_is_not_an_item(self, agent_graph):
         assert "error" in call(agent_graph, "get_recipes", item="planks")

@@ -1,6 +1,6 @@
 # Agent tools: review and proposal
 
-2026-10-05. A review of the nine tools the agent has today, and a proposal for a set that covers the whole model (the domain graph, the lexical graph and the bridge; see [ontology.md](ontology.md)). Nothing here is built.
+2026-10-05. A review of the nine tools the agent has today, and a proposal for a set that covers the whole model (the domain graph, the lexical graph and the bridge; see [ontology.md](ontology.md)). Status: step 1 of the order of work is built (the `names` full-text index, `find`, and name resolution that shows every item a generic name fits); the rest is not.
 
 ## What the evidence says
 

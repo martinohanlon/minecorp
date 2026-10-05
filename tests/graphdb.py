@@ -100,6 +100,8 @@ def build_test_graph(jar_path):
         world_graph = lwd.build(jar_path)                              # needs the Block and Mob nodes the actions made
         lwd.write(world_graph, uri, user, password, TEST_DB)
 
+        driver.execute_query("CALL db.awaitIndexes(60)", database_=TEST_DB)      # the names index must be online
+
         org, processes = lm.read_model()
         action_ids = {rec["id"] for rec in driver.execute_query("MATCH (a:Action) RETURN a.id AS id", database_=TEST_DB).records}
         assert lm.validate(org, processes, action_ids) == []

@@ -288,6 +288,8 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> set:
             s.run("CREATE CONSTRAINT block_id IF NOT EXISTS FOR (n:Block) REQUIRE n.id IS UNIQUE")
             s.run("CREATE CONSTRAINT mob_id IF NOT EXISTS FOR (n:Mob) REQUIRE n.id IS UNIQUE")
             s.run("CREATE CONSTRAINT action_id IF NOT EXISTS FOR (n:Action) REQUIRE n.id IS UNIQUE")
+            from name_index import ensure_name_index
+            ensure_name_index(s)
             existing = {r["id"] for r in s.run("MATCH (i:Item) RETURN i.id AS id")}
             s.run("MATCH (n) WHERE n:Harvest OR n:Action DETACH DELETE n")  # regenerate (the graph is rebuilt from source)
             s.run("UNWIND $rows AS r MERGE (i:Item {id: r.id}) SET i.name = coalesce(i.name, r.name)", rows=g["items"])

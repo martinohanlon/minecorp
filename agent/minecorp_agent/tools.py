@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .graph import Graph
+from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
@@ -47,32 +48,8 @@ class Tool:
 # --------------------------------------------------------------------------- finding items
 
 def search_items(graph: Graph, text: str, limit: int = 10) -> list[dict]:
-    """Items and categories matching the words in the text, best matches first.
-
-    Words may appear in any order. With two or more words, items matching at least two of them
-    are returned (those matching all rank first), so a long phrase still finds its likely items.
-    """
-    t = " ".join(text.lower().split())
-    slug = t.replace(" ", "_")
-    words = [w for w in re.split(r"[\s_]+", t) if w]
-    if not words:
-        return []
-    return graph.read(
-        """
-        MATCH (i:Item)
-        WITH i, size([w IN $words WHERE toLower(i.name) CONTAINS w OR i.id CONTAINS w]) AS hits
-        WHERE hits >= $need
-        WITH i, hits,
-             CASE WHEN i.id IN [$slug, 'minecraft:' + $slug, '#minecraft:' + $slug] THEN 0
-                  WHEN toLower(i.name) = $t THEN 1
-                  WHEN toLower(i.name) STARTS WITH $t THEN 2
-                  WHEN toLower(i.name) CONTAINS $t THEN 3
-                  WHEN hits = size($words) THEN 4
-                  ELSE 5 END AS rank
-        RETURN i.id AS id, i.name AS name, i:ItemClass AS isCategory, i.size AS options, rank
-        ORDER BY rank, hits DESC, isCategory, char_length(i.name), i.name
-        LIMIT $limit
-        """, t=t, slug=slug, words=words, need=min(2, len(words)), limit=limit)
+    """Items and categories matching the text, best matches first (see names.search_names)."""
+    return search_names(graph, text, ("item", "category"), limit)
 
 
 def resolve_item(graph: Graph, ref: str, want_category: bool | None = None) -> tuple[dict | None, dict | None]:
@@ -82,7 +59,7 @@ def resolve_item(graph: Graph, ref: str, want_category: bool | None = None) -> t
         rows = [r for r in rows if r["isCategory"] == want_category]
     if not rows:
         kind = "category" if want_category else "item"
-        return None, {"error": f"No {kind} matches '{ref}'. Try find_item with other words."}
+        return None, {"error": f"No {kind} matches '{ref}'. Try find with other words."}
     top = rows[0]
     best = [r for r in rows if r["rank"] == top["rank"]]
     if top["rank"] <= 1 or len(best) == 1:
@@ -100,10 +77,15 @@ def _brief(r: dict) -> dict:
     return out
 
 
-def tool_find_item(graph: Graph, args: dict) -> dict:
-    """find_item: search by words."""
-    rows = search_items(graph, str(args.get("query", "")), 10)
-    return {"matches": [_brief(r) for r in rows]} if rows else {"matches": [], "note": "Nothing matched."}
+def tool_find(graph: Graph, args: dict) -> dict:
+    """find: search every kind of named thing by words."""
+    kind = str(args.get("kind") or "").lower().strip() or None
+    if kind and kind not in KIND_NAMES:
+        return {"error": f"Unknown kind '{kind}'. Use one of: {', '.join(KIND_NAMES)}."}
+    rows = search_names(graph, str(args.get("query", "")), (kind,) if kind else None, 10)
+    if not rows:
+        return {"matches": [], "note": "Nothing matched."}
+    return {"matches": [{**_brief(r), "kind": r["kind"]} for r in rows]}
 
 
 # --------------------------------------------------------------------------- recipes
@@ -185,10 +167,26 @@ def _recipe_view(r: dict) -> dict:
     return out
 
 
+MANY_ITEMS = 8   # a name that fits this many items or fewer shows the recipes of each, so the model need not ask again
+
+
+def _recipes_for_each(graph: Graph, ref: str, candidates: list[dict]) -> dict:
+    """The recipes of several items a name could mean, for a generic name such as 'pickaxe'."""
+    out = []
+    for c in candidates:
+        recipes = fetch_recipes(graph, c["id"])
+        out.append({"item": c["name"], "recipes": [_recipe_view(r) for r in recipes]})
+    return {"note": f"'{ref}' fits {len(out)} items, so each is shown. " + READING_NOTE, "items": out}
+
+
 def tool_get_recipes(graph: Graph, args: dict) -> dict:
     """get_recipes: every way to make one item."""
     item, err = resolve_item(graph, str(args.get("item", "")), want_category=False)
     if err:
+        if "candidates" in err:
+            several = [r for r in search_items(graph, str(args.get("item", "")), 40) if not r["isCategory"]]
+            if 1 < len(several) <= MANY_ITEMS:
+                return _recipes_for_each(graph, str(args.get("item", "")), several)   # "pickaxe": every kind, one call
         return err
     recipes = fetch_recipes(graph, item["id"])
     if not recipes:
@@ -590,11 +588,15 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
 # --------------------------------------------------------------------------- registry
 
 TOOLS: list[Tool] = [
-    Tool("find_item",
-         "Search for Minecraft items and item categories by name. Use this first when unsure of the exact name.",
-         {"type": "object", "properties": {"query": {"type": "string", "description": "words from the name"}},
+    Tool("find",
+         "Search for things in Minecraft by name: items, categories, mobs, blocks, biomes and structures. "
+         "Typos and plurals are fine. Each match says what kind of thing it is. The other tools accept a name "
+         "directly, so use this only when one of them says a name is unknown or ambiguous.",
+         {"type": "object", "properties": {
+             "query": {"type": "string", "description": "words from the name"},
+             "kind": {"type": "string", "enum": list(KIND_NAMES), "description": "only this kind (optional)"}},
           "required": ["query"], "additionalProperties": False},
-         tool_find_item),
+         tool_find),
     Tool("get_recipes",
          "Every way to make one item: station, ingredients and crafting grid. Use for 'how do I make X'. Give the item that is the RESULT (for an upgrade, the upgraded item such as netherite pickaxe).",
          {"type": "object", "properties": {"item": {"type": "string", "description": "item name or id"}},

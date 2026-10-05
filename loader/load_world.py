@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from neo4j import GraphDatabase  # noqa: E402
 
 from load_actions import tag_members  # noqa: E402
+from name_index import ensure_name_index  # noqa: E402
 from load_recipes import DEFAULT_JAR, display_name  # noqa: E402
 from minecorp_agent.config import get_settings  # noqa: E402
 
@@ -367,6 +368,7 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> None:
         with driver.session(database=database) as session:
             for label in (*OWNED, "Mob"):                          # schema changes cannot share a transaction with the data
                 session.run(f"CREATE CONSTRAINT {label.lower()}_id IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE").consume()
+            ensure_name_index(session)
             session.execute_write(work)
 
 

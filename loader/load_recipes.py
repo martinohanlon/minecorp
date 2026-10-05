@@ -377,6 +377,8 @@ def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str, 
                 "CREATE CONSTRAINT player_uuid IF NOT EXISTS FOR (n:Player) REQUIRE n.uuid IS UNIQUE",
             ):
                 s.run(q)
+            from name_index import ensure_name_index
+            ensure_name_index(s)
             s.run("UNWIND $rows AS r MERGE (n:Item {id: r.id}) SET n.name = r.name",
                   rows=g["items"])
             s.run("""UNWIND $rows AS r MERGE (n:Item {id: r.id}) SET n:ItemClass,
