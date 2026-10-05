@@ -1,6 +1,101 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.** v0.8 (wiki lexical graph), v0.9 (linking it to the game graph) and v0.10 (the world: mobs, biomes, structures and ore, 2026-10-05) are built and tested; the Beginner's guide page is loaded with its links, and the link job has only been run as a dry run.
+Living document. Each version records what changed and why. **Status (2026-10-05): two graphs and a bridge, all built from source and tested.** The domain graph (game data, the world, the company) and the lexical graph (community text from the wiki) are described first in "The model"; the sections after it are the design history and the detail behind each part. The one wiki page loaded so far is the Beginner's guide.
+
+## The model: two graphs and the bridge between them
+
+MineCorp holds two kinds of knowledge and keeps them apart. The **domain graph** is what the game and the company *are*: authoritative, read from the Paper jar and from the YAML in `model/`, rebuilt from source. The **lexical graph** is what has been *written* about it: community text from the Minecraft Wiki, cut into chunks with embeddings. A thin **bridge** of derived, reviewable relationships joins them, so a passage can lead to the facts it is about and a fact can lead to the passages that discuss it. Round brackets are nodes, `A | B` means either label, `:Ore` and `:Station` are marker labels.
+
+### The domain graph
+
+It has three regions that share nodes. `Block` and `Mob` are where the game data meets the world, and `Action` is where the company meets the game.
+
+**Game things and how they are made.**
+
+```
+(ItemClass)-[:INCLUDES]->(Item | ItemClass)           categories (planks, beds); ItemClass and Station are marker labels on Item
+(Recipe)-[:REQUIRES {role, count, slot, excludes}]->(Item)       all together; an ItemClass means any one member
+(Recipe)-[:CREATES {count}]->(Item)                  (Recipe)-[:USES_STATION]->(Item:Station)
+(Action:Craft | Smelt | Smith | Cut)-[:CREATES]->(Item)          thin; the recipes meet them at the Item
+(Action:Mine)-[:REQUIRES {role: 'target'}]->(Block)               (Action:Kill | Shear)-[:REQUIRES {role: 'target'}]->(Mob)
+(Action:Mine | Kill | Shear)-[:REQUIRES {role: 'tool', orBetter}]->(Item)
+(Action:Mine | Kill | Shear)-[:CREATES {count, condition}]->(Item)
+(Item) carries route properties: routeSteps, routeLevels, routeBaseMaterials, routeStations (derived)
+```
+
+**The world.**
+
+```
+(MobClass)-[:INCLUDES]->(Mob | MobClass)             (BiomeClass)-[:INCLUDES]->(Biome | BiomeClass)
+(Biome)-[:SPAWNS {category, weight, min, max}]->(Mob)
+(Dimension {minY, height})-[:HAS_BIOME]->(BiomeClass)
+(Structure)-[:GENERATES_IN]->(BiomeClass)            (Structure)-[:SPAWNS {category, boundingBox, weight, min, max}]->(Mob)
+(Biome)-[:GENERATES {step}]->(PlacedFeature:Ore {count, rarity, minY, maxY, peakY})-[:PLACES]->(Feature {size})-[:CREATES {replaces}]->(Block)
+(PlacedFeature)-[:IN_DIMENSION]->(Dimension)
+```
+
+The two regions join at the game's raw materials, which is how "where do I mine iron" is one path:
+
+```
+(Item raw iron)<-[:CREATES]-(Action:Mine)-[:REQUIRES]->(Block iron_ore)<-[:CREATES]-(Feature)<-[:PLACES]-(PlacedFeature)<-[:GENERATES]-(Biome)
+(Item gunpowder)<-[:CREATES]-(Action:Kill)-[:REQUIRES]->(Mob creeper)<-[:SPAWNS]-(Biome)
+```
+
+**The company.**
+
+```
+(OrgUnit)-[:PART_OF]->(OrgUnit)    (Role)-[:IN_UNIT]->(OrgUnit)    (Role)-[:FILLED_BY]->(Player)
+(Role)-[:OWNS]->(Process)-[:HAS_ACTIVITY]->(Activity)-[:HAS_TASK]->(Task)    (Role)-[:PERFORMS]->(Task)
+(Task)-[:NEXT | HANDOFF_TO]->(Task)    (Task)-[:ESCALATES_TO | CONFIRMED_BY]->(Role)
+(Task)-[:HAS_ACTION {order, quantity}]->(Action)     (Player)-[:COMPLETED {at, count}]->(Task)
+```
+
+A task is work in the company; its actions are the game's own, so the company is defined in terms of what the game can do.
+
+### The lexical graph
+
+```
+(Wiki)-[:HAS_PAGE]->(Page {url, title, revisionId, fetchedAt})-[:HAS_SECTION]->(Section)-[:HAS_SUBSECTION]->(Section)
+(Chunk {text, tokens, textHash, embedding, embeddingModel})-[:PART_OF]->(Section)        (Chunk)-[:NEXT]->(Chunk)
+(Chunk)-[:LINKS_TO {count, texts}]->(Page)           (Page)-[:REDIRECTS_TO]->(Page)
+index: vector `chunk_embedding` over Chunk.embedding (1,536 dimensions, cosine)
+```
+
+A section is a tree, a chunk never crosses a heading, and `NEXT` follows reading order within a page. A page that is only linked to is a stub (url and title; no `fetchedAt`, no sections); loading it later fills in the same node, and every link already pointing at it stays. A redirect is a page too: the wiki's own structure is kept as it is, not flattened. Every node carries its source URL; the text is community-written (CC BY-NC-SA).
+
+### The bridge
+
+```
+(Page)-[:ABOUT {method, match, ambiguous, candidates, status}]->(node)
+(Chunk)-[:MENTIONS {method, count, linkCount, surfaces, corroborated, ambiguous, candidates, status}]->(node)
+        node = Item | Mob | Block | Biome | Structure       (classes are not named)
+```
+
+Derived by `link_wiki.py` by following paths (`Chunk-LINKS_TO->Page-ABOUT->node`, with one `REDIRECTS_TO` step only when the linked page is about nothing) and by finding names in the text. Ambiguity is kept as a relationship to every candidate, flagged. Everything on the bridge is a **candidate** until a person confirms it in `model/wiki_links.yaml`. The node a relationship points at says what it is; the relationship stores no kind.
+
+### What each part knows, and where it comes from
+
+- **Domain, game and world:** authoritative for the Paper 26.2 jar; no hand edits. Built by `load_recipes.py`, `load_actions.py`, `load_world.py`, then `compute_routes.py`.
+- **Domain, company:** authored in `model/*.yaml`, loaded by `load_model.py`.
+- **Lexical:** one page, the Tutorial:Beginner's guide, so far (34 sections, 43 chunks, 225 stub pages). Built by `load_wiki.py` (MediaWiki API; OpenAI embeddings, cached).
+- **Bridge:** `link_wiki.py`, reviewed through `model/wiki_links.yaml`.
+- **Rebuild order:** `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
+
+### What it holds today (real database, 2026-10-05)
+
+Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `Action` 2,385, `Block` 1,113, `Mob` 90, `MobClass` 44, `Biome` 66, `BiomeClass` 68, `Structure` 34, `Dimension` 3, `Feature` 32, `PlacedFeature:Ore` 40; company `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 6. Lexical: `Wiki` 1, `Page` 226, `Section` 34, `Chunk` 43. Bridge: `ABOUT` 149, `MENTIONS` 296.
+
+### Which graph answers which question
+
+- *"How do I make a bed?" "What does a creeper drop?" "Where do I mine iron?"* are domain questions: exact, checkable, and the same every time.
+- *"What should I do on my first night?"* is a lexical question: advice and explanation, written by people, to be attributed.
+- *"What does the wiki say about chickens, and what do they drop?"* crosses the bridge: the passage names a mob, and the mob's own drops are facts.
+
+### Not yet modelled
+
+- **Domain:** chest loot, villager trades, fishing and bartering (they fit `Action`), enchantments, advancements, the other 222 placed features (trees, vegetation, lakes), structure sets, mob and block statistics, brewing.
+- **Lexical:** more pages; see [wiki-pages.md](wiki-pages.md) for the tutorials proposed. A full-text index on `Chunk.text`. A quality or edition note on a page (the wiki marks pages as stubs, needing cleanup, or Bedrock-only).
+- **Bridge:** links to `Recipe`, and an LLM extractor for implied mentions, to be measured against the deterministic baseline.
 
 ## Source evidence (Paper 26.2, vanilla)
 
@@ -25,9 +120,9 @@ Observations that drive the model:
 6. Six tag ids collide with item ids (`anvil`, `dirt`, `mud`, `sand`, `stone_bricks`, `terracotta`), so categories and items cannot share an `id` namespace as written in the jar. Minecraft itself writes tag references as `#minecraft:anvil`; v0.4 keeps that notation.
 7. Special recipes (banner duplicate, firework, map extending...) have no declarative inputs. They are modelled as `Recipe` nodes with `special: true` and no ingredient edges, to be described from the wiki later.
 
-## Graph model (v0.7, as built)
+## Domain graph detail: game data and the company (v0.7 diagram)
 
-Every node label and relationship that is built, and nothing else: properties are in the tables below ("Node labels", "Nodes", "Relationships") so this stays readable. Round brackets are node labels. The organization and process nodes are authored in the YAML in `model/`; everything else is generated from the Paper server jar.
+The game-data and company parts of the domain graph as built at v0.7 (the world and the lexical graph came later; see "The model" above). Every node label and relationship of those parts: properties are in the tables below ("Node labels", "Nodes", "Relationships") so this stays readable. Round brackets are node labels. The organization and process nodes are authored in the YAML in `model/`; everything else is generated from the Paper server jar.
 
 ```
                           PART_OF
@@ -565,7 +660,7 @@ An experiment: turn wiki pages into a lexical graph (pages, sections, overlappin
 - A full-text index on `Chunk.text` (for hybrid search).
 - Judging the chunk size: compare with about 10 questions whose answer section is known (is it in the top 3?); change the size or overlap if it fragments too much.
 
-## v0.9: linking the wiki to the game graph (built 2026-10-04; links not yet written to the real database)
+## v0.9: linking the wiki to the game graph (built 2026-10-04; written to the real database 2026-10-05)
 
 The wiki chunks (v0.8) say useful things about items, mobs and blocks, but nothing connected the text to the game data. v0.9 keeps the wiki's own structure (its links and its redirects) as graph, and derives two relationships from it by following paths. Everything derived is a **candidate** (governance): a person reviews it.
 
@@ -600,7 +695,7 @@ The page links 302 times to 225 other pages, 63 of them redirects. 112 pages are
 - Linking to `Recipe`, and an LLM extractor (implied mentions, relationship types such as recommends or warns about), to be measured against this deterministic baseline.
 - Modelling the concept pages the wiki links (Biome, Hunger, Village, Controls).
 
-## v0.10: the world: mobs, biomes, structures and ore (built 2026-10-05; not yet loaded into the real database)
+## v0.10: the world: mobs, biomes, structures and ore (built and loaded 2026-10-05)
 
 Where things are. Everything here is read from the Paper jar by `loader/load_world.py` (so it can be rebuilt from source), and it connects to what is already there: the `Mob` and `Block` nodes, and through them the `Mine` and `Kill` actions that give items.
 
@@ -693,7 +788,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 - **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
 - **v0.10 built** (2026-10-05): `loader/load_world.py`: `Mob` completed to 90, `MobClass`, `Biome`, `BiomeClass`, `Structure`, `Dimension`, `Feature`, `PlacedFeature:Ore`, `SPAWNS`, `GENERATES_IN`, `HAS_BIOME`, `GENERATES`, `PLACES`, `IN_DIMENSION`; ore heights resolved to block heights. The link job now also names Biome and Structure. 75 unit, 52 real-jar and 28 graph tests; every fault injected into the loader was caught. Found while building: Neo4j does not allow constraints and data in one transaction (constraints first); the shared tag walk is order-dependent on cyclic tags (none in the data); `the_void` is in no dimension.
 - **v0.9 agent use** (2026-10-05): `search_wiki` hits and `read_section` list the nodes a passage is about (`mentions`: name, kind from the node's labels, id, `linked`, `ambiguous`), read by following `MENTIONS`; ambiguous words list every candidate so the model chooses from the passage; the model follows a mention to `get_recipes` and the other game-data tools. 83 unit and 40 graph tests for the wiki tools; all 29 eval questions pass (the wiki-then-recipe question chains search_wiki, read_section and get_recipes).
-- **v0.9 built** (2026-10-04): `LINKS_TO`, `REDIRECTS_TO`, stub pages, `ABOUT`, `MENTIONS`, built graph-native (the job is Cypher over paths; Python only scans text); ambiguity kept as a relationship to every candidate; targets Item, Mob and Block; `load_wiki.py` keeps links and redirects as pages and relationships; `loader/link_wiki.py` and `model/wiki_links.yaml` (stoplist, aliases, page fixes). 59 unit and 89 graph tests for the job, plus link tests for the loader. Bugs found while building: a text-less icon link shifted every later link out of place (fixed, and a test pins that links never change chunk text); redirects first collapsed every coloured bed into the category Bed (now redirects are pages); the first job write was lazy and not committed on return (now one transaction); wordings on a mention were in a different order on each run (now sorted). Not yet run for real: `link_wiki.py` was only run as a dry run on the real database.
+- **v0.9 built** (2026-10-04): `LINKS_TO`, `REDIRECTS_TO`, stub pages, `ABOUT`, `MENTIONS`, built graph-native (the job is Cypher over paths; Python only scans text); ambiguity kept as a relationship to every candidate; targets Item, Mob and Block; `load_wiki.py` keeps links and redirects as pages and relationships; `loader/link_wiki.py` and `model/wiki_links.yaml` (stoplist, aliases, page fixes). 59 unit and 89 graph tests for the job, plus link tests for the loader. Bugs found while building: a text-less icon link shifted every later link out of place (fixed, and a test pins that links never change chunk text); redirects first collapsed every coloured bed into the category Bed (now redirects are pages); the first job write was lazy and not committed on return (now one transaction); wordings on a mention were in a different order on each run (now sorted). (`link_wiki.py` was then run for real on 2026-10-05.)
 - **v0.8 loader built** (2026-10-04): `loader/load_wiki.py` with 112 unit and 24 graph tests; the test page gives 34 sections and 43 chunks (median 230 tokens, max 300) for about $0.0002 of embedding. Noted while building: recipe pictures (`mcui`, `invslot`) and zero-width characters are removed; an intro with no text is not a node; `NEXT` links chunks within one page; `load_recipes.py --wipe` also removes the wiki nodes, so the wiki is reloaded last (its embeddings come from the cache).
 - **v0.8 DESIGNED** (2026-10-04): lexical graph of the Minecraft wiki (`Wiki`, `Page`, `Section` tree, `Chunk` with embedding, `PART_OF`, `NEXT`); chunking, embedding, cache and provenance rules decided. First test page: Tutorial:Beginner's guide. Not built.
 - **v0.7** (2026-10-02): built. `Action` node with a verb label (Craft, Smelt, Smith, Cut, Mine, Kill, Shear) between `Task` and the vanilla `Recipe` nodes; `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED` removed (Mine, Kill and Shear actions carry target, tool and drops); transforming actions are thin and meet their `Recipe` nodes at the `Item`; `HAS_ACTION {order, quantity}`; several ordered actions per task with one role; no recipe pin; 2,385 actions generated; full rebuild from source in 30 seconds. `load_harvests.py` renamed `load_actions.py`.
