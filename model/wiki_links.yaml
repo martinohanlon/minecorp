@@ -19,7 +19,7 @@
 #             Log: "#minecraft:logs"
 #             Wind: null
 
-stoplist: []
+stoplist: [the end]
 
 aliases: {}
 
