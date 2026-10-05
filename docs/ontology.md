@@ -1,6 +1,6 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.** v0.8 (wiki lexical graph) and v0.9 (linking it to the game graph) are built and tested (2026-10-04); the Beginner's guide page is loaded with its links, and the link job has only been run as a dry run.
+Living document. Each version records what changed and why. Status: **v0.7 BUILT and loaded (2026-10-02): recipes, actions (gathering and transforming), the organization and the Iron tool line. The graph can be rebuilt from source.** v0.8 (wiki lexical graph), v0.9 (linking it to the game graph) and v0.10 (the world: mobs, biomes, structures and ore, 2026-10-05) are built and tested; the Beginner's guide page is loaded with its links, and the link job has only been run as a dry run.
 
 ## Source evidence (Paper 26.2, vanilla)
 
@@ -574,7 +574,7 @@ The wiki chunks (v0.8) say useful things about items, mobs and blocks, but nothi
 (Page)-[:ABOUT {method, match, ambiguous, candidates, status}]->(node)    a page is about the nodes its title names
 (Chunk)-[:MENTIONS {method, count, linkCount, surfaces, corroborated,
                     ambiguous, candidates, status}]->(node)               a chunk is about the nodes it points at
-        node = (:Item) | (:Mob) | (:Block that is not also an Item)
+        node = (:Item) | (:Mob) | (:Block that is not also an Item) | (:Biome) | (:Structure)
 ```
 
 - **One `Page` per URL.** A page that is only linked to is a stub `Page` (`url`, `title`; no `fetchedAt`, no sections). Loading it later fills in the same node, and the links to it stay. A redirect is a page too: **`(:Page {title: 'Black Bed'})-[:REDIRECTS_TO]->(:Page {title: 'Bed'})`**. A link goes to the page *as written*, never silently to where it lands, because a redirect can hide what was meant: "Black Bed" is the item Black Bed, not the category Bed. Links to files, categories, special pages, red links, external sites and the page itself are dropped; a link in the overlap of two chunks belongs to both; links never change chunk text or hashes.
@@ -599,6 +599,46 @@ The page links 302 times to 225 other pages, 63 of them redirects. 112 pages are
 - A `wiki_about(item)` agent tool (the passages that mention a given node), the other direction of what `search_wiki` now does.
 - Linking to `Recipe`, and an LLM extractor (implied mentions, relationship types such as recommends or warns about), to be measured against this deterministic baseline.
 - Modelling the concept pages the wiki links (Biome, Hunger, Village, Controls).
+
+## v0.10: the world: mobs, biomes, structures and ore (built 2026-10-05; not yet loaded into the real database)
+
+Where things are. Everything here is read from the Paper jar by `loader/load_world.py` (so it can be rebuilt from source), and it connects to what is already there: the `Mob` and `Block` nodes, and through them the `Mine` and `Kill` actions that give items.
+
+```
+(MobClass)-[:INCLUDES]->(Mob | MobClass)            entity-type tags: Undead, Illager, Can Equip Saddle...
+(Biome)-[:SPAWNS {category, weight, min, max}]->(Mob)
+(BiomeClass)-[:INCLUDES]->(Biome | BiomeClass)      biome tags: Is Forest, Has Structure Village Plains...
+(Dimension {minY, height})-[:HAS_BIOME]->(BiomeClass)                       overworld, the nether, the end
+(Structure {type, step, suppressedSpawns})-[:GENERATES_IN]->(BiomeClass)
+(Structure)-[:SPAWNS {category, boundingBox, weight, min, max}]->(Mob)
+
+(Biome)-[:GENERATES {step}]->(PlacedFeature:Ore)-[:PLACES]->(Feature)-[:CREATES {replaces}]->(Block)
+(PlacedFeature)-[:IN_DIMENSION]->(Dimension)
+```
+
+- **Mobs are all the creatures**, not only those that drop something. The jar has 93 top-level entity loot tables (the 16 nested ones are sheep colours); every spawner uses one of them. Without `armor_stand`, `player` and `mannequin` that is **90 mobs** (`load_actions` made 63, the ones with drops). A mob that drops nothing is just a `Mob` with no `Kill` action: the villager is one, so "does it drop anything" is answered by the graph, not by absence of a node.
+- **Classes are separate labels** (`MobClass`, `BiomeClass`), unlike item categories, which are `Item` nodes with a marker label because recipes require them in place of an item. Nothing requires a class in place of a mob or a biome, and keeping them apart means a class is never mistaken for a creature or a place. They use `INCLUDES` and the `#` ids like item categories, and nest like tags do (Undead includes Zombies includes the zombie). A class is kept only when it reaches at least one mob or biome (44 of 48 entity tags; tags about boats and arrows are dropped; 68 biome tags). To find a structure's biomes, walk `GENERATES_IN` then `INCLUDES*`; nothing is expanded or copied.
+- **Dimensions** come from the dimension types (the overworld caves variant is left out) and the `is_overworld`, `is_nether` and `is_end` biome tags. No biome is in two dimensions; `the_void` is in none.
+- **Structures** (34) generate in the biome class their data names. A spawn override that lists mobs becomes `SPAWNS` (a fortress spawns blazes and wither skeletons); one that lists none means that category does not spawn there, kept as `suppressedSpawns` (an ancient city suppresses all eight).
+- **Ore is two shared things.** A `Feature` is what is made: a vein of a size that turns one kind of stone into one kind of ore (`CREATES {replaces}` names the block or tag it replaces). A `PlacedFeature` is where and how often: veins per chunk (`countMin`, `countMax`), `rarityChance` (1 in n chunks), a height range, and the biomes that list it. They are separate because both are shared: 8 of the 32 ore features have two placements (`ore_iron` is placed high and in the middle; redstone, gold and quartz also have two), and 35 of the 40 placements are listed by more than one biome (the upper iron by 55). The name `Feature` in Minecraft is the generator type in code, so the configured one is called `Feature` here only because that is how the data reads it. Only ore placements are loaded (40 of 262, using 32 features); trees, vegetation, lakes and geodes would use the same shape. The marker label `Ore` follows the `ItemClass` and `Station` pattern.
+- **Heights are real block heights.** The data gives each end as an anchor: absolute, above the bottom of the world, or below the top (the top block is `minY + height - 1`). They are resolved with the dimension the placement is generated in (found through the biomes that list it) and clamped to the world: `minY`, `maxY`, and `peakY` where a trapezoid is commonest (its middle, before clamping). The raw anchors are kept as text. The numbers agree with the figures commonly quoted for these ores (from memory, not re-checked against the wiki here), which is a sanity check on the arithmetic, not a proof: iron peaks at y=232 (upper) and 16 (middle), coal 96, copper 48, lapis 0, gold -16, emerald 232, and every diamond placement lies between -64 and 16.
+- **The path answers "where do I mine iron".** `Item raw iron <-CREATES- Mine -REQUIRES-> Block iron_ore <-CREATES- Feature <-PLACES- PlacedFeature <-GENERATES- Biome` gives the three placements (y 80 to 319 peaking at 232, 90 veins per chunk; y -24 to 56, peaking at 16; y -64 to 72) in 55 biomes. Ancient debris is only in the nether, emeralds only in 10 biomes.
+- **Wiki and the world.** The link job names `Biome` and `Structure` nodes too (classes are not named), so the wiki pages Desert, Plains and Igloo become `ABOUT` those nodes and text mentioning them becomes `MENTIONS`. `model/wiki_links.yaml` accepts `{biome: id}` and `{structure: id}`.
+
+### Rebuild order
+
+`load_recipes.py --all --wipe`, `load_actions.py`, **`load_world.py`**, `load_model.py`, `compute_routes.py`, then `load_wiki.py` and `link_wiki.py`. The world loader needs the `Block` and `Mob` nodes the actions loader makes; it deletes and recreates its own nodes and merges the mobs, and `load_actions.py` leaves them alone.
+
+### Measured on the 26.2 jar
+
+90 mobs, 44 mob classes, 66 biomes, 68 biome classes, 34 structures, 3 dimensions, 795 biome spawns and 9 structure spawns, 34 structure-to-biome links, 32 ore features, 40 ore placements and 1,433 links from biomes to them.
+
+### Not in v0.10
+
+- The other 222 placed features (trees, vegetation, lakes, geodes), structure sets (spacing and frequency), carvers, spawn costs.
+- Chest loot, villager trades, fishing and bartering (these fit the `Action` model), enchantments and advancements.
+- Mob and block statistics (health, damage, hardness) and brewing, which are in game code, not the data files.
+- Agent tools that read the world (parked while the tools are reviewed). `search_wiki` already lists Biome and Structure mentions.
 
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
@@ -627,6 +667,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-05 | v0.10 (built): the world from the jar. Every creature is a `Mob` (90), a mob that drops nothing has no `Kill` action. Tag classes are separate labels (`MobClass`, `BiomeClass`) with `INCLUDES`, not marker labels. Ore is a shared `Feature` and a shared `PlacedFeature:Ore`, heights resolved to block heights and clamped to the world. Only ore placements for now. Link targets widened to Biome and Structure. |
 | 2026-10-04 | v0.9 (built): one `Page` per URL with stubs for pages only linked to; redirects are pages with `REDIRECTS_TO`; `(Chunk)-[:LINKS_TO]->(Page)`; `(Page)-[:ABOUT]->(node)` and `(Chunk)-[:MENTIONS]->(node)` for Item, Mob and Block, derived by following paths, as candidates; an ambiguous title or name is linked to every candidate with `ambiguous` and `candidates` (the reader decides with context); nothing about the node kind is stored on the relationship; links are positive evidence only; human review file `model/wiki_links.yaml`. |
 | 2026-10-04 | v0.8 (loader built): wiki lexical graph `Wiki` > `Page` > `Section` tree, with `Chunk` `PART_OF` a section and linked by `NEXT`; one chunk kind, 300 tokens with 50 overlap within a section (small section = one chunk); `text-embedding-3-small`; local `shelve` cache of `{hash: embedding}` for rebuilds; provenance stored; MediaWiki API; same database. |
 | 2026-10-02 | v0.7: `Action` node with a verb label replaces `Harvest` and the direct Task-to-Recipe link; `HAS_ACTION {order, quantity}`; thin transforming actions generated for every verb and item; no recipe pin; built. |
@@ -650,6 +691,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 ## Change log
 
 - **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
+- **v0.10 built** (2026-10-05): `loader/load_world.py`: `Mob` completed to 90, `MobClass`, `Biome`, `BiomeClass`, `Structure`, `Dimension`, `Feature`, `PlacedFeature:Ore`, `SPAWNS`, `GENERATES_IN`, `HAS_BIOME`, `GENERATES`, `PLACES`, `IN_DIMENSION`; ore heights resolved to block heights. The link job now also names Biome and Structure. 75 unit, 52 real-jar and 28 graph tests; every fault injected into the loader was caught. Found while building: Neo4j does not allow constraints and data in one transaction (constraints first); the shared tag walk is order-dependent on cyclic tags (none in the data); `the_void` is in no dimension.
 - **v0.9 agent use** (2026-10-05): `search_wiki` hits and `read_section` list the nodes a passage is about (`mentions`: name, kind from the node's labels, id, `linked`, `ambiguous`), read by following `MENTIONS`; ambiguous words list every candidate so the model chooses from the passage; the model follows a mention to `get_recipes` and the other game-data tools. 83 unit and 40 graph tests for the wiki tools; all 29 eval questions pass (the wiki-then-recipe question chains search_wiki, read_section and get_recipes).
 - **v0.9 built** (2026-10-04): `LINKS_TO`, `REDIRECTS_TO`, stub pages, `ABOUT`, `MENTIONS`, built graph-native (the job is Cypher over paths; Python only scans text); ambiguity kept as a relationship to every candidate; targets Item, Mob and Block; `load_wiki.py` keeps links and redirects as pages and relationships; `loader/link_wiki.py` and `model/wiki_links.yaml` (stoplist, aliases, page fixes). 59 unit and 89 graph tests for the job, plus link tests for the loader. Bugs found while building: a text-less icon link shifted every later link out of place (fixed, and a test pins that links never change chunk text); redirects first collapsed every coloured bed into the category Bed (now redirects are pages); the first job write was lazy and not committed on return (now one transaction); wordings on a mention were in a different order on each run (now sorted). Not yet run for real: `link_wiki.py` was only run as a dry run on the real database.
 - **v0.8 loader built** (2026-10-04): `loader/load_wiki.py` with 112 unit and 24 graph tests; the test page gives 34 sections and 43 chunks (median 230 tokens, max 300) for about $0.0002 of embedding. Noted while building: recipe pictures (`mcui`, `invslot`) and zero-width characters are removed; an intro with no text is not a node; `NEXT` links chunks within one page; `load_recipes.py --wipe` also removes the wiki nodes, so the wiki is reloaded last (its embeddings come from the cache).

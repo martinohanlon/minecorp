@@ -48,7 +48,32 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py` (free when the embedding cache is intact), then run `link_wiki.py`.
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py` (free when the embedding cache is intact), then run `link_wiki.py`.
+
+## World loader: mobs, biomes, structures and ore (v0.10)
+
+`load_world.py` reads the biomes, structures, dimension types, entity-type and biome tags, and the ore placements from the Paper jar. Run it after `load_actions.py` (it needs the `Block` and `Mob` nodes) and before `load_model.py`:
+
+```powershell
+.venv\Scripts\python loader\load_world.py --dry-run     # parse and report, no database
+.venv\Scripts\python loader\load_world.py               # load
+```
+
+```
+(Biome)-[:SPAWNS {category, weight, min, max}]->(Mob)           (MobClass | BiomeClass)-[:INCLUDES]->...
+(Structure)-[:GENERATES_IN]->(BiomeClass)-[:INCLUDES*]->(Biome)     (Structure)-[:SPAWNS ...]->(Mob)
+(Dimension {minY, height})-[:HAS_BIOME]->(BiomeClass)
+(Biome)-[:GENERATES {step}]->(PlacedFeature:Ore)-[:PLACES]->(Feature)-[:CREATES {replaces}]->(Block)
+```
+
+A `Feature` is what an ore vein is (size, which blocks it makes and replaces); a `PlacedFeature` is where and how often (veins per chunk, rarity, height range in real block heights clamped to the world, and the peak where a trapezoid is commonest). The same feature has several placements and a placement is listed by many biomes. Every creature becomes a `Mob` (90, not only the 63 that drop something). Only ore placements are loaded so far. Try it (where raw iron can be mined, with heights):
+
+```cypher
+MATCH (:Item {id: 'minecraft:raw_iron'})<-[:CREATES]-(:Mine)-[:REQUIRES {role: 'target'}]->(:Block)<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)
+RETURN DISTINCT p.name, p.countMin, p.minY, p.maxY, p.peakY
+```
+
+The model is described in [docs/ontology.md](../docs/ontology.md) (v0.10). Rebuild order for everything: `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
 
 ## Wiki loader: a lexical graph of minecraft.wiki (v0.8)
 
@@ -99,7 +124,7 @@ The recipe loader is idempotent (it uses `MERGE`); `--wipe` deletes everything f
 ```
 (Page)-[:ABOUT]->(node)        a page is about the nodes whose name is its title ("Torch" -> the item Torch)
 (Chunk)-[:MENTIONS]->(node)    the chunk is about the node, by a link or by a name in the text (or both)
-       node = Item (a category and a station are Items too) | Mob | Block that is not also an Item
+       node = Item (a category and a station are Items too) | Mob | Block that is not also an Item | Biome | Structure
 ```
 
 A link counts by following a path: `(Chunk)-[:LINKS_TO]->(Page)-[:ABOUT]->(node)`, and if the linked page is about nothing, one `REDIRECTS_TO` step first. So a link to Black Bed means the item Black Bed (not the category Bed), and a link to Wood (a redirect to Logs) means the category. Where a title or a name can mean several nodes (the page Chicken is the mob and the item; dirt is the item and the category) there is a relationship to **each** of them, with `ambiguous: true` and `candidates: n`, and whatever reads the graph next decides from the context. The node a relationship points at says what it is, so no kind is stored on the relationship. `linkCount` is how many wiki links point at the node, `count` how often its name appears, `surfaces` the wordings, `corroborated` whether the same page links it anywhere; `status` is `candidate`, or `confirmed` for a fix from the config. A link is evidence; no link says nothing (editors link the first mention only), so nothing is dropped for lacking one.
@@ -165,9 +190,12 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 | `test_load_model.py` (42) | nothing | every validation error in the YAML model, plus the real `model/` files |
 | `test_real_jar.py` (37, marker `jar`) | the Paper jar | rules that hold for any version, and known vanilla facts that act as canaries when the server version changes |
 | `test_load_wiki.py` (193) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the page links (positions, redirects as pages, the text unchanged by links), the report and the command line (a dry run touches nothing) |
-| `test_link_wiki.py` (59) | nothing | the link job's Python: the written forms of names, the scan of chunk text (longest name first, whole words, stoplist, aliases), the review config, the report text |
+| `test_load_world.py` (75) | nothing (a small jar made in the test) | the world loader: which creatures are mobs, tag classes, biomes and their spawns, dimensions, structures and their biome links and spawn overrides, the vertical anchors (above the bottom, below the top), clamping and peaks, ore features and placements, steps |
+| `test_real_jar_world.py` (52, marker `jar`) | the Paper jar | what must hold for any version (every spawn names a mob and a biome that exist, no biome in two dimensions) and canary facts commonly quoted for the game (iron peaks at 232, diamond at the bottom of the world, ancient debris only in the nether) |
+| `test_world_integration.py` (28, marker `integration`) | Neo4j Enterprise and the jar | the world in the rebuilt graph: counts, the villager as a mob that drops nothing, classes and structures reached by `INCLUDES*`, and the path from raw iron to the places and heights it can be mined at |
+| `test_link_wiki.py` (63) | nothing | the link job's Python: the written forms of names, the scan of chunk text (longest name first, whole words, stoplist, aliases), the review config, the report text |
 | `test_wiki_integration.py` (37, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the wiki graph written into its own throwaway database `minecorpwikitest`: tree, chunks, `PART_OF`, one `NEXT` chain, constraints, the vector index and a vector search, reloading a page, a second page, and `--wipe` leaving the game graph alone |
-| `test_link_wiki_integration.py` (89, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the link job on a small game graph and loaded wiki pages in `minecorplinktest`: what a title is about, ambiguity linked to every candidate, links followed through redirects, names in text, the two kinds of evidence merged, dry run rolled back, one transaction, hand-made links kept |
+| `test_link_wiki_integration.py` (100, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the link job on a small game graph and loaded wiki pages in `minecorplinktest`: what a title is about, ambiguity linked to every candidate, links followed through redirects, names in text, the two kinds of evidence merged, dry run rolled back, one transaction, hand-made links kept |
 | `test_graph_integration.py` (34, marker `integration`) | Neo4j Enterprise and the jar | the whole rebuild in order into the `minecorptest` database, which is dropped afterwards; shape, counts, the model, and the rebuild contract |
 
 The database fixtures (`built`, `db`) live in `tests/conftest.py` and `tests/graphdb.py`, and are shared with the agent's graph tests, so the graph is built once per run.
