@@ -48,7 +48,7 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py` (free when the embedding cache is intact).
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py` (free when the embedding cache is intact), then run `link_wiki.py`.
 
 ## Wiki loader: a lexical graph of minecraft.wiki (v0.8)
 
@@ -84,6 +84,27 @@ RETURN s.title, c.index, c.tokens, left(c.text, 80) ORDER BY c.index
 ```
 
 The recipe loader is idempotent (it uses `MERGE`); `--wipe` deletes everything first.
+
+## Linking the wiki to the game graph (v0.9)
+
+`load_wiki.py` also keeps the wiki's own structure as graph: `(Chunk)-[:LINKS_TO {count, texts}]->(Page)` for each link, and `(Page)-[:REDIRECTS_TO]->(Page)` for a page that redirects (the Black Bed page redirects to Bed). A link goes to the page *as written*. A page that is only linked to is a stub `Page` (url and title; no `fetchedAt`, no sections); loading it later fills in the same node. The chunk text and the embedding hashes are not affected by links.
+
+`link_wiki.py` then connects the wiki to the game graph. The work is Cypher in one transaction; Python only scans the text for names. It needs no OpenAI and replaces its own earlier links, so run it as often as you like (after `load_wiki.py` and the game-graph loaders):
+
+```powershell
+.venv\Scripts\python loader\link_wiki.py --dry-run     # does everything, prints the review report, rolls back
+.venv\Scripts\python loader\link_wiki.py               # keeps the links
+```
+
+```
+(Page)-[:ABOUT]->(node)        a page is about the nodes whose name is its title ("Torch" -> the item Torch)
+(Chunk)-[:MENTIONS]->(node)    the chunk is about the node, by a link or by a name in the text (or both)
+       node = Item (a category and a station are Items too) | Mob | Block that is not also an Item
+```
+
+A link counts by following a path: `(Chunk)-[:LINKS_TO]->(Page)-[:ABOUT]->(node)`, and if the linked page is about nothing, one `REDIRECTS_TO` step first. So a link to Black Bed means the item Black Bed (not the category Bed), and a link to Wood (a redirect to Logs) means the category. Where a title or a name can mean several nodes (the page Chicken is the mob and the item; dirt is the item and the category) there is a relationship to **each** of them, with `ambiguous: true` and `candidates: n`, and whatever reads the graph next decides from the context. The node a relationship points at says what it is, so no kind is stored on the relationship. `linkCount` is how many wiki links point at the node, `count` how often its name appears, `surfaces` the wordings, `corroborated` whether the same page links it anywhere; `status` is `candidate`, or `confirmed` for a fix from the config. A link is evidence; no link says nothing (editors link the first mention only), so nothing is dropped for lacking one.
+
+The report lists what to review: ambiguous pages, linked pages that are about nothing in the game (Biome, Hunger...), and name-only mentions the page never links, which is where generic words show up. Put fixes in `model/wiki_links.yaml` (it explains `stoplist`, `aliases` and `pages`) and run again. The job's relationships carry `origin: 'link_wiki'`; relationships you add by hand with another origin are kept.
 
 ## Sample queries (Neo4j Browser at http://localhost:7474)
 
@@ -143,8 +164,10 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 | `test_load_actions.py` (40) | nothing (builds a tiny jar in a temp folder) | tool tiers and the "required" rule, loot conditions, rolls and negative ranges, loot tables that point at other tables, the action rows that come out |
 | `test_load_model.py` (42) | nothing | every validation error in the YAML model, plus the real `model/` files |
 | `test_real_jar.py` (37, marker `jar`) | the Paper jar | rules that hold for any version, and known vanilla facts that act as canaries when the server version changes |
-| `test_load_wiki.py` (112) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the report and the command line (a dry run touches nothing) |
-| `test_wiki_integration.py` (24, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the wiki graph written into its own throwaway database `minecorpwikitest`: tree, chunks, `PART_OF`, one `NEXT` chain, constraints, the vector index and a vector search, reloading a page, a second page, and `--wipe` leaving the game graph alone |
+| `test_load_wiki.py` (193) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the page links (positions, redirects as pages, the text unchanged by links), the report and the command line (a dry run touches nothing) |
+| `test_link_wiki.py` (59) | nothing | the link job's Python: the written forms of names, the scan of chunk text (longest name first, whole words, stoplist, aliases), the review config, the report text |
+| `test_wiki_integration.py` (37, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the wiki graph written into its own throwaway database `minecorpwikitest`: tree, chunks, `PART_OF`, one `NEXT` chain, constraints, the vector index and a vector search, reloading a page, a second page, and `--wipe` leaving the game graph alone |
+| `test_link_wiki_integration.py` (89, marker `integration`) | Neo4j Enterprise (no jar, no OpenAI) | the link job on a small game graph and loaded wiki pages in `minecorplinktest`: what a title is about, ambiguity linked to every candidate, links followed through redirects, names in text, the two kinds of evidence merged, dry run rolled back, one transaction, hand-made links kept |
 | `test_graph_integration.py` (34, marker `integration`) | Neo4j Enterprise and the jar | the whole rebuild in order into the `minecorptest` database, which is dropped afterwards; shape, counts, the model, and the rebuild contract |
 
 The database fixtures (`built`, `db`) live in `tests/conftest.py` and `tests/graphdb.py`, and are shared with the agent's graph tests, so the graph is built once per run.

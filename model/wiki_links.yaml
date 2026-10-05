@@ -1,0 +1,26 @@
+# Human review of how wiki text is linked to the game graph (docs/ontology.md v0.9).
+# Read by loader/link_wiki.py. Run `python loader/link_wiki.py --dry-run` to see what to put here.
+#
+# stoplist  Words the name scan must ignore because they name a node but are usually just ordinary words
+#           (for example "wall" or "axe"). Lower case. It only affects mentions found by scanning the text;
+#           mentions that come from the wiki's own links are never filtered.
+#
+# aliases   Wording that means a node but is not its name. Surface text (lower case) -> the node. A plain id is an
+#           item; use {mob: id} or {block: id} for the others, or a list to name several.
+#           Example:  crafting bench: minecraft:crafting_table
+#                     fowl: {mob: minecraft:chicken}
+#
+# pages     Fixes to what a wiki page is about. Page title -> the node(s), written like an alias, or null for "this
+#           page is about nothing in the game". Use it when the title match is wrong or missing. A fix is stored as
+#           status "confirmed". Titles that name several nodes (the page "Chicken" is the mob and the item) are
+#           linked to every candidate by default; a fix narrows that.
+#           Examples:
+#             Chicken: {mob: minecraft:chicken}
+#             Log: "#minecraft:logs"
+#             Wind: null
+
+stoplist: []
+
+aliases: {}
+
+pages: {}
