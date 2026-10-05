@@ -1,6 +1,6 @@
 # MineCorp ontology
 
-Living document. Each version records what changed and why. **Status (2026-10-05): two graphs and a bridge, all built from source and tested.** The domain graph (game data, the world, the company) and the lexical graph (community text from the wiki) are described first in "The model"; the sections after it are the design history and the detail behind each part. The one wiki page loaded so far is the Beginner's guide.
+Living document. Each version records what changed and why. **Status (2026-10-05): two graphs and a bridge, all built from source and tested.** The domain graph (game data, the world, the company) and the lexical graph (community text from the wiki) are described first in "The model"; the sections after it are the design history and the detail behind each part. 17 tutorial pages are loaded (`model/wiki_pages.yaml`, judged in [wiki-pages.md](wiki-pages.md)).
 
 ## The model: two graphs and the bridge between them
 
@@ -77,13 +77,13 @@ Derived by `link_wiki.py` by following paths (`Chunk-LINKS_TO->Page-ABOUT->node`
 
 - **Domain, game and world:** authoritative for the Paper 26.2 jar; no hand edits. Built by `load_recipes.py`, `load_actions.py`, `load_world.py`, then `compute_routes.py`.
 - **Domain, company:** authored in `model/*.yaml`, loaded by `load_model.py`.
-- **Lexical:** one page, the Tutorial:Beginner's guide, so far (34 sections, 43 chunks, 225 stub pages). Built by `load_wiki.py` (MediaWiki API; OpenAI embeddings, cached).
+- **Lexical:** the 17 pages of `model/wiki_pages.yaml` (549 sections, 720 chunks), with 1,133 stub pages for the pages they link to. Built by `load_wiki.py --pages` (MediaWiki API; OpenAI embeddings, cached).
 - **Bridge:** `link_wiki.py`, reviewed through `model/wiki_links.yaml`.
 - **Rebuild order:** `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
 
 ### What it holds today (real database, 2026-10-05)
 
-Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `Action` 2,385, `Block` 1,113, `Mob` 90, `MobClass` 44, `Biome` 66, `BiomeClass` 68, `Structure` 34, `Dimension` 3, `Feature` 32, `PlacedFeature:Ore` 40; company `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 6. Lexical: `Wiki` 1, `Page` 226, `Section` 34, `Chunk` 43. Bridge: `ABOUT` 149, `MENTIONS` 296.
+Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `Action` 2,385, `Block` 1,113, `Mob` 90, `MobClass` 44, `Biome` 66, `BiomeClass` 68, `Structure` 34, `Dimension` 3, `Feature` 32, `PlacedFeature:Ore` 40; company `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 6. Lexical: `Wiki` 1, `Page` 1,150 (17 loaded, 1,133 stubs), `Section` 549, `Chunk` 720, `LINKS_TO` 3,191, `REDIRECTS_TO` 423. Bridge: `ABOUT` 673, `MENTIONS` 4,743.
 
 ### Which graph answers which question
 
@@ -94,7 +94,7 @@ Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `A
 ### Not yet modelled
 
 - **Domain:** chest loot, villager trades, fishing and bartering (they fit `Action`), enchantments, advancements, the other 222 placed features (trees, vegetation, lakes), structure sets, mob and block statistics, brewing.
-- **Lexical:** more pages; see [wiki-pages.md](wiki-pages.md) for the tutorials proposed. A full-text index on `Chunk.text`. A quality or edition note on a page (the wiki marks pages as stubs, needing cleanup, or Bedrock-only).
+- **Lexical:** the 40 tutorial pages held back in [wiki-pages.md](wiki-pages.md). A full-text index on `Chunk.text`. A quality or edition note on a page (the wiki marks pages as stubs, needing cleanup, or Bedrock-only).
 - **Bridge:** links to `Recipe`, and an LLM extractor for implied mentions, to be measured against the deterministic baseline.
 
 ## Source evidence (Paper 26.2, vanilla)

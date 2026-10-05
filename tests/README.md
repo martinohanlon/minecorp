@@ -5,7 +5,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | Layer | Where | Tool | What it needs | Time | Count |
 |---|---|---|---|---|---|
 | **Loader unit tests** | `tests/loader/test_load_recipes.py`, `test_load_actions.py`, `test_load_model.py` | pytest | nothing (synthetic data; one test builds a tiny jar in a temp folder) | under 1 s | 125 |
-| **Wiki loader unit tests** | `tests/loader/test_load_wiki.py` | pytest | nothing (word-count tokenizer, fake embedder, mock HTTP) | about 1 s | 193 |
+| **Wiki loader unit tests** | `tests/loader/test_load_wiki.py` | pytest | nothing (word-count tokenizer, fake embedder, mock HTTP) | about 1 s | 211 |
 | **World loader unit tests** | `tests/loader/test_load_world.py` | pytest | nothing (a small jar made in the test) | under 1 s | 75 |
 | **World real-jar tests** | `tests/loader/test_real_jar_world.py` (marker `jar`) | pytest | the Paper jar | under 1 s | 52 |
 | **Link job unit tests** | `tests/loader/test_link_wiki.py` | pytest | nothing | under 1 s | 63 |
@@ -20,7 +20,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,171 tests (1,134 Python, 37 Java). The fast set is 759 Python tests plus the Java ones.
+Counts as of 2026-10-05: 1,189 tests (1,152 Python, 37 Java). The fast set is 777 Python tests plus the Java ones.
 
 ## Running
 

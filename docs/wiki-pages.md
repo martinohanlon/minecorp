@@ -1,6 +1,6 @@
 # Which tutorial pages to put in the lexical graph
 
-2026-10-05. A review of the pages listed under **Introductory** and **General** on https://minecraft.wiki/w/Tutorials (87 pages; the other sections were left out on purpose), and a proposal for which belong in the lexical graph. Nothing is loaded beyond the Beginner's guide.
+2026-10-05. A review of the pages listed under **Introductory** and **General** on https://minecraft.wiki/w/Tutorials (87 pages; the other sections were left out on purpose), and a proposal for which belong in the lexical graph. **Tier 1 was loaded on 2026-10-05** from `model/wiki_pages.yaml` (see "After loading" at the end).
 
 ## How the pages were judged
 
@@ -44,6 +44,27 @@ Worth having, but each waits for something:
 
 ## What this suggests for the loader
 
-- **A reviewed page list.** `model/wiki_pages.yaml`, with the tiers, read by `load_wiki.py --pages`, in the same spirit as `model/wiki_links.yaml`: the choice of what is in the graph is a human decision and should be a file, not a command line.
+- **A reviewed page list.** Done: `model/wiki_pages.yaml`, read by `load_wiki.py --pages`, in the same spirit as `model/wiki_links.yaml`: the choice of what is in the graph is a human decision and is a file, not a command line.
 - **Remember what the wiki says about a page.** Keep the banner on the `Page` as a property (`edition`, `quality`: stub, work in progress, needs cleanup), so the agent can say "this page is marked as needing cleanup" and so Bedrock-only pages cannot slip in unnoticed.
 - **Check retrieval before tier 2.** Load tier 1 and ask the 29 evals plus a set of new questions (where to mine, what to eat, how to build a shelter) before adding more. The tier 2 pages are the ones most likely to make search worse, not better.
+
+## After loading (2026-10-05)
+
+All 17 pages loaded (720 chunks, 677 newly embedded; the Beginner's guide came from the cache). The lexical graph is now 17 pages, 549 sections, 720 chunks and 1,133 stub pages, linked by 3,191 `LINKS_TO` and 423 `REDIRECTS_TO`. After the link job there are 673 `ABOUT` and 4,743 `MENTIONS` over 535 nodes (409 items, 64 mobs, 17 blocks, 31 biomes, 14 structures).
+
+**Retrieval.** Six questions asked of the live search each returned the right page and section first:
+
+- *What y level should I mine diamonds at?* Mining/Diamonds, Branch mining.
+- *How do I get food early on?* the Beginner's guide's Obtaining food.
+- *How do I build a safe shelter on the first night?* Shelters for the first night.
+- *What is an ore vein?* Mining/Ore veins.
+- *How do I stop phantoms attacking me?* Phantom-proofing.
+- *What do I do in the first ten minutes?* Your first 10 minutes.
+
+**For you to review in `model/wiki_links.yaml`.** More text means more ordinary words that are also names. The name-only mentions the pages never link, by size:
+
+- **Wall** (94 mentions in 62 chunks): the shelter pages use the plain word, not the item category.
+- **Meat** (46), **Fire** (34), **Copper** (24), **Lead** (14): common words that are also nodes.
+- **Real ones, probably keep:** Villager, Spawner, Chest, Stone, Piston, Ocean, Iron Pickaxe, Beef, Porkchop.
+- **Ambiguous pages:** 41, mostly an item and its category of the same name (Diamond ore, Iron ore, Anvil, Bucket...), and the fish that are both an item and a mob (Cod, Salmon, Pufferfish, Tropical fish, Rabbit, Chicken).
+- **Concepts the graph does not model:** 430 linked pages, led by Java Edition, Bedrock Edition, Lava, Village, Crafting, Water, Food, Hunger and The Nether. Lava, Water and the Nether are candidates for the domain graph.
