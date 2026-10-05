@@ -134,7 +134,8 @@ class TestScan:
 class TestTargets:
     @pytest.mark.parametrize("value,expected", [
         (None, []), ("minecraft:torch", [("Item", "minecraft:torch")]), ({"mob": "minecraft:chicken"}, [("Mob", "minecraft:chicken")]),
-        ({"item": "a", "mob": "b"}, [("Item", "a"), ("Mob", "b")]), (["x", {"block": "y"}], [("Item", "x"), ("Block", "y")]), ([], [])])
+        ({"item": "a", "mob": "b"}, [("Item", "a"), ("Mob", "b")]), (["x", {"block": "y"}], [("Item", "x"), ("Block", "y")]), ([], []),
+        ({"biome": "minecraft:desert"}, [("Biome", "minecraft:desert")]), ({"structure": "minecraft:igloo"}, [("Structure", "minecraft:igloo")])])
     def test_forms(self, value, expected):
         assert lk.targets(value, "pages.x") == expected
 
@@ -207,7 +208,7 @@ def text(d, stopped=None, problems=(), top=25):
 
 class TestKindOf:
     @pytest.mark.parametrize("labels,kind", [(["Item"], "Item"), (["Item", "ItemClass"], "Category"), (["Item", "Station"], "Station"),
-                                             (["Mob"], "Mob"), (["Block"], "Block"), ([], "Item")])
+                                             (["Mob"], "Mob"), (["Block"], "Block"), (["Biome"], "Biome"), (["Structure"], "Structure"), ([], "Item")])
     def test_the_node_says_what_it_is(self, labels, kind):
         assert lk.kind_of(labels) == kind
 
@@ -239,9 +240,10 @@ class TestReport:
     def test_the_mention_totals_by_method_and_kind(self):
         d = data(mentions=[mention("c1", "Torch", "t", "link+name", 2, 1, corroborated=True), mention("c1", "Stick", "s"),
                            mention("c2", "Black Bed", "b", "link", 0, 1, corroborated=True), mention("c1", "Sheep", "sh", labels=("Mob",)),
-                           mention("c1", "Powder Snow", "ps", labels=("Block",), ambiguous=True)])
+                           mention("c1", "Powder Snow", "ps", labels=("Block",), ambiguous=True),
+                           mention("c1", "Desert", "de", labels=("Biome",)), mention("c1", "Igloo", "ig", labels=("Structure",))])
         out = text(d)
-        assert "mentions: 5  (link 1, name 3, link+name 1)  distinct nodes 5 (Item 3, Mob 1, Block 1)  ambiguous 1" in out
+        assert "mentions: 7  (link 1, name 5, link+name 1)  distinct nodes 7 (Item 3, Mob 1, Block 1, Biome 1, Structure 1)  ambiguous 1" in out
 
     def test_the_review_list_has_only_name_only_mentions_the_page_never_links(self):
         d = data(mentions=[mention("c1", "Torch", "t", "link+name", 2, 1, corroborated=True), mention("c2", "Torch", "t", "name", corroborated=True),

@@ -88,8 +88,8 @@ def clamp(value, default: int, low: int, high: int) -> int:
 
 
 def kind_of(labels: list[str]) -> str:
-    """Item, Category (an item category), Station, Mob or Block: what a node says about itself."""
-    for label in ("Mob", "Block", "ItemClass", "Station"):
+    """Item, Category (an item category), Station, Mob, Block, Biome or Structure: what a node says about itself."""
+    for label in ("Mob", "Block", "Biome", "Structure", "ItemClass", "Station"):
         if label in labels:
             return {"ItemClass": "Category"}.get(label, label)
     return "Item"

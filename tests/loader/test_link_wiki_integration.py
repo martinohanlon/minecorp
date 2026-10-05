@@ -32,6 +32,8 @@ ITEMS = [("minecraft:torch", "Torch", ""), ("minecraft:stick", "Stick", ""), ("m
          ("#minecraft:leaves", "Leaves", "ItemClass")]
 MOBS = [("minecraft:chicken", "Chicken"), ("minecraft:sheep", "Sheep"), ("minecraft:spider", "Spider")]
 BLOCKS = [("minecraft:torch", "Torch"), ("minecraft:wheat", "Wheat"), ("minecraft:powder_snow", "Powder Snow")]
+BIOMES = [("minecraft:desert", "Desert"), ("minecraft:plains", "Plains")]
+STRUCTURES = [("minecraft:igloo", "Igloo"), ("minecraft:village_plains", "Village Plains")]
 
 
 class Words:
@@ -72,6 +74,9 @@ def world(linkdb):
         db.q(f"MATCH (n:Item) WHERE n.id IN $ids SET n:{mark}", ids=[i for i, _, m in ITEMS if m == mark])
     db.q("UNWIND $rows AS r CREATE (:Mob {id: r[0], name: r[1]})", rows=[list(m) for m in MOBS])
     db.q("UNWIND $rows AS r CREATE (:Block {id: r[0], name: r[1]})", rows=[list(b) for b in BLOCKS])
+    db.q("UNWIND $rows AS r CREATE (:Biome {id: r[0], name: r[1]})", rows=[list(b) for b in BIOMES])
+    db.q("UNWIND $rows AS r CREATE (:Structure {id: r[0], name: r[1]})", rows=[list(s) for s in STRUCTURES])
+    db.q("CREATE (:BiomeClass {id: '#minecraft:is_overworld', name: 'Is Overworld'}), (:MobClass {id: '#minecraft:undead', name: 'Undead'})")
 
     class World:
         pass
@@ -179,6 +184,45 @@ class TestAbout:
         world.stubs("Biome", "Java Edition")
         link(session)
         assert world.db.one("MATCH (:Page)-[a:ABOUT]->() RETURN count(a)") == 0
+
+
+class TestAboutBiomesAndStructures:
+    """The world graph's biomes and structures are named too; its classes are not."""
+
+    @pytest.mark.parametrize("title,expected", [("Desert", {"Biome:minecraft:desert"}), ("Plains", {"Biome:minecraft:plains"}),
+                                                ("Igloo", {"Structure:minecraft:igloo"}), ("Igloos", {"Structure:minecraft:igloo"}),
+                                                ("Village Plains", {"Structure:minecraft:village_plains"})])
+    def test_a_page_is_about_a_biome_or_a_structure(self, world, session, title, expected):
+        world.stubs(title)
+        link(session)
+        assert set(about(world.db, title)) == expected
+
+    @pytest.mark.parametrize("title", ["Is Overworld", "Undead"])
+    def test_a_class_is_not_something_a_page_is_about(self, world, session, title):
+        world.stubs(title)
+        link(session)
+        assert about(world.db, title) == {}
+
+    def test_text_names_a_biome_and_a_structure(self, world, session):
+        world.text("In the desert we found an igloo and a village.")
+        link(session)
+        assert nodes_mentioned(world.db) == {"Biome:minecraft:desert", "Structure:minecraft:igloo"}
+
+    def test_a_class_is_never_mentioned(self, world, session):
+        world.text("The undead roam the overworld.")
+        link(session)
+        assert nodes_mentioned(world.db) == set()
+
+    def test_a_fix_can_name_a_biome(self, world, session):
+        world.stubs("Dry Lands")
+        link(session, pages={"dry lands": [("Biome", "minecraft:desert")]})
+        assert set(about(world.db, "Dry Lands")) == {"Biome:minecraft:desert"}
+
+    def test_a_link_to_a_biome_page_is_a_linked_mention_of_it(self, world, session):
+        world.text("We crossed the <a href='/w/Desert'>sands</a>.", pages("Desert"))
+        link(session)
+        m = mentions(world.db)[("~0", "Biome:minecraft:desert")]
+        assert (m["method"], m["linkCount"], m["surfaces"]) == ("link", 1, ["sands"])
 
 
 class TestAboutConfig:

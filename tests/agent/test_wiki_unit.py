@@ -231,7 +231,7 @@ def section_graph(chunks=(), subsections=(), trail=("Shelter",), before=(), afte
 
 class TestKindOf:
     @pytest.mark.parametrize("labels,kind", [(["Item"], "Item"), (["Item", "ItemClass"], "Category"), (["Item", "Station"], "Station"),
-                                             (["Mob"], "Mob"), (["Block"], "Block"), ([], "Item")])
+                                             (["Mob"], "Mob"), (["Block"], "Block"), (["Biome"], "Biome"), (["Structure"], "Structure"), ([], "Item")])
     def test_the_node_says_what_it_is(self, labels, kind):
         assert wiki.kind_of(labels) == kind
 

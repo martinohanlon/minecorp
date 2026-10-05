@@ -57,8 +57,11 @@ ORIGIN = "link_wiki"
 TOP = 25
 KINDS = ("Item", "Mob", "Block")
 
-# The nodes a name can mean. A block that is also an item (the torch) is covered by the item, not counted twice.
-NAMED = "(n:Item OR n:Mob OR n:Block) AND NOT (n:Block AND EXISTS { MATCH (i:Item {id: n.id}) })"
+# The nodes a name can mean. A block that is also an item (the torch) is covered by the item, not counted twice. The classes
+# (item categories aside) are not named: "Can Equip Saddle" or "Has Structure Village Plains" is not something a page is about.
+NODE_LABELS = "(n:Item OR n:Mob OR n:Block OR n:Biome OR n:Structure)"
+NOT_A_TWIN = "NOT (n:Block AND EXISTS { MATCH (i:Item {id: n.id}) })"
+NAMED = f"{NODE_LABELS} AND {NOT_A_TWIN}"
 # A node named in the config as {kind, id}: the kind is one of its labels.
 CONFIG_NODE = "any(t IN {targets} WHERE n.id = t.id AND t.kind IN labels(n))"
 
@@ -128,8 +131,8 @@ def targets(value, where: str) -> list[tuple[str, str]]:
     if isinstance(value, dict):
         out = []
         for key, id_ in value.items():
-            if str(key).lower() not in ("item", "mob", "block") or not isinstance(id_, str):
-                raise ValueError(f"{where}: expected item, mob or block with an id, got {key!r}: {id_!r}")
+            if str(key).lower() not in ("item", "mob", "block", "biome", "structure") or not isinstance(id_, str):
+                raise ValueError(f"{where}: expected item, mob, block, biome or structure with an id, got {key!r}: {id_!r}")
             out.append((str(key).capitalize(), id_))
         return out
     if isinstance(value, list):
@@ -200,8 +203,8 @@ def mention_names(tx, found: list[dict], at: str) -> None:
     for i in range(0, len(found), 500):
         tx.run(f"""UNWIND $found AS f
                    MATCH (c:Chunk {{id: f.chunk}})
-                   MATCH (n) WHERE (n:Item OR n:Mob OR n:Block)
-                         AND ((toLower(n.name) IN f.names AND {NAMED.split(' AND ', 1)[1]}) OR {CONFIG_NODE.format(targets='f.targets')})
+                   MATCH (n) WHERE {NODE_LABELS}
+                         AND ((toLower(n.name) IN f.names AND {NOT_A_TWIN}) OR {CONFIG_NODE.format(targets='f.targets')})
                    WITH f, c, collect(n) AS ns
                    UNWIND ns AS n
                    MERGE (c)-[m:MENTIONS {{origin: $origin}}]->(n)
@@ -288,8 +291,8 @@ def read_results(tx) -> dict:
 
 
 def kind_of(labels: list[str]) -> str:
-    """Item, Category (an item category), Station, Mob or Block: what the node says about itself."""
-    for label in ("Mob", "Block", "ItemClass", "Station"):
+    """Item, Category (an item category), Station, Mob, Block, Biome or Structure: what the node says about itself."""
+    for label in ("Mob", "Block", "Biome", "Structure", "ItemClass", "Station"):
         if label in labels:
             return {"ItemClass": "Category"}.get(label, label)
     return "Item"
@@ -315,7 +318,8 @@ def report(data: dict, stopped: Counter, problems: list[str], top: int = TOP) ->
     nodes = {(m["id"], tuple(sorted(m["labels"]))) for m in mentions}
     lines.append(f"mentions: {len(mentions)}  (link {by_method['link']}, name {by_method['name']}, link+name {by_method['link+name']})  "
                  f"distinct nodes {len(nodes)} (Item {sum('Item' in n[1] for n in nodes)}, Mob {sum('Mob' in n[1] for n in nodes)}, "
-                 f"Block {sum('Block' in n[1] for n in nodes)})  ambiguous {sum(bool(m['ambiguous']) for m in mentions)}")
+                 f"Block {sum('Block' in n[1] for n in nodes)}, Biome {sum('Biome' in n[1] for n in nodes)}, "
+                 f"Structure {sum('Structure' in n[1] for n in nodes)})  ambiguous {sum(bool(m['ambiguous']) for m in mentions)}")
     weak: dict[tuple, dict] = {}
     for m in mentions:
         if m["method"] == "name" and not m["corroborated"]:
