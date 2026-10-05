@@ -1048,6 +1048,104 @@ class TestMain:
         assert {p["title"] for p in written["g"]["linkedPages"]} == {"Log", "Logs", "Torch"}
         assert [(r["title"], r["toTitle"]) for r in written["g"]["redirects"]] == [("Log", "Logs")]
 
+    # --- a reviewed list of pages
+    def listed(self, cli, monkeypatch, tmp_path, titles=("Alpha", "Beta", "Gamma"), missing=()):
+        """A pages file with these titles, a fake wiki that serves them (except `missing`), and a recording write."""
+        import yaml
+        (tmp_path / "pages.yaml").write_text(yaml.safe_dump({"pages": list(titles)}), encoding="utf-8")
+        calls = {"fetched": [], "written": []}
+
+        def fetch(title):
+            calls["fetched"].append(title)
+            if title in missing:
+                raise lw.WikiError("no such page")
+            return {"title": title, "revisionId": 1, "html": f"<p>About {title}. A torch.</p>"}
+
+        monkeypatch.setattr(lw, "fetch_page", fetch)
+        monkeypatch.setattr(lw, "openai_embedder", lambda model: fake_embedder())
+        monkeypatch.setattr(lw, "write", lambda g, model, uri, user, pw, db, wipe=False: calls["written"].append((g["page"]["title"], wipe)))
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        return tmp_path / "pages.yaml", calls
+
+    def test_every_page_in_the_list_is_loaded_in_order(self, cli, monkeypatch, tmp_path, capsys):
+        path, calls = self.listed(cli, monkeypatch, tmp_path)
+        assert cli("--pages", str(path)) == 0
+        assert [t for t, _ in calls["written"]] == ["Alpha", "Beta", "Gamma"] and calls["fetched"] == ["Alpha", "Beta", "Gamma"]
+        assert "loaded 3 of 3 pages" in capsys.readouterr().out
+
+    def test_wipe_happens_once_before_the_first_page_only(self, cli, monkeypatch, tmp_path):
+        path, calls = self.listed(cli, monkeypatch, tmp_path)
+        cli("--pages", str(path), "--wipe")
+        assert [w for _, w in calls["written"]] == [True, False, False]
+
+    def test_without_wipe_no_page_wipes(self, cli, monkeypatch, tmp_path):
+        path, calls = self.listed(cli, monkeypatch, tmp_path)
+        cli("--pages", str(path))
+        assert [w for _, w in calls["written"]] == [False, False, False]
+
+    def test_a_page_that_cannot_be_fetched_is_skipped_and_the_rest_still_load(self, cli, monkeypatch, tmp_path, capsys):
+        path, calls = self.listed(cli, monkeypatch, tmp_path, missing=("Beta",))
+        assert cli("--pages", str(path)) == 1
+        assert [t for t, _ in calls["written"]] == ["Alpha", "Gamma"]
+        out = capsys.readouterr().out
+        assert "SKIPPED Beta: could not fetch the page: no such page" in out
+        assert "loaded 2 of 3 pages" in out and "skipped: ['Beta']" in out
+
+    def test_wipe_still_happens_when_the_first_page_is_the_one_that_fails(self, cli, monkeypatch, tmp_path):
+        """The wipe belongs to the first page that is written, not to a page that was never loaded."""
+        path, calls = self.listed(cli, monkeypatch, tmp_path, missing=("Alpha",))
+        cli("--pages", str(path), "--wipe")
+        assert calls["written"] == [("Beta", True), ("Gamma", False)]
+
+    def test_nothing_is_wiped_when_every_page_fails(self, cli, monkeypatch, tmp_path):
+        path, calls = self.listed(cli, monkeypatch, tmp_path, missing=("Alpha", "Beta", "Gamma"))
+        assert cli("--pages", str(path), "--wipe") == 1
+        assert calls["written"] == [], "no page was written, so the old pages are still there"
+
+    def test_a_dry_run_of_the_list_checks_every_page_and_writes_nothing(self, cli, monkeypatch, tmp_path, capsys):
+        path, calls = self.listed(cli, monkeypatch, tmp_path)
+        monkeypatch.delenv("OPENAI_API_KEY")
+        monkeypatch.setattr(lw, "write", lambda *a, **k: pytest.fail("a dry run must not write"))
+        monkeypatch.setattr(lw, "openai_embedder", lambda model: pytest.fail("a dry run must not call OpenAI"))
+        assert cli("--pages", str(path), "--dry-run") == 0
+        assert calls["fetched"] == ["Alpha", "Beta", "Gamma"] and "checked 3 of 3 pages" in capsys.readouterr().out
+
+    def test_the_same_page_listed_twice_is_loaded_once_and_urls_are_accepted(self, cli, monkeypatch, tmp_path):
+        path, calls = self.listed(cli, monkeypatch, tmp_path, titles=("Alpha", "https://minecraft.wiki/w/Alpha", "Alpha"))
+        cli("--pages", str(path))
+        assert [t for t, _ in calls["written"]] == ["Alpha"]
+
+    def test_a_list_and_a_single_page_together_are_refused(self, cli, tmp_path):
+        with pytest.raises(SystemExit, match="--page or --pages"):
+            cli("--pages", str(tmp_path / "x.yaml"), "--page", "Alpha", "--dry-run")
+
+    @pytest.mark.parametrize("content", ["", "pages: []\n", "pages: [1, 2]\n", "other: [a]\n", "- a\n- b\n"])
+    def test_a_list_file_without_pages_is_refused(self, cli, tmp_path, content):
+        (tmp_path / "bad.yaml").write_text(content, encoding="utf-8")
+        with pytest.raises(SystemExit, match="non-empty list of page titles"):
+            cli("--pages", str(tmp_path / "bad.yaml"), "--dry-run")
+
+    def test_a_missing_list_file_is_refused(self, cli, tmp_path):
+        with pytest.raises(SystemExit, match="no such file"):
+            cli("--pages", str(tmp_path / "nope.yaml"), "--dry-run")
+
+    def test_the_openai_key_is_checked_once_before_any_page_is_fetched(self, cli, monkeypatch, tmp_path):
+        path, calls = self.listed(cli, monkeypatch, tmp_path)
+        monkeypatch.delenv("OPENAI_API_KEY")
+        with pytest.raises(SystemExit, match="OPENAI_API_KEY"):
+            cli("--pages", str(path))
+        assert calls["fetched"] == []
+
+    def test_a_single_page_that_cannot_be_fetched_still_stops_the_run(self, cli, monkeypatch, tmp_path):
+        path, calls = self.listed(cli, monkeypatch, tmp_path, titles=("Alpha",), missing=("Alpha",))
+        with pytest.raises(SystemExit, match="could not fetch the page"):
+            cli("--pages", str(path))
+
+    def test_the_shipped_list_is_the_tier_one_pages(self):
+        titles = lw.read_page_list(lw.PAGES_PATH)
+        assert len(titles) == 17 and titles[0] == "Tutorial:Beginner's guide" and all(t.startswith("Tutorial:") for t in titles)
+        assert len(set(titles)) == 17 and "Tutorial:Mining" in titles and "Tutorial:Shelters" in titles
+
     def test_a_full_run_embeds_through_the_cache_and_then_writes(self, cli, monkeypatch, capsys):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         embedder = fake_embedder()

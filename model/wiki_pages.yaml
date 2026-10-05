@@ -1,0 +1,35 @@
+# The wiki pages in the lexical graph. A person decides what is in the graph; this file is that decision.
+# Read by `python loader/load_wiki.py --pages` (a titles list, or wiki URLs). Why each page is here or held back:
+# docs/wiki-pages.md (87 pages under Introductory and General on https://minecraft.wiki/w/Tutorials were measured and judged).
+#
+# Loading a page again replaces that page's sections and chunks; `--wipe` first removes every wiki node. After a change,
+# run `python loader/link_wiki.py` so the new chunks are linked to the game graph.
+
+pages:
+  # Tier 1: the first days, food, mining (where ores are), shelter, the Nether portal
+  - "Tutorial:Beginner's guide"
+  - "Tutorial:Your first 10 minutes"
+  - "Tutorial:The second day"
+  - "Tutorial:The third day"
+  - "Tutorial:Tips and tricks"
+  - "Tutorial:Hunger management"
+  - "Tutorial:Gathering food"
+  - "Tutorial:Mining"
+  - "Tutorial:Mining/Diamonds"
+  - "Tutorial:Mining/Ore veins"
+  - "Tutorial:Mining/Ancient debris"
+  - "Tutorial:Exploring caves"
+  - "Tutorial:Smelting"
+  - "Tutorial:Shelters"
+  - "Tutorial:Best building materials"
+  - "Tutorial:Phantom-proofing"
+  - "Tutorial:Nether portals"
+
+  # Tier 2, held until what they explain is modelled, or until tier 1 has been judged (see docs/wiki-pages.md):
+  # - "Tutorial:Enchanting table mechanics"      # enchantments
+  # - "Tutorial:Anvil mechanics"                 # enchantments
+  # - "Tutorial:Trading"                         # villager trades
+  # - "Tutorial:Advancement guide/Minecraft tab" # advancements (Java only)
+  # - "Tutorial:Combat"                          # mob statistics
+  # - "Tutorial:Best biomes to play"             # after tier 1
+  # - "Tutorial:Nether survival"                 # after tier 1

@@ -710,10 +710,53 @@ def report(g: dict, model: str) -> list[str]:
 
 # --------------------------------------------------------------------------- command line
 
+PAGES_PATH = ROOT / "model" / "wiki_pages.yaml"
+
+
+class PageFailed(Exception):
+    """One page could not be fetched or its links resolved."""
+
+
+def read_page_list(path: Path) -> list[str]:
+    """The pages to load, from a reviewed YAML file: `pages:` is a list of titles or wiki URLs. Repeats are dropped."""
+    import yaml
+    if not path.exists():
+        raise ValueError(f"{path}: no such file")
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    pages = raw.get("pages") if isinstance(raw, dict) else None
+    if not isinstance(pages, list) or not pages or not all(isinstance(p, str) and p.strip() for p in pages):
+        raise ValueError(f"{path}: expected a non-empty list of page titles under `pages:`")
+    seen, out = set(), []
+    for p in pages:
+        title = title_from_url(p)
+        if title not in seen:
+            seen.add(title)
+            out.append(title)
+    return out
+
+
+def prepare_page(title: str, args) -> dict:
+    """Fetch a page, cut it into chunks and resolve its links (no OpenAI, no database)."""
+    try:
+        fetched = fetch_page(title)
+    except (WikiError, httpx.HTTPError) as exc:
+        raise PageFailed(f"could not fetch the page: {exc}") from exc
+    g = build(fetched["title"], fetched["revisionId"], fetched["html"],
+              datetime.now(timezone.utc).isoformat(timespec="seconds"), TikTokenizer(), args.size, args.overlap)
+    raw_titles = sorted({link["title"] for c in g["chunks"] for link in c["rawLinks"]})
+    try:
+        apply_links(g, resolve_titles(raw_titles) if raw_titles else {})      # redirects followed, missing pages dropped
+    except httpx.HTTPError as exc:
+        raise PageFailed(f"could not resolve the links: {exc}") from exc
+    return g
+
+
 def main() -> int:
-    """Fetch, split, chunk, report and (unless --dry-run) embed and load."""
+    """Fetch, split, chunk, report and (unless --dry-run) embed and load one page, or every page of a reviewed list."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--page", default=DEFAULT_PAGE, help="page title or wiki URL")
+    ap.add_argument("--page", default=None, help=f"page title or wiki URL (default: {DEFAULT_PAGE})")
+    ap.add_argument("--pages", type=Path, nargs="?", const=PAGES_PATH, default=None,
+                    help="load every page in a reviewed list (YAML, `pages:`) instead; default file model/wiki_pages.yaml")
     ap.add_argument("--size", type=int, default=CHUNK_TOKENS, help="maximum tokens per chunk")
     ap.add_argument("--overlap", type=int, default=OVERLAP_TOKENS, help="tokens repeated from the previous chunk")
     ap.add_argument("--model", default=DEFAULT_MODEL, help="OpenAI embedding model")
@@ -724,35 +767,56 @@ def main() -> int:
     sys.stdout.reconfigure(errors="replace")                # wiki titles can hold characters the Windows console cannot show
     if not 0 <= args.overlap < args.size:
         sys.exit("--overlap must be at least 0 and less than --size")
+    if args.page and args.pages:
+        sys.exit("give --page or --pages, not both")
+    if args.pages:
+        try:
+            titles = read_page_list(args.pages)
+        except ValueError as exc:
+            sys.exit(str(exc))
+    else:
+        titles = [title_from_url(args.page or DEFAULT_PAGE)]
 
     s = get_settings()                                      # also reads .env (OPENAI_API_KEY, Neo4j)
-    title = title_from_url(args.page)
-    try:
-        fetched = fetch_page(title)
-    except (WikiError, httpx.HTTPError) as exc:
-        sys.exit(f"could not fetch the page: {exc}")
-    g = build(fetched["title"], fetched["revisionId"], fetched["html"],
-              datetime.now(timezone.utc).isoformat(timespec="seconds"), TikTokenizer(), args.size, args.overlap)
-    raw_titles = sorted({link["title"] for c in g["chunks"] for link in c["rawLinks"]})
-    try:
-        apply_links(g, resolve_titles(raw_titles) if raw_titles else {})      # redirects followed, missing pages dropped
-    except httpx.HTTPError as exc:
-        sys.exit(f"could not resolve the links: {exc}")
-    print("\n".join(report(g, args.model)))
-    if args.dry_run:
-        if cache_exists(args.cache) and g["chunks"]:
-            with EmbeddingCache(args.cache) as cache:
-                have = sum(1 for c in g["chunks"] if cache.has(args.model, c["textHash"]))
-            print(f"{have} of {len(g['chunks'])} chunks are already in the embedding cache")
-        return 0
-    if not os.environ.get("OPENAI_API_KEY"):
+    if not args.dry_run and not os.environ.get("OPENAI_API_KEY"):
         sys.exit("OPENAI_API_KEY is not set (put it in .env)")
-    with EmbeddingCache(args.cache) as cache:
-        stats = embed_chunks(g["chunks"], cache, args.model, openai_embedder(args.model))
-    print(f"embeddings: {stats['fromCache']} chunks from the cache, {stats['embedded']} texts sent to OpenAI")
-    write(g, args.model, s.neo4j_uri, s.neo4j_user, s.neo4j_password, s.neo4j_database, wipe=args.wipe)
-    print(f"loaded {len(g['sections'])} sections, {len(g['chunks'])} chunks and links to {len(g['linkedPages'])} pages into {s.neo4j_database}.")
-    return 0
+    failed, loaded, chunks_total, sent_total, wiped = [], 0, 0, 0, False
+    cache = EmbeddingCache(args.cache) if not args.dry_run else None
+    embedder = None if args.dry_run else openai_embedder(args.model)
+    try:
+        for index, title in enumerate(titles):
+            if len(titles) > 1:
+                print(f"\n=== {index + 1} of {len(titles)}: {title}")
+            try:
+                g = prepare_page(title, args)
+            except PageFailed as exc:
+                if len(titles) == 1:
+                    sys.exit(str(exc))
+                print(f"SKIPPED {title}: {exc}")
+                failed.append(title)
+                continue
+            print("\n".join(report(g, args.model)))
+            if args.dry_run:
+                if cache_exists(args.cache) and g["chunks"]:
+                    with EmbeddingCache(args.cache) as peek:
+                        have = sum(1 for c in g["chunks"] if peek.has(args.model, c["textHash"]))
+                    print(f"{have} of {len(g['chunks'])} chunks are already in the embedding cache")
+                continue
+            stats = embed_chunks(g["chunks"], cache, args.model, embedder)
+            print(f"embeddings: {stats['fromCache']} chunks from the cache, {stats['embedded']} texts sent to OpenAI")
+            write(g, args.model, s.neo4j_uri, s.neo4j_user, s.neo4j_password, s.neo4j_database, wipe=args.wipe and not wiped)
+            wiped = True                                    # the wipe belongs to the first page that is written
+            print(f"loaded {len(g['sections'])} sections, {len(g['chunks'])} chunks and links to {len(g['linkedPages'])} pages into {s.neo4j_database}.")
+            loaded, chunks_total, sent_total = loaded + 1, chunks_total + len(g["chunks"]), sent_total + stats["embedded"]
+    finally:
+        if cache is not None:
+            cache.close()
+    if len(titles) > 1:
+        action = "checked" if args.dry_run else "loaded"
+        done = len(titles) - len(failed) if args.dry_run else loaded
+        print(f"\n{action} {done} of {len(titles)} pages" + ("" if args.dry_run else f", {chunks_total} chunks, {sent_total} texts sent to OpenAI") +
+              (f"; skipped: {failed}" if failed else "."))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

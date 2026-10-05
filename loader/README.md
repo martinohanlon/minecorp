@@ -48,7 +48,7 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py` (free when the embedding cache is intact), then run `link_wiki.py`.
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py --pages` (free when the embedding cache is intact), then run `link_wiki.py`.
 
 ## World loader: mobs, biomes, structures and ore (v0.10)
 
@@ -93,6 +93,7 @@ The model is described in [docs/ontology.md](../docs/ontology.md) (v0.10). Rebui
 | Option | Default | Meaning |
 |---|---|---|
 | `--page` | `Tutorial:Beginner's guide` | a page title or a minecraft.wiki URL |
+| `--pages` | `model/wiki_pages.yaml` | load every page in a reviewed list instead (YAML, `pages:`; titles or URLs). Each page replaces only its own sections and chunks; with `--wipe` the wipe happens once, before the first page that is written. A page that cannot be fetched is skipped, the rest load, and the run exits with 1 |
 | `--size`, `--overlap` | 300, 50 | tokens per chunk and tokens repeated from the previous chunk (tiktoken `cl100k_base`) |
 | `--model` | `text-embedding-3-small` | OpenAI embedding model (1536 dimensions, cosine) |
 | `--cache` | `loader/cache/embeddings` | the local embedding cache (a Python `shelve` file, git-ignored) |
@@ -189,7 +190,7 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 | `test_load_actions.py` (40) | nothing (builds a tiny jar in a temp folder) | tool tiers and the "required" rule, loot conditions, rolls and negative ranges, loot tables that point at other tables, the action rows that come out |
 | `test_load_model.py` (42) | nothing | every validation error in the YAML model, plus the real `model/` files |
 | `test_real_jar.py` (37, marker `jar`) | the Paper jar | rules that hold for any version, and known vanilla facts that act as canaries when the server version changes |
-| `test_load_wiki.py` (193) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the page links (positions, redirects as pages, the text unchanged by links), the report and the command line (a dry run touches nothing) |
+| `test_load_wiki.py` (211) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the page links (positions, redirects as pages, the text unchanged by links), the report and the command line (a dry run touches nothing) |
 | `test_load_world.py` (75) | nothing (a small jar made in the test) | the world loader: which creatures are mobs, tag classes, biomes and their spawns, dimensions, structures and their biome links and spawn overrides, the vertical anchors (above the bottom, below the top), clamping and peaks, ore features and placements, steps |
 | `test_real_jar_world.py` (52, marker `jar`) | the Paper jar | what must hold for any version (every spawn names a mob and a biome that exist, no biome in two dimensions) and canary facts commonly quoted for the game (iron peaks at 232, diamond at the bottom of the world, ancient debris only in the nether) |
 | `test_world_integration.py` (28, marker `integration`) | Neo4j Enterprise and the jar | the world in the rebuilt graph: counts, the villager as a mob that drops nothing, classes and structures reached by `INCLUDES*`, and the path from raw iron to the places and heights it can be mined at |
