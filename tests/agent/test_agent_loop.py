@@ -13,7 +13,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 from minecorp_agent import agent as agent_mod
-from minecorp_agent.agent import FALLBACK, MAX_ANSWER_CHARS, MAX_TOOL_CHARS, Agent
+from minecorp_agent.agent import FALLBACK, MAX_ANSWER_CHARS, Agent
 from minecorp_agent.config import Settings
 from minecorp_agent.models import Question
 from minecorp_agent.prompt import SYSTEM_PROMPT
@@ -54,12 +54,22 @@ def boom(graph, args):
 
 
 def big(graph, args):
-    return {"text": "x" * (MAX_TOOL_CHARS * 2)}
+    return {"title": "t", "rows": [{"n": i, "text": "x" * 500} for i in range(40)]}   # about 20,000 characters
+
+
+def outage(graph, args):
+    raise ConnectionError("down")
+
+
+def odd(graph, args):
+    raise RuntimeError("a bug")
 
 
 FAKE_TOOLS = [Tool("echo", "Echo the arguments back to the model.", {"type": "object", "properties": {}}, echo),
               Tool("boom", "Always fails.", {"type": "object", "properties": {}}, boom),
-              Tool("big", "Returns far too much text.", {"type": "object", "properties": {}}, big)]
+              Tool("big", "Returns far too much text.", {"type": "object", "properties": {}}, big, budget=3000),
+              Tool("outage", "The graph is down.", {"type": "object", "properties": {}}, outage),
+              Tool("odd", "Breaks in an unexpected way.", {"type": "object", "properties": {}}, odd)]
 
 
 @pytest.fixture(autouse=True)
@@ -101,7 +111,7 @@ class TestLoop:
         assert sent["model"] == "test-model" and sent["tool_choice"] == "auto"
         assert sent["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         assert sent["messages"][1] == {"role": "user", "content": "Player Steve asks: hello there"}
-        assert [t["function"]["name"] for t in sent["tools"]] == ["echo", "boom", "big"]
+        assert [t["function"]["name"] for t in sent["tools"]] == ["echo", "boom", "big", "outage", "odd"]
 
     def test_a_tool_round_then_an_answer(self, tmp_path):
         client = FakeClient(reply(None, [tool_call("c1", "echo", {"item": "stick"})]), reply("Done."))
@@ -140,7 +150,7 @@ class TestToolProblems:
         client = FakeClient(reply(None, [tool_call("c", "nope", {})]), reply("Sorry."))
         result, _ = run(client, tmp_path)
         assert result.answer == "Sorry." and result.status == "ok"
-        assert "failed" in self._second_request_tool_content(client)
+        assert json.loads(self._second_request_tool_content(client))["type"] == "bad_argument"
         assert result.steps[0].error == "ValueError: unknown tool nope"
 
     def test_malformed_arguments_are_reported(self, tmp_path):
@@ -162,15 +172,29 @@ class TestToolProblems:
         client = FakeClient(reply(None, [tool_call("c", "boom", {})]), reply("The graph is down."))
         result, _ = run(client, tmp_path)
         content = self._second_request_tool_content(client)
-        assert "kaboom" not in content and "not available" in content
+        assert json.loads(content)["type"] == "bad_argument" and "kaboom" in content   # the model may fix its arguments
         assert result.steps[0].error == "ValueError: kaboom"
         assert result.answer == "The graph is down." and result.status == "ok"
 
-    def test_long_tool_output_is_cut_before_the_model_sees_it(self, tmp_path):
+    def test_an_outage_tells_the_model_to_say_the_graph_is_not_available(self, tmp_path):
+        client = FakeClient(reply(None, [tool_call("c", "outage", {})]), reply("Down."))
+        run(client, tmp_path)
+        error = json.loads(self._second_request_tool_content(client))
+        assert error["type"] == "unavailable" and "not available" in error["error"] and "down" not in error["error"]
+
+    def test_an_unexpected_failure_is_not_called_an_outage(self, tmp_path):
+        client = FakeClient(reply(None, [tool_call("c", "odd", {})]), reply("Hm."))
+        run(client, tmp_path)
+        error = json.loads(self._second_request_tool_content(client))
+        assert error["type"] == "failed" and "not available" not in error["error"] and "a bug" not in error["error"]
+
+    def test_long_tool_output_loses_whole_entries_and_stays_valid_json(self, tmp_path):
         client = FakeClient(reply(None, [tool_call("c", "big", {})]), reply("ok"))
         result, _ = run(client, tmp_path)
         content = self._second_request_tool_content(client)
-        assert len(content) < MAX_TOOL_CHARS + 50 and content.endswith('"[truncated]"')
+        data = json.loads(content)                                   # never cut in the middle
+        assert len(content) <= 3000 and 0 < len(data["rows"]) < 40
+        assert data["omitted"]["rows"] == 40 - len(data["rows"]) and "left out" in data["note"]
         assert result.steps[0].result_chars == len(content)
 
 

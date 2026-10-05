@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .budget import DEFAULT_BUDGET
 from .graph import Graph
 from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
@@ -38,6 +39,7 @@ class Tool:
     description: str
     parameters: dict
     fn: Callable[[Graph, dict], Any]
+    budget: int = DEFAULT_BUDGET   # characters of JSON the result may use (see budget.fit)
 
     def spec(self) -> dict:
         """The tool in OpenAI function-calling format."""
@@ -609,7 +611,7 @@ TOOLS: list[Tool] = [
              "item": {"type": "string", "description": "item name or id"},
              "quantity": {"type": "integer", "description": "how many to make (default 1)"}},
           "required": ["item"], "additionalProperties": False},
-         tool_what_do_i_need),
+         tool_what_do_i_need, budget=9500),
     Tool("how_to_get",
          "How to get an item from the world without crafting it: blocks to mine, mobs to kill or shear, and the tool "
          "needed. Use for 'how do I get / where does X come from' about raw materials such as gunpowder, string, "
@@ -648,7 +650,7 @@ TOOLS: list[Tool] = [
              "question": {"type": "string", "description": "the question or topic, in the player's words"},
              "limit": {"type": "integer", "description": "how many passages (default 5, max 8)"}},
           "required": ["question"], "additionalProperties": False},
-         tool_search_wiki),
+         tool_search_wiki, budget=7000),
     Tool("read_section",
          "Read a whole wiki section, optionally with the passages just before or after it. Use after search_wiki "
          "when a passage is cut short or you need the rest. Give the sectionUrl from a search_wiki hit (a section "

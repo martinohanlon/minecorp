@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from openai import OpenAI
 
+from .budget import classify, fit
 from .config import Settings
 from .graph import Graph
 from .models import Question, Result, Step
@@ -22,7 +23,6 @@ from .tools import TOOLS, TOOLS_BY_NAME
 
 log = logging.getLogger("minecorp.agent")
 
-MAX_TOOL_CHARS = 10000    # tool output is cut to this before the model sees it
 MAX_ANSWER_CHARS = 1200   # chat is not the place for essays
 FALLBACK = "Sorry, I could not work out an answer to that. Try asking in a different way."
 
@@ -105,10 +105,11 @@ class Agent:
         except Exception as exc:
             log.warning("tool %s failed: %s", name, exc)
             error = f"{type(exc).__name__}: {exc}"
-            output = {"error": "That tool failed. Tell the player the knowledge graph is not available."}
+            kind, message = classify(exc)
+            output = {"error": message, "type": kind}
+        else:
+            output = fit(output, tool.budget)
         text = json.dumps(output, separators=(",", ":"))
-        if len(text) > MAX_TOOL_CHARS:
-            text = text[:MAX_TOOL_CHARS] + '..."[truncated]"'
         step = Step(turn=turn, tool=name, args=args, ms=int((time.monotonic() - started) * 1000),
                     result_chars=len(text), error=error)
         return text, step
