@@ -11,7 +11,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Link job unit tests** | `tests/loader/test_link_wiki.py` | pytest | nothing | under 1 s | 63 |
 | **Real jar tests** | `tests/loader/test_real_jar.py` (marker `jar`) | pytest | `server/versions/26.2/paper-26.2.jar` (skipped if absent) | under 1 s | 37 |
 | **Agent unit tests** | `tests/agent/test_tools_unit.py`, `test_wiki_unit.py`, `test_agent_loop.py`, `test_budget.py`, `test_config.py`, `test_app.py` | pytest | nothing (fake model, fake tools, scripted fake graph, FastAPI test client) | about 2 s | 235 |
-| **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 45 s | 166 |
+| **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 45 s | 169 |
 | **Agent wiki tool tests** | `tests/agent/test_wiki_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 6 s | 40 |
 | **Graph integration** | `tests/loader/test_graph_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 20 s | 34 |
 | **World graph tests** | `tests/loader/test_world_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 5 s (on the shared rebuild) | 28 |
@@ -21,7 +21,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,370 tests (1,333 Python, 37 Java). The fast set is 894 Python tests plus the Java ones.
+Counts as of 2026-10-05: 1,373 tests (1,336 Python, 37 Java). The fast set is 894 Python tests plus the Java ones.
 
 ## Running
 

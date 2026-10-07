@@ -353,6 +353,13 @@ class TestWhatDoINeed:
     def test_quantity_is_clamped(self, agent_graph, asked, used):
         assert call(agent_graph, "what_do_i_need", item="iron ingot", quantity=asked)["quantity"] == used
 
+    @pytest.mark.parametrize("item", ["diamond", "emerald", "coal"])
+    def test_a_mined_resource_asked_for_directly_is_mined_not_smelted_from_its_ore(self, agent_graph, item):
+        # smelting diamond ore into a diamond is real, but the ore item needs silk touch: the diamond is mined
+        r = call(agent_graph, "what_do_i_need", item=item)
+        assert r["steps"] == []
+        assert any(w["how"] == "mine" for w in r["gather"][0]["getFrom"])
+
     def test_a_mined_resource_ends_the_route(self, agent_graph):
         r = call(agent_graph, "what_do_i_need", item="diamond pickaxe")
         assert not any("Diamond" in s["do"].split("->")[1] for s in r["steps"] if "Pickaxe" not in s["do"].split("->")[1])

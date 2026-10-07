@@ -376,7 +376,11 @@ class Route:
         """Record what is needed to get `needed` of this item. Steps are stored children-first."""
         too_deep = depth >= self.max_depth
         recipe, others, good = (None, [], False) if too_deep else self.choose(item_id, path | {item_id})
-        mined = depth > 0 and not good and bool(self.mined_from(item_id))   # a mined resource is a base material
+        # A mined resource is a base material. For the item asked about (depth 0) only when its recipe needs a block
+        # that mining gives with silk touch alone: diamonds are mined, not smelted from diamond ore.
+        needs_silk = recipe is not None and any(self.silk_only(q["id"]) and not self.recipes_for(q["id"])
+                                                for q in recipe["reqs"] if not q["isCategory"])
+        mined = (depth > 0 or needs_silk) and not good and bool(self.mined_from(item_id))
         if mined:
             recipe, others = None, []
         if recipe is None:
