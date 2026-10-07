@@ -378,6 +378,29 @@ class TestWhatDoINeed:
     def test_quantity_is_clamped(self, agent_graph, asked, used):
         assert call(agent_graph, "what_do_i_need", item="iron ingot", quantity=asked)["quantity"] == used
 
+    def test_a_station_the_steps_use_says_how_to_make_it(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", item="torch")
+        assert r["stations"] == [{"station": "Crafting Table", "make": "Craft: 4 Planks (any, such as Acacia Planks, Bamboo Planks, Birch Planks) -> 1 Crafting Table"}]
+        assert r["overview"]["stations"] == ["Crafting Table"]            # the stored numbers are unchanged
+
+    def test_every_station_on_the_route_is_listed_with_its_own_recipe(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", item="iron pickaxe")
+        by_name = {s["station"]: s for s in r["stations"]}
+        assert set(by_name) == {"Crafting Table", "Furnace"}
+        assert by_name["Furnace"]["make"].startswith("Craft: 8 ") and "Cobblestone" in by_name["Furnace"]["make"]
+        assert by_name["Furnace"]["at"] == "Crafting Table"
+
+    def test_the_stations_are_not_steps_so_the_route_is_unchanged(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", item="iron pickaxe")
+        assert not any("-> 1 Furnace" in s["do"] or "-> 1 Crafting Table" in s["do"] for s in r["steps"])
+
+    def test_a_route_with_no_station_has_no_stations_list(self, agent_graph):
+        assert "stations" not in call(agent_graph, "what_do_i_need", item="diamond")
+
+    def test_the_tool_tells_the_model_to_include_them_when_asked_for_every_detail(self, agent_graph):
+        assert "every detail" in call(agent_graph, "what_do_i_need", item="torch")["note"]
+        assert "every detail" in tools.TOOLS_BY_NAME["what_do_i_need"].description or "all the steps" in tools.TOOLS_BY_NAME["what_do_i_need"].description
+
     @pytest.mark.parametrize("item", ["diamond", "emerald", "coal"])
     def test_a_mined_resource_asked_for_directly_is_mined_not_smelted_from_its_ore(self, agent_graph, item):
         # smelting diamond ore into a diamond is real, but the ore item needs silk touch: the diamond is mined

@@ -99,7 +99,7 @@ def fetch_recipes(graph: Graph, item_id: str) -> list[dict]:
         """
         MATCH (i:Item {id: $id})<-[cr:CREATES]-(r:Recipe)
         OPTIONAL MATCH (r)-[:USES_STATION]->(s:Station)
-        RETURN r.id AS id, r.name AS name, r.type AS type, cr.count AS yields, s.name AS station,
+        RETURN r.id AS id, r.name AS name, r.type AS type, cr.count AS yields, s.name AS station, s.id AS stationId,
                r.pattern AS pattern, r.special AS special
         ORDER BY r.id
         """, id=item_id)
@@ -392,7 +392,7 @@ class Route:
         if step is None:
             self.steps[item_id] = {
                 "makes": name, "amount": crafts * (recipe["yields"] or 1), "recipe": recipe["name"],
-                "type": recipe["type"], "station": recipe["station"], "times": crafts, "uses": uses,
+                "type": recipe["type"], "station": recipe["station"], "stationId": recipe["stationId"], "times": crafts, "uses": uses,
                 "otherWays": [f"{o['name']} ({o['type']})" for o in others[:4]],
             }
         else:  # the same item is needed in two places: do it once, in bulk
@@ -439,6 +439,29 @@ class Route:
             out.append(entry)
         return out
 
+    def stations_to_make(self) -> list[dict]:
+        """How to make each station the steps use (a furnace, a crafting table), by its own preferred recipe.
+
+        A station is where a recipe is done, not an ingredient, so the steps do not include making it. Only the
+        station's own recipe is given: its inputs are ordinary items the player gathers."""
+        used: dict[str, str] = {}
+        for s in self.steps.values():
+            if s["stationId"]:
+                used.setdefault(s["stationId"], s["station"])
+        out = []
+        for sid, name in sorted(used.items(), key=lambda kv: kv[1]):
+            recipe, _, _ = self.choose(sid, frozenset({sid}))
+            if recipe is None:
+                out.append({"station": name, "make": "no recipe in the data"})
+                continue
+            inputs = ", ".join(f"{q['count'] or 1} {q['name']}" + (f" (any, such as {', '.join(q['examples'][:3])})" if q["isCategory"] and q["examples"] else " (any)" if q["isCategory"] else "")
+                               for q in recipe["reqs"])
+            entry = {"station": name, "make": f"Craft: {inputs} -> {recipe['yields'] or 1} {name}"}
+            if recipe["station"] and recipe["station"] != name:
+                entry["at"] = recipe["station"]
+            out.append(entry)
+        return out
+
     def overview(self) -> dict:
         """A small summary of how big the job is."""
         return {"craftingSteps": len(self.steps), "chainLength": self.levels,
@@ -474,7 +497,12 @@ def tool_what_do_i_need(graph: Graph, args: dict) -> dict:
                            "'steps' are in the order to do them and form the main route only; 'otherWays' lists "
                            "alternatives. Everything in a step's 'uses' is needed together; an 'anyOf' entry "
                            "means use any ONE of its options (except those listed in 'except'). "
-                           "'overview' sizes the whole job.")}
+                           "'overview' sizes the whole job. 'stations' says how to make each station the steps use "
+                           "(a furnace, a crafting table): it is not part of the steps, so include it when the player wants "
+                           "every detail or has no such station yet.")}
+        stations = route.stations_to_make()
+        if stations:
+            result["stations"] = stations
         if route.not_expanded:
             result["notExpanded"] = sorted(route.not_expanded)
         if len(json.dumps(result)) <= 9000:
@@ -615,7 +643,8 @@ TOOLS: list[Tool] = [
          "The ordered steps to make an item from base materials (mined, found or dropped), plus the list "
          "of base materials to gather, each with how to get it. Use for 'what do I need for X from scratch' or "
          "'walk me through X': give the steps in order. The overview (steps, chain length, base materials, "
-         "stations) answers 'how big or complicated is X'.",
+         "stations) answers 'how big or complicated is X'. When the player asks for all the steps or every detail, "
+         "include how to make the stations listed in 'stations'.",
          {"type": "object", "properties": {
              "name": {"type": "string", "description": "item name or id"},
              "quantity": {"type": "integer", "description": "how many to make (default 1)"}},
