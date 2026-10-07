@@ -1,0 +1,8 @@
+# The players (authored). Loaded by loader/load_model.py. See docs/ontology.md v0.11.
+#
+# There is one role in MineCorp: the player. Minecraft can be played together, but this model is for one player, so there
+# are no org units, roles, owners or hand-offs. Whoever is listed here is who confirms a process and who completes tasks.
+
+players:
+  - uuid: "12768920-f68b-4a4b-91de-eddcc065274d"
+    name: martinohanlon

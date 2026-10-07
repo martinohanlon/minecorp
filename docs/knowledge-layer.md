@@ -1,5 +1,7 @@
 # MineCorp enterprise knowledge layer
 
+> **Update 2026-10-07 (ontology v0.11):** the organization of this document (org units, roles, owners, hand-offs, escalations, and the Iron tool line) was removed from the built model: there is one role, the player. A process is now a goal the player works towards, and holds what the game data does not. Sections below that describe roles and org units are the earlier design, kept as the record. See [ontology.md](ontology.md) v0.11.
+
 Status: **v0.4, step 1 built (organization and process); open items A-C decided (2026-10-02).** Describes the target design and where the project is today. Nothing here changes existing code. Agreed decisions are in section 8 and in [AGENTS.md](../AGENTS.md).
 
 Sources: [The knowledge layer for enterprise AI](https://neo4j.com/blog/agentic-ai/enterprise-knowledge-layer/) (the manifesto) and [The knowledge layer for enterprise: Processes](https://neo4j.com/blog/genai/the-knowledge-layer-for-enterprise-processes/) (series chapter 2). The series has four chapters: 1 operating structure, 2 processes, 3 domain ontology (not yet published when read), 4 data products (not yet published). Where this document uses the posts' words it quotes them; the MineCorp content is our proposal.

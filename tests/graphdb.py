@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from neo4j import GraphDatabase
@@ -19,6 +20,7 @@ import load_recipes as lr
 from minecorp_agent.config import load_dotenv
 
 TEST_DB = "minecorptest"
+SAMPLE_PROCESSES = Path(__file__).resolve().parent / "loader" / "fixtures"
 
 
 class Db:
@@ -102,10 +104,11 @@ def build_test_graph(jar_path):
 
         driver.execute_query("CALL db.awaitIndexes(60)", database_=TEST_DB)      # the names index must be online
 
-        org, processes = lm.read_model()
+        people, processes = lm.read_model()
+        processes = processes + lm.read_processes(SAMPLE_PROCESSES)      # the real model has no process yet
         action_ids = {rec["id"] for rec in driver.execute_query("MATCH (a:Action) RETURN a.id AS id", database_=TEST_DB).records}
-        assert lm.validate(org, processes, action_ids) == []
-        model_rows = lm.rows(org, processes)
+        assert lm.validate(people, processes, action_ids) == []
+        model_rows = lm.rows(people, processes)
         lm.write(model_rows, uri, user, password, TEST_DB)
 
         with pytest.MonkeyPatch.context() as mp:                       # compute_routes reads its settings from the environment

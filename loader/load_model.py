@@ -1,15 +1,17 @@
-"""Load the authored MineCorp model (organization and processes) into Neo4j (docs/ontology.md v0.6).
+"""Load the authored MineCorp model (the player and the processes) into Neo4j (docs/ontology.md v0.11).
 
     python loader/load_model.py --dry-run   # validate and report, write nothing
     python loader/load_model.py             # validate, then load
 
-Reads model/org.yaml and model/processes/*.yaml. The YAML files are the source of truth for the
-organization and the processes: OrgUnit, Role, Process and Activity nodes are rebuilt on every run, and
-tasks are merged by id. A bad reference (unknown role, unknown action id, unknown task in NEXT...)
-fails the load with every error listed, and nothing is written.
+Reads model/players.yaml and model/processes/*.yaml. The YAML files are the source of truth: Process and Activity
+nodes are rebuilt on every run, and tasks are merged by id. A process is a goal a player works towards in the game
+(get to the Nether), made of activities (stages) and tasks (steps). A task names the game actions it performs when
+the game data has them, and has none when it is a manual step. A bad reference (unknown player, unknown action id,
+unknown task in NEXT...) fails the load with every error listed, and nothing is written.
 
 Run it after load_recipes.py and load_actions.py (it checks the action ids against the graph).
-Players, COMPLETED history and anything else not defined in the YAML are left alone.
+Players, COMPLETED history and anything else not defined in the YAML are left alone. The organization of earlier
+versions (OrgUnit, Role) is removed from a database that still has it.
 """
 from __future__ import annotations
 
@@ -28,8 +30,6 @@ from minecorp_agent.config import get_settings  # noqa: E402
 from minecorp_agent.graph import Graph  # noqa: E402
 
 MODEL_DIR = ROOT / "model"
-ROLE_KINDS = {"operational", "governance"}
-FAMILIES = {"collect", "craft", "inventory"}
 STATUSES = {"candidate", "confirmed"}
 TIERS = ["wooden", "stone", "copper", "iron", "diamond", "netherite"]
 LEGACY_TASKS = ["task-craft-iron-pickaxe", "task-smelt-raw-iron", "task-craft-sticks"]  # early test data
@@ -38,48 +38,37 @@ LEGACY_PLAYER = "test-player-0001"
 
 # --------------------------------------------------------------------------- read
 
-def read_model() -> tuple[dict, list[dict]]:
-    """Read org.yaml and every process file."""
-    org = yaml.safe_load((MODEL_DIR / "org.yaml").read_text(encoding="utf-8")) or {}
+def read_processes(directory: Path) -> list[dict]:
+    """Read every process file in a directory (none is fine: the model may have no process yet)."""
     processes = []
-    for path in sorted((MODEL_DIR / "processes").glob("*.yaml")):
+    for path in sorted(directory.glob("*.yaml")):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         doc["_file"] = path.name
         processes.append(doc)
-    return org, processes
+    return processes
+
+
+def read_model() -> tuple[dict, list[dict]]:
+    """Read players.yaml and every process file."""
+    people = yaml.safe_load((MODEL_DIR / "players.yaml").read_text(encoding="utf-8")) or {}
+    return people, read_processes(MODEL_DIR / "processes")
 
 
 # --------------------------------------------------------------------------- validate
 
-def validate(org: dict, processes: list[dict], action_ids: set) -> list[str]:
+def validate(people: dict, processes: list[dict], action_ids: set) -> list[str]:
     """Return every problem found; empty means the model is consistent."""
     errors: list[str] = []
 
     def err(msg: str) -> None:
         errors.append(msg)
 
-    units = {u["id"] for u in org.get("org_units", [])}
-    if len(units) != len(org.get("org_units", [])):
-        err("org.yaml: duplicate org unit id")
-    for u in org.get("org_units", []):
-        if u.get("part_of") and u["part_of"] not in units:
-            err(f"org.yaml: unit {u['id']} is part_of unknown unit {u['part_of']}")
-    roles = {r["id"]: r for r in org.get("roles", [])}
-    if len(roles) != len(org.get("roles", [])):
-        err("org.yaml: duplicate role id")
-    for r in roles.values():
-        if r.get("unit") not in units:
-            err(f"org.yaml: role {r['id']} is in unknown unit {r.get('unit')}")
-        if r.get("kind") not in ROLE_KINDS:
-            err(f"org.yaml: role {r['id']} kind must be one of {sorted(ROLE_KINDS)}")
-    players = {p["name"] for p in org.get("players", [])}
-    for f in org.get("filled_by", []):
-        if f.get("player") not in players:
-            err(f"org.yaml: filled_by names unknown player {f.get('player')}")
-        if f.get("roles") != "all":
-            for rid in f.get("roles", []):
-                if rid not in roles:
-                    err(f"org.yaml: filled_by names unknown role {rid}")
+    players = [p.get("name") for p in people.get("players", [])]
+    if len(set(players)) != len(players):
+        err("players.yaml: duplicate player name")
+    for p in people.get("players", []):
+        if not p.get("uuid") or not p.get("name"):
+            err("players.yaml: every player needs a uuid and a name")
 
     seen_proc, seen_task = set(), {}
     for doc in processes:
@@ -89,15 +78,11 @@ def validate(org: dict, processes: list[dict], action_ids: set) -> list[str]:
         if not pid or pid in seen_proc:
             err(f"{f}: process id missing or duplicated")
         seen_proc.add(pid)
-        if proc.get("family") not in FAMILIES:
-            err(f"{f}: family must be one of {sorted(FAMILIES)}")
-        if proc.get("owner") not in roles:
-            err(f"{f}: owner {proc.get('owner')} is not a role")
         status = doc.get("status", "candidate")
         if status not in STATUSES:
             err(f"{f}: status must be one of {sorted(STATUSES)}")
-        if status == "confirmed" and doc.get("confirmed_by") not in roles:
-            err(f"{f}: confirmed needs confirmed_by naming a role")
+        if status == "confirmed" and doc.get("confirmed_by") not in players:
+            err(f"{f}: confirmed needs confirmed_by naming a player")
         if status == "candidate":
             for k in ("source", "extracted_at", "confidence"):
                 if k not in doc:
@@ -110,16 +95,12 @@ def validate(org: dict, processes: list[dict], action_ids: set) -> list[str]:
                     err(f"{f}: task id missing or duplicated: {tid}")
                 seen_task[tid] = pid
                 tasks_here.add(tid)
-                if t.get("role") not in roles:
-                    err(f"{f}: task {tid} role {t.get('role')} is not a role")
                 for i, act in enumerate(t.get("actions", []), 1):
                     if act.get("do") not in action_ids:
                         err(f"{f}: task {tid} action {i} {act.get('do')} is not an action in the graph")
                     q = act.get("quantity", 1)
                     if not isinstance(q, int) or isinstance(q, bool) or q < 1:
                         err(f"{f}: task {tid} action {i} quantity must be a whole number of 1 or more")
-                if t.get("escalates_to") and t["escalates_to"] not in roles:
-                    err(f"{f}: task {tid} escalates_to unknown role {t['escalates_to']}")
         for n in doc.get("next", []):
             for end in ("from", "to"):
                 if n.get(end) not in tasks_here:
@@ -147,48 +128,30 @@ def tool_gaps(processes: list[dict], graph: Graph) -> list[str]:
 
 # --------------------------------------------------------------------------- write
 
-def rows(org: dict, processes: list[dict]) -> dict:
+def rows(people: dict, processes: list[dict]) -> dict:
     """Flatten the YAML into rows for the Cypher statements."""
-    role_ids = [r["id"] for r in org.get("roles", [])]
-    fills = []
-    for f in org.get("filled_by", []):
-        for rid in (role_ids if f["roles"] == "all" else f["roles"]):
-            fills.append({"role": rid, "player": f["player"], "from": str(f["from"])})
-    out = {
-        "players": org.get("players", []),
-        "units": org.get("org_units", []),
-        "roles": org.get("roles", []),
-        "fills": fills,
-        "processes": [], "activities": [], "tasks": [], "task_actions": [], "nexts": [], "handoffs": [], "escalations": [],
-        "confirmations": [],
-    }
+    out = {"players": people.get("players", []),
+           "processes": [], "activities": [], "tasks": [], "task_actions": [], "nexts": [], "confirmations": []}
     for doc in processes:
         p = doc["process"]
         status = doc.get("status", "candidate")
-        out["processes"].append({**{k: p.get(k) for k in ("id", "name", "description", "family", "criticality", "sla", "owner")}})
-        role_of = {}
+        out["processes"].append({k: p.get(k) for k in ("id", "name", "description")})
         for a in doc.get("activities", []):
             out["activities"].append({"id": f"{p['id']}/{a['id']}", "process": p["id"], "name": a["name"], "seq": a["seq"]})
             for t in a.get("tasks", []):
-                role_of[t["id"]] = t["role"]
                 out["tasks"].append({
                     "id": t["id"], "activity": f"{p['id']}/{a['id']}", "name": t["name"],
-                    "description": t.get("description"), "role": t["role"],
-                    "automatable": bool(t.get("automatable", False)), "status": status,
+                    "description": t.get("description"), "status": status,
                     "source": doc.get("source"), "extractedAt": str(doc["extracted_at"]) if doc.get("extracted_at") else None,
                     "confidence": doc.get("confidence")})
                 for order, act in enumerate(t.get("actions", []), 1):
                     out["task_actions"].append({"task": t["id"], "action": act["do"], "order": order,
                                                 "quantity": act.get("quantity", 1)})
-                if t.get("escalates_to"):
-                    out["escalations"].append({"task": t["id"], "role": t["escalates_to"], "reason": t.get("escalation_reason")})
                 if status == "confirmed":
-                    out["confirmations"].append({"task": t["id"], "role": doc["confirmed_by"], "at": str(doc.get("confirmed_at"))})
+                    out["confirmations"].append({"task": t["id"], "player": doc["confirmed_by"], "at": str(doc.get("confirmed_at"))})
         for n in doc.get("next", []):
             out["nexts"].append({"from": n["from"], "to": n["to"], "condition": n.get("condition"),
                                  "outcome": n.get("outcome"), "isDefault": bool(n.get("default", False))})
-            if role_of[n["from"]] != role_of[n["to"]]:
-                out["handoffs"].append({"from": n["from"], "to": n["to"]})
     return out
 
 
@@ -198,9 +161,10 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
     task_ids = [t["id"] for t in r["tasks"]]
     with GraphDatabase.driver(uri, auth=(user, password)) as driver:
         with driver.session(database=database) as s:
-            for label, key in (("OrgUnit", "id"), ("Role", "id"), ("Process", "id"), ("Activity", "id"),
-                               ("Task", "id"), ("Player", "uuid")):
+            for label, key in (("Process", "id"), ("Activity", "id"), ("Task", "id"), ("Player", "uuid")):
                 s.run(f"CREATE CONSTRAINT {label.lower()}_{key} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{key} IS UNIQUE")
+            for old in ("orgunit_id", "role_id"):                 # the organization of earlier versions
+                s.run(f"DROP CONSTRAINT {old} IF EXISTS")
 
             # early test data from the recipe loader
             s.run("MATCH (t:Task) WHERE t.id IN $ids DETACH DELETE t", ids=LEGACY_TASKS)
@@ -216,39 +180,27 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
                     notes.append(f"removed stale task {t['id']}")
 
             s.run("MATCH (n) WHERE n:OrgUnit OR n:Role OR n:Process OR n:Activity DETACH DELETE n")
-            s.run("""MATCH (t:Task)-[x:NEXT|HANDOFF_TO|ESCALATES_TO|HAS_ACTION|CRAFTED|HARVESTED|USED_RECIPE|USED_HARVEST]->() WHERE t.id IN $ids DELETE x""",
+            s.run("""MATCH (t:Task)-[x:NEXT|HANDOFF_TO|HAS_ACTION|CONFIRMED_BY|CRAFTED|HARVESTED|USED_RECIPE|USED_HARVEST]->() WHERE t.id IN $ids DELETE x""",
                   ids=task_ids)
+            s.run("MATCH (t:Task) REMOVE t.automatable")
 
             s.run("UNWIND $rows AS r MERGE (p:Player {uuid: r.uuid}) SET p.name = r.name", rows=r["players"])
-            s.run("UNWIND $rows AS r CREATE (:OrgUnit {id: r.id, name: r.name, description: r.description})", rows=r["units"])
-            s.run("""UNWIND $rows AS r WITH r WHERE r.part_of IS NOT NULL
-                     MATCH (a:OrgUnit {id: r.id}), (b:OrgUnit {id: r.part_of}) CREATE (a)-[:PART_OF]->(b)""", rows=r["units"])
-            s.run("""UNWIND $rows AS r CREATE (n:Role {id: r.id, name: r.name, kind: r.kind, description: r.description})
-                     WITH n, r MATCH (u:OrgUnit {id: r.unit}) CREATE (n)-[:IN_UNIT]->(u)""", rows=r["roles"])
-            s.run("""UNWIND $rows AS r MATCH (ro:Role {id: r.role}), (p:Player {name: r.player})
-                     CREATE (ro)-[:FILLED_BY {from: date(r.from)}]->(p)""", rows=r["fills"])
-            s.run("""UNWIND $rows AS r CREATE (n:Process {id: r.id, name: r.name, description: r.description,
-                         family: r.family, criticality: r.criticality, sla: r.sla})
-                     WITH n, r MATCH (ro:Role {id: r.owner}) CREATE (ro)-[:OWNS]->(n)""", rows=r["processes"])
+            s.run("UNWIND $rows AS r CREATE (:Process {id: r.id, name: r.name, description: r.description})", rows=r["processes"])
             s.run("""UNWIND $rows AS r CREATE (a:Activity {id: r.id, name: r.name, seq: r.seq})
                      WITH a, r MATCH (p:Process {id: r.process}) CREATE (p)-[:HAS_ACTIVITY]->(a)""", rows=r["activities"])
             s.run("""UNWIND $rows AS r MERGE (t:Task {id: r.id})
                      SET t.name = r.name, t.description = r.description, t.status = r.status,
-                         t.automatable = r.automatable, t.source = r.source, t.extractedAt = r.extractedAt,
-                         t.confidence = r.confidence
+                         t.source = r.source, t.extractedAt = r.extractedAt, t.confidence = r.confidence
                      REMOVE t.type
                      WITH t, r
-                     MATCH (a:Activity {id: r.activity}), (ro:Role {id: r.role})
-                     CREATE (a)-[:HAS_TASK]->(t) CREATE (ro)-[:PERFORMS]->(t)""", rows=r["tasks"])
+                     MATCH (a:Activity {id: r.activity})
+                     CREATE (a)-[:HAS_TASK]->(t)""", rows=r["tasks"])
             s.run("""UNWIND $rows AS r MATCH (t:Task {id: r.task}), (a:Action {id: r.action})
                      CREATE (t)-[:HAS_ACTION {order: r.order, quantity: r.quantity}]->(a)""", rows=r["task_actions"])
             s.run("""UNWIND $rows AS r MATCH (a:Task {id: r.from}), (b:Task {id: r.to})
                      CREATE (a)-[:NEXT {condition: r.condition, outcome: r.outcome, isDefault: r.isDefault}]->(b)""", rows=r["nexts"])
-            s.run("UNWIND $rows AS r MATCH (a:Task {id: r.from}), (b:Task {id: r.to}) CREATE (a)-[:HANDOFF_TO]->(b)", rows=r["handoffs"])
-            s.run("""UNWIND $rows AS r MATCH (a:Task {id: r.task}), (ro:Role {id: r.role})
-                     CREATE (a)-[:ESCALATES_TO {reason: r.reason}]->(ro)""", rows=r["escalations"])
-            s.run("""UNWIND $rows AS r MATCH (a:Task {id: r.task}), (ro:Role {id: r.role})
-                     CREATE (a)-[:CONFIRMED_BY {at: date(r.at)}]->(ro)""", rows=r["confirmations"])
+            s.run("""UNWIND $rows AS r MATCH (a:Task {id: r.task}), (p:Player {name: r.player})
+                     CREATE (a)-[:CONFIRMED_BY {at: date(r.at)}]->(p)""", rows=r["confirmations"])
     return notes
 
 
@@ -264,19 +216,17 @@ def main() -> int:
     if not action_ids:
         sys.exit("No actions in the graph. Run load_recipes.py --all and load_actions.py first.")
 
-    org, processes = read_model()
-    errors = validate(org, processes, action_ids)
+    people, processes = read_model()
+    errors = validate(people, processes, action_ids)
     if errors:
         print(f"{len(errors)} problem(s) in the model; nothing written:")
         for e in errors:
             print("  -", e)
         return 1
 
-    r = rows(org, processes)
-    print(f"model OK: {len(r['units'])} org units, {len(r['roles'])} roles, {len(r['fills'])} role fills, "
-          f"{len(r['processes'])} process(es), {len(r['activities'])} activities, {len(r['tasks'])} tasks, "
-          f"{len(r['task_actions'])} task actions, "
-          f"{len(r['nexts'])} NEXT, {len(r['handoffs'])} handoffs, {len(r['escalations'])} escalations")
+    r = rows(people, processes)
+    print(f"model OK: {len(r['players'])} player(s), {len(r['processes'])} process(es), {len(r['activities'])} activities, "
+          f"{len(r['tasks'])} tasks, {len(r['task_actions'])} task actions, {len(r['nexts'])} NEXT")
     for w in tool_gaps(processes, graph):
         print("  note:", w)
     if args.dry_run:

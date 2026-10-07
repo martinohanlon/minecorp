@@ -24,7 +24,7 @@ Measured on the real graph and on the 290 questions the agent has answered since
    - No tool starts from a mob, biome, structure, dimension or ore, and none answers "where". The prompt even tells the model not to say where.
    - `class_members` knows only item categories, not mob or biome classes.
    - Wiki passages now list biomes, structures and mobs as mentions, and the model cannot look any of them up.
-   - Nothing reaches the company (`Task`, `Process`, `Role`) or a player's progress.
+   - Nothing reaches the company (`Task`, `Process`) or a player's progress.
 
 ## Proposal
 

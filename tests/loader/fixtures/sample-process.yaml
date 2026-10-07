@@ -1,0 +1,51 @@
+# A process used only by the tests (the real model has none yet). It has structured and manual tasks, a task with two
+# ordered actions, and a branch where one way is the default.
+process:
+  id: sample
+  name: Get an iron pickaxe
+  description: Used by the tests.
+
+status: confirmed
+confirmed_by: martinohanlon
+confirmed_at: "2026-10-07"
+
+activities:
+  - id: gather
+    name: Gather
+    seq: 1
+    tasks:
+      - id: sample/mine-iron
+        name: Mine iron ore
+        actions:
+          - {do: "mine:minecraft:iron_ore", quantity: 3}
+      - id: sample/mine-logs
+        name: Chop oak logs
+        actions:
+          - {do: "mine:minecraft:oak_log", quantity: 2}
+  - id: make
+    name: Make
+    seq: 2
+    tasks:
+      - id: sample/smelt
+        name: Smelt raw iron
+        actions:
+          - {do: "smelt:minecraft:iron_ingot", quantity: 3}
+      - id: sample/sticks
+        name: Make sticks
+        actions:
+          - {do: "craft:minecraft:oak_planks", quantity: 2}
+          - {do: "craft:minecraft:stick", quantity: 4}
+      - id: sample/pickaxe
+        name: Craft the pickaxe
+        actions:
+          - {do: "craft:minecraft:iron_pickaxe"}
+      - id: sample/show-off
+        name: Admire it
+
+next:
+  - {from: sample/mine-iron, to: sample/smelt, condition: raw iron collected, outcome: ready to smelt, default: true}
+  - {from: sample/mine-logs, to: sample/sticks, condition: logs collected, default: true}
+  - {from: sample/smelt, to: sample/pickaxe, condition: ingots smelted, default: true}
+  - {from: sample/sticks, to: sample/pickaxe, condition: sticks crafted, default: true}
+  - {from: sample/pickaxe, to: sample/show-off, condition: pickaxe crafted, default: true}
+  - {from: sample/pickaxe, to: sample/mine-iron, condition: need more, default: false}

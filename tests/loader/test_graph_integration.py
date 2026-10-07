@@ -82,7 +82,8 @@ class TestGraphShape:
         rows = db.q("SHOW CONSTRAINTS YIELD labelsOrTypes, properties, type WHERE type CONTAINS 'UNIQUENESS' RETURN labelsOrTypes[0] AS label, properties[0] AS prop")
         pairs = {(r["label"], r["prop"]) for r in rows}
         assert {("Item", "id"), ("Recipe", "id"), ("Action", "id"), ("Block", "id"), ("Mob", "id"), ("Task", "id"),
-                ("Role", "id"), ("OrgUnit", "id"), ("Process", "id"), ("Activity", "id"), ("Player", "uuid")} <= pairs
+                ("Process", "id"), ("Activity", "id"), ("Player", "uuid")} <= pairs
+        assert not ({("Role", "id"), ("OrgUnit", "id")} & pairs)
 
     def test_route_properties_exist_for_craftable_items(self, db):
         n = db.one("MATCH (i:Item) WHERE i.routeSteps IS NOT NULL RETURN count(i)")
@@ -125,26 +126,19 @@ class TestKnownFacts:
 # --------------------------------------------------------------------------- the authored model in the graph
 
 class TestModelInGraph:
-    def test_organization(self, db):
-        assert db.one("MATCH (u:OrgUnit) RETURN count(u)") == 6
-        assert db.one("MATCH (r:Role) RETURN count(r)") == 9
-        assert db.one("MATCH (r:Role)-[:IN_UNIT]->(:OrgUnit) RETURN count(r)") == 9
-        assert db.one("MATCH (u:OrgUnit)-[:PART_OF]->(:OrgUnit {id:'minecorp'}) RETURN count(u)") == 5
+    """The test database holds tests/loader/fixtures/sample-process.yaml, because the real model has no process yet."""
 
-    def test_one_player_fills_every_role(self, db):
+    def test_there_is_one_player_and_no_organization(self, db):
         assert db.one("MATCH (p:Player) RETURN count(p)") == 1
-        assert db.one("MATCH (r:Role)-[:FILLED_BY]->(:Player {name:'martinohanlon'}) RETURN count(DISTINCT r)") == 9
+        assert db.one("MATCH (n) WHERE n:OrgUnit OR n:Role RETURN count(n)") == 0
+        assert db.one("MATCH ()-[r:PERFORMS|FILLED_BY|IN_UNIT|OWNS|HANDOFF_TO|ESCALATES_TO]->() RETURN count(r)") == 0
 
-    def test_process_has_one_owner(self, db):
-        assert db.one("MATCH (r:Role)-[:OWNS]->(p:Process) RETURN count(p)") == db.one("MATCH (p:Process) RETURN count(p)") == 1
-        assert db.one("MATCH (:Role {id:'process-owner'})-[:OWNS]->(:Process {id:'iron-tool-line'}) RETURN count(*)") == 1
-
-    def test_every_task_has_one_role_and_one_activity(self, built, db):
+    def test_a_process_has_activities_and_every_task_is_in_one_activity(self, built, db):
         n = len(built["model_rows"]["tasks"])
         assert db.one("MATCH (t:Task) RETURN count(t)") == n
-        assert db.one("MATCH (:Role)-[:PERFORMS]->(t:Task) RETURN count(DISTINCT t)") == n
-        assert db.one("MATCH (t:Task) WITH t, size([(t)<-[:PERFORMS]-() | 1]) AS roles WHERE roles <> 1 RETURN count(t)") == 0
+        assert db.one("MATCH (:Process)-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == len(built["model_rows"]["activities"])
         assert db.one("MATCH (:Activity)-[:HAS_TASK]->(t:Task) RETURN count(DISTINCT t)") == n
+        assert db.one("MATCH (t:Task) WHERE size([(t)<-[:HAS_TASK]-() | 1]) <> 1 RETURN count(t)") == 0
 
     def test_has_action_orders_start_at_one_and_have_no_gaps(self, db):
         rows = db.q("MATCH (t:Task)-[h:HAS_ACTION]->() WITH t, collect(h.order) AS orders RETURN t.id AS task, orders")
@@ -157,32 +151,24 @@ class TestModelInGraph:
         assert db.one("MATCH ()-[h:HAS_ACTION]->() RETURN count(h)") == len(built["model_rows"]["task_actions"])
 
     def test_a_task_can_perform_two_ordered_actions(self, db):
-        rows = db.q("MATCH (:Task {id:'iron-tool-line/make-sticks'})-[h:HAS_ACTION]->(a) RETURN h.order AS o, a.id AS action ORDER BY o")
+        rows = db.q("MATCH (:Task {id:'sample/sticks'})-[h:HAS_ACTION]->(a) RETURN h.order AS o, a.id AS action ORDER BY o")
         assert rows == [{"o": 1, "action": "craft:minecraft:oak_planks"}, {"o": 2, "action": "craft:minecraft:stick"}]
 
     def test_the_manual_task_has_no_actions(self, db):
-        assert db.one("MATCH (t:Task {id:'iron-tool-line/stock-tools-chest'}) RETURN size([(t)-[:HAS_ACTION]->() | 1])") == 0
+        assert db.one("MATCH (t:Task {id:'sample/show-off'}) RETURN size([(t)-[:HAS_ACTION]->() | 1])") == 0
 
-    def test_handoffs_exist_exactly_where_the_role_changes(self, db):
-        assert db.one("""MATCH (a:Task)-[:NEXT]->(b:Task) WHERE NOT (a)-[:HANDOFF_TO]->(b)
-                         AND NOT EXISTS { (:Role)-[:PERFORMS]->(a)<-[:PERFORMS]-(:Role) } WITH a, b
-                         MATCH (r1:Role)-[:PERFORMS]->(a), (r2:Role)-[:PERFORMS]->(b) WHERE r1 <> r2 RETURN count(*)""") == 0
-        assert db.one("""MATCH (a:Task)-[:HANDOFF_TO]->(b:Task) MATCH (r1:Role)-[:PERFORMS]->(a), (r2:Role)-[:PERFORMS]->(b)
-                         WHERE r1 = r2 RETURN count(*)""") == 0
+    def test_a_branch_keeps_its_default_flag(self, db):
+        rows = db.q("MATCH (:Task {id:'sample/pickaxe'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
+        assert rows == [{"to": "sample/mine-iron", "d": False}, {"to": "sample/show-off", "d": True}]
 
-    def test_the_default_path_runs_from_mining_to_storing(self, db):
-        paths = db.q("""MATCH p = (:Task {id:'iron-tool-line/mine-iron-ore'})-[:NEXT*]->(z:Task)
-                        WHERE NOT (z)-[:NEXT]->() AND all(r IN relationships(p) WHERE r.isDefault)
-                        RETURN [n IN nodes(p) | n.id] AS path""")
-        assert paths == [{"path": ["iron-tool-line/mine-iron-ore", "iron-tool-line/smelt-raw-iron",
-                                   "iron-tool-line/craft-iron-pickaxe", "iron-tool-line/stock-tools-chest"]}]
+    def test_the_default_path_runs_from_mining_to_the_pickaxe(self, db):
+        paths = db.q("""MATCH p = (:Task {id:'sample/mine-iron'})-[:NEXT*]->(z:Task {id:'sample/show-off'})
+                        WHERE all(r IN relationships(p) WHERE r.isDefault) RETURN [n IN nodes(p) | n.id] AS path""")
+        assert paths == [{"path": ["sample/mine-iron", "sample/smelt", "sample/pickaxe", "sample/show-off"]}]
 
-    def test_every_task_is_confirmed_by_the_steward(self, built, db):
+    def test_every_task_of_a_confirmed_process_is_confirmed_by_the_player(self, built, db):
         n = len(built["model_rows"]["tasks"])
-        assert db.one("MATCH (:Task)-[:CONFIRMED_BY]->(:Role {id:'steward'}) RETURN count(*)") == n
-
-    def test_escalation(self, db):
-        assert db.one("MATCH (:Task {id:'iron-tool-line/smelt-raw-iron'})-[e:ESCALATES_TO]->(:Role {id:'process-owner'}) RETURN count(e)") == 1
+        assert db.one("MATCH (:Task)-[:CONFIRMED_BY]->(:Player {name:'martinohanlon'}) RETURN count(*)") == n
 
 
 # --------------------------------------------------------------------------- the rebuild contract (mutates the database: keep last)
@@ -202,3 +188,11 @@ class TestRebuildContract:
         assert db.one("MATCH ()-[h:HAS_ACTION]->() RETURN count(h)") == 0          # why the order is a contract
         lm.write(built["model_rows"], built["uri"], built["user"], built["password"], TEST_DB)
         assert db.one("MATCH ()-[h:HAS_ACTION]->() RETURN count(h)") == links
+
+    def test_the_organization_of_earlier_versions_is_removed_by_a_model_load(self, built, db):
+        db.q("CREATE CONSTRAINT role_id IF NOT EXISTS FOR (n:Role) REQUIRE n.id IS UNIQUE")
+        db.q("MATCH (t:Task {id: 'sample/mine-iron'}) CREATE (:OrgUnit {id: 'old'})<-[:IN_UNIT]-(:Role {id: 'old-role'})-[:PERFORMS]->(t)")
+        lm.write(built["model_rows"], built["uri"], built["user"], built["password"], TEST_DB)
+        assert db.one("MATCH (n) WHERE n:OrgUnit OR n:Role RETURN count(n)") == 0
+        assert db.one("SHOW CONSTRAINTS YIELD name WHERE name = 'role_id' RETURN count(*)") == 0
+        assert db.one("MATCH (t:Task {id: 'sample/mine-iron'}) RETURN count(t)") == 1       # the task itself stays

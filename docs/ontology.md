@@ -41,16 +41,14 @@ The two regions join at the game's raw materials, which is how "where do I mine 
 (Item gunpowder)<-[:CREATES]-(Action:Kill)-[:REQUIRES]->(Mob creeper)<-[:SPAWNS]-(Biome)
 ```
 
-**The company.**
+**The player's processes** (v0.11). There is one role, the player, so there is no organization.
 
 ```
-(OrgUnit)-[:PART_OF]->(OrgUnit)    (Role)-[:IN_UNIT]->(OrgUnit)    (Role)-[:FILLED_BY]->(Player)
-(Role)-[:OWNS]->(Process)-[:HAS_ACTIVITY]->(Activity)-[:HAS_TASK]->(Task)    (Role)-[:PERFORMS]->(Task)
-(Task)-[:NEXT | HANDOFF_TO]->(Task)    (Task)-[:ESCALATES_TO | CONFIRMED_BY]->(Role)
-(Task)-[:HAS_ACTION {order, quantity}]->(Action)     (Player)-[:COMPLETED {at, count}]->(Task)
+(Process)-[:HAS_ACTIVITY]->(Activity)-[:HAS_TASK]->(Task)-[:NEXT {condition, isDefault}]->(Task)
+(Task)-[:HAS_ACTION {order, quantity}]->(Action)     (Task)-[:CONFIRMED_BY {at}]->(Player)     (Player)-[:COMPLETED {at, count}]->(Task)
 ```
 
-A task is work in the company; its actions are the game's own, so the company is defined in terms of what the game can do.
+A process is a goal a player works towards in the game (get to the Nether), made of stages (activities) and steps (tasks). It holds what the game's data files do not: the structured part of the game (recipes, mining, drops, spawns) is already in the graph and needs no process. A task points at the game's own actions when the data has them, and has none when it is a manual step, so a process is defined in terms of what the game can do and says plainly where it cannot.
 
 ### The lexical graph
 
@@ -83,7 +81,7 @@ Derived by `link_wiki.py` by following paths (`Chunk-LINKS_TO->Page-ABOUT->node`
 
 ### What it holds today (real database, 2026-10-05)
 
-Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `Action` 2,385, `Block` 1,113, `Mob` 90, `MobClass` 44, `Biome` 66, `BiomeClass` 68, `Structure` 34, `Dimension` 3, `Feature` 32, `PlacedFeature:Ore` 40; company `OrgUnit` 6, `Role` 9, `Player` 1, `Process` 1, `Activity` 4, `Task` 6. Lexical: `Wiki` 1, `Page` 1,150 (17 loaded, 1,133 stubs), `Section` 549, `Chunk` 720, `LINKS_TO` 3,191, `REDIRECTS_TO` 423. Bridge: `ABOUT` 673, `MENTIONS` 4,743.
+Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `Action` 2,385, `Block` 1,113, `Mob` 90, `MobClass` 44, `Biome` 66, `BiomeClass` 68, `Structure` 34, `Dimension` 3, `Feature` 32, `PlacedFeature:Ore` 40; company `Player` 1 (no process yet; `OrgUnit` and `Role` were removed in v0.11). Lexical: `Wiki` 1, `Page` 1,150 (17 loaded, 1,133 stubs), `Section` 549, `Chunk` 720, `LINKS_TO` 3,191, `REDIRECTS_TO` 423. Bridge: `ABOUT` 673, `MENTIONS` 4,743.
 
 ### Which graph answers which question
 
@@ -122,7 +120,7 @@ Observations that drive the model:
 
 ## Domain graph detail: game data and the company (v0.7 diagram)
 
-The game-data and company parts of the domain graph as built at v0.7 (the world and the lexical graph came later; see "The model" above). Every node label and relationship of those parts: properties are in the tables below ("Node labels", "Nodes", "Relationships") so this stays readable. Round brackets are node labels. The organization and process nodes are authored in the YAML in `model/`; everything else is generated from the Paper server jar.
+**The `OrgUnit`, `Role`, `FILLED_BY`, `OWNS`, `PERFORMS`, `HANDOFF_TO` and `ESCALATES_TO` parts of this diagram were removed in v0.11 (see below); `CONFIRMED_BY` now points at a `Player`.** The game-data and company parts of the domain graph as built at v0.7 (the world and the lexical graph came later; see "The model" above). Every node label and relationship of those parts: properties are in the tables below ("Node labels", "Nodes", "Relationships") so this stays readable. Round brackets are node labels. The organization and process nodes are authored in the YAML in `model/`; everything else is generated from the Paper server jar.
 
 ```
                           PART_OF
@@ -290,6 +288,8 @@ RETURN r.id, c.role, c.count, i.name, i:ItemClass AS isCategory, collect(DISTINC
 ```
 
 ## v0.6: organization, process and harvest model
+
+> **The organization described here (`OrgUnit`, `Role`, the six units, nine roles, owners, hand-offs and escalations) and the Iron tool line were removed in v0.11.** They came from the knowledge-layer posts and did not fit one player in a game. This section is kept as the record.
 
 > **Partly superseded by v0.7 (below).** `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED` no longer exist: the same facts (target, tool, drops) now sit on gathering `Action` nodes, and tasks link to actions with `HAS_ACTION`. The tables and counts in this section are kept as the record of how the data was derived.
 
@@ -497,6 +497,8 @@ Decided (2026-10-02): **1** `Harvest` is its own node, **2** the tool requiremen
 | 8 | Should `Station` link to something? | **Decided: `Station` is a marker label on `Item`** (one node, two labels), so a station has its own recipe and `USES_STATION` points at a real item. Built. |
 
 ## v0.7: actions (built 2026-10-02)
+
+> Actions and `HAS_ACTION` are unchanged. The rule "one role per task", `HANDOFF_TO` and the Iron tool line example below were removed in v0.11.
 
 Replaces `Harvest`, `FROM_BLOCK`, `FROM_MOB`, `CRAFTED` and `HARVESTED`. The earlier v0.6 sections above still describe what the data holds (drops, tools, counts); in the graph those facts now sit on `Action` nodes.
 
@@ -735,6 +737,28 @@ Where things are. Everything here is read from the Paper jar by `loader/load_wor
 - Mob and block statistics (health, damage, hardness) and brewing, which are in game code, not the data files.
 - Agent tools that read the world (parked while the tools are reviewed). `search_wiki` already lists Biome and Structure mentions.
 
+## v0.11: the player's processes (built 2026-10-07)
+
+### Why
+
+The company model of v0.6 and v0.7 copied the knowledge-layer posts: five organization units, nine roles (four of them governance roles), owners, hand-offs and escalations. None of it fits Minecraft played by one person. The operational roles (Miner, Smelter, Crafter, Smith) were the action verbs renamed, the one process (the Iron tool line) repeated a route the agent already works out from the game data, and with one player filling every role a hand-off or an escalation could never mean anything. The manifesto is a guide, not a mapping to be matched exactly.
+
+### The model
+
+- **One role: the player.** `OrgUnit`, `Role`, `PART_OF`, `IN_UNIT`, `FILLED_BY`, `OWNS`, `PERFORMS`, `HANDOFF_TO` and `ESCALATES_TO` are gone, with the task properties `automatable` and `role` and the process properties `family`, `criticality`, `sla` and `owner`. Minecraft can be played together but mostly is not; roles can come back if that changes.
+- **A process is a goal a player works towards.** `Process` is the goal ("Get to the Nether"), `Activity` a stage ("Get obsidian", "Build the frame") and `Task` a step. The labels and the shape (`HAS_ACTIVITY`, `HAS_TASK`, `NEXT`) are unchanged, so the mapping to the manifesto's process schema still reads.
+- **Known and unknown.** The *known* processes are the structured game: recipes, mining, drops and spawns, already derived from the jar and followed by `what_do_i_need` and `where_to_find`. They are not authored. A process holds the *unknown*: what a player has to do that no data file says (shelter, mob farms, getting to the Nether, defeating the dragon, getting emeralds).
+- **A task is structured or manual.** It names the game actions it performs (`HAS_ACTION`) when the data has them, and has none when it is a manual step (build the frame). A route's alternatives are data: `NEXT` carries a `condition` and `isDefault`.
+- **Everything is a candidate until a player confirms it.** A process file says `status: candidate` with `source` (the wiki section the steps come from), `extracted_at` and `confidence`, or `status: confirmed` with `confirmed_by` (a player) and `confirmed_at`. A confirmed task has `(Task)-[:CONFIRMED_BY {at}]->(Player)`.
+
+### What was built
+
+`loader/load_model.py` reads `model/players.yaml` and `model/processes/*.yaml` (see [model/processes/README.md](../model/processes/README.md) for the file format); with no process file it loads the player only. A load removes `OrgUnit` and `Role` nodes and their constraints from a database that still has them, and keeps tasks that hold `COMPLETED` history. The authored organization and the Iron tool line were deleted. The tests load a sample process from `tests/loader/fixtures/` because the real model has none yet.
+
+### Next
+
+The first processes, as candidates from the loaded wiki pages: a shelter, then the Nether portal, then emeralds, the dragon and a mob farm (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
+
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
 | Knowledge-layer concept | MineCorp candidate |
@@ -762,6 +786,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-07 | v0.11 (built): one role (the player), no organization. A process is a goal a player works towards (get to the Nether), holding the unknown part of the game; the known part (recipes, mining, drops, spawns) is derived and not authored. The Iron tool line was removed. Order of the first processes: shelter, emeralds, Nether, dragon, mob farm. |
 | 2026-10-05 | v0.10 (built): the world from the jar. Every creature is a `Mob` (90), a mob that drops nothing has no `Kill` action. Tag classes are separate labels (`MobClass`, `BiomeClass`) with `INCLUDES`, not marker labels. Ore is a shared `Feature` and a shared `PlacedFeature:Ore`, heights resolved to block heights and clamped to the world. Only ore placements for now. Link targets widened to Biome and Structure. |
 | 2026-10-04 | v0.9 (built): one `Page` per URL with stubs for pages only linked to; redirects are pages with `REDIRECTS_TO`; `(Chunk)-[:LINKS_TO]->(Page)`; `(Page)-[:ABOUT]->(node)` and `(Chunk)-[:MENTIONS]->(node)` for Item, Mob and Block, derived by following paths, as candidates; an ambiguous title or name is linked to every candidate with `ambiguous` and `candidates` (the reader decides with context); nothing about the node kind is stored on the relationship; links are positive evidence only; human review file `model/wiki_links.yaml`. |
 | 2026-10-04 | v0.8 (loader built): wiki lexical graph `Wiki` > `Page` > `Section` tree, with `Chunk` `PART_OF` a section and linked by `NEXT`; one chunk kind, 300 tokens with 50 overlap within a section (small section = one chunk); `text-embedding-3-small`; local `shelve` cache of `{hash: embedding}` for rebuilds; provenance stored; MediaWiki API; same database. |
@@ -786,6 +811,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 ## Change log
 
 - **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
+- **v0.11 built** (2026-10-07): one role, the player. `OrgUnit`, `Role` and their relationships removed; a process is a goal a player works towards, made of stages and steps, holding what the game data does not; `model/org.yaml` became `model/players.yaml`; the Iron tool line was deleted; `CONFIRMED_BY` points at a `Player`. See "v0.11".
 - **v0.10 built** (2026-10-05): `loader/load_world.py`: `Mob` completed to 90, `MobClass`, `Biome`, `BiomeClass`, `Structure`, `Dimension`, `Feature`, `PlacedFeature:Ore`, `SPAWNS`, `GENERATES_IN`, `HAS_BIOME`, `GENERATES`, `PLACES`, `IN_DIMENSION`; ore heights resolved to block heights. The link job now also names Biome and Structure. 75 unit, 52 real-jar and 28 graph tests; every fault injected into the loader was caught. Found while building: Neo4j does not allow constraints and data in one transaction (constraints first); the shared tag walk is order-dependent on cyclic tags (none in the data); `the_void` is in no dimension.
 - **v0.9 agent use** (2026-10-05): `search_wiki` hits and `read_section` list the nodes a passage is about (`mentions`: name, kind from the node's labels, id, `linked`, `ambiguous`), read by following `MENTIONS`; ambiguous words list every candidate so the model chooses from the passage; the model follows a mention to `get_recipes` and the other game-data tools. 83 unit and 40 graph tests for the wiki tools; all 29 eval questions pass (the wiki-then-recipe question chains search_wiki, read_section and get_recipes).
 - **v0.9 built** (2026-10-04): `LINKS_TO`, `REDIRECTS_TO`, stub pages, `ABOUT`, `MENTIONS`, built graph-native (the job is Cypher over paths; Python only scans text); ambiguity kept as a relationship to every candidate; targets Item, Mob and Block; `load_wiki.py` keeps links and redirects as pages and relationships; `loader/link_wiki.py` and `model/wiki_links.yaml` (stoplist, aliases, page fixes). 59 unit and 89 graph tests for the job, plus link tests for the loader. Bugs found while building: a text-less icon link shifted every later link out of place (fixed, and a test pins that links never change chunk text); redirects first collapsed every coloured bed into the category Bed (now redirects are pages); the first job write was lazy and not committed on return (now one transaction); wordings on a mention were in a different order on each run (now sorted). (`link_wiki.py` was then run for real on 2026-10-05.)

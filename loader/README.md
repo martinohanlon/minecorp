@@ -35,7 +35,7 @@ Load everything (all recipes and item tags) with `--all --wipe`.
 .venv\Scripts\python loader\load_model.py
 ```
 
-Edit `model/org.yaml` or `model/processes/*.yaml` and re-run; the YAML is the source of truth and the run is repeatable. `COMPLETED` history and players are left alone.
+Edit `model/players.yaml` or `model/processes/*.yaml` (format: [model/processes/README.md](../model/processes/README.md)) and re-run; the YAML is the source of truth and the run is repeatable. `COMPLETED` history and players are left alone.
 
 **After every full load, compute the route properties** (steps, chain length and base materials per craftable item; about 10 seconds). The agent's `rank_recipes` tool needs them, and a `--wipe` removes them:
 
