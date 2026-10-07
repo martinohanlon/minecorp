@@ -1,0 +1,150 @@
+# Process: Build a first-night shelter (candidate, drafted from the loaded wiki pages). Loaded by loader/load_model.py.
+# Format: model/processes/README.md. Nothing here is confirmed until a player sets `status: confirmed`.
+#
+# The steps come from three wiki sections (community-written, Java Edition survival), named in each task:
+#   Tutorial:Beginner's guide > Making shelter   and   > Light & mob spawning
+#   Tutorial:Shelters > Three block high hut     and   > Hole in the wall   and   > Bedroom
+# Numbers come from the wiki or from the recipes in the game data, and are marked so in the description. Where the wiki
+# gives no number the description says so.
+
+process:
+  id: shelter
+  name: Build a first-night shelter
+  description: A small, lit, closed-in place to be before the first night, with a crafting table, a furnace and a bed.
+
+status: candidate
+source: "https://minecraft.wiki/w/Tutorial:Beginner%27s_guide#Making_shelter ; https://minecraft.wiki/w/Tutorial:Shelters#Three_block_high_hut"
+extracted_at: "2026-10-07"
+confidence: 0.7
+
+activities:
+  - id: gather
+    name: Gather
+    seq: 1
+    tasks:
+      - id: shelter/chop-logs
+        name: Chop logs
+        description: >-
+          Wood for a crafting table, a wooden pickaxe, a door and the planks of a bed. The wiki gives no number; about
+          5 logs is enough by the recipes (a log makes 4 planks). (Beginner's guide > Your first day.)
+        actions:
+          - {do: "mine:minecraft:oak_log", quantity: 5}
+      - id: shelter/make-table-and-pickaxe
+        name: Make a crafting table and a wooden pickaxe
+        description: Planks, then a crafting table, sticks and a wooden pickaxe, which you need for stone.
+        actions:
+          - {do: "craft:minecraft:oak_planks", quantity: 8}
+          - {do: "craft:minecraft:crafting_table"}
+          - {do: "craft:minecraft:stick", quantity: 2}
+          - {do: "craft:minecraft:wooden_pickaxe"}
+      - id: shelter/mine-cobblestone
+        name: Mine cobblestone
+        description: >-
+          13 blocks is the bare minimum for the walls of a one-block hut, and a furnace takes 8 more, so 21. Dirt or
+          planks also work as walls, but cobblestone is more secure. (Shelters > Three block high hut; Beginner's guide
+          > Making shelter.)
+        actions:
+          - {do: "mine:minecraft:cobblestone", quantity: 21}
+
+  - id: equip
+    name: Make what goes inside
+    seq: 2
+    tasks:
+      - id: shelter/craft-furnace
+        name: Craft a furnace
+        description: A starter base needs a crafting table, a furnace and a bed. (Beginner's guide > Making shelter.)
+        actions:
+          - {do: "craft:minecraft:furnace"}
+      - id: shelter/get-wool
+        name: Get wool
+        description: >-
+          A bed takes three wool of one colour and three planks (game data). A killed sheep drops one wool of its own
+          colour, so kill three of the same colour. Shears give two each but need iron. (Beginner's guide > Making shelter.)
+        actions:
+          - {do: "kill:minecraft:sheep", quantity: 3}
+      - id: shelter/craft-bed
+        name: Craft a bed
+        description: Any colour of bed works at this stage. Sleeping in it sets your spawn point to the bed. (Shelters > Bedroom.)
+        actions:
+          - {do: "craft:minecraft:white_bed"}
+      - id: shelter/craft-door
+        name: Craft a door
+        description: A door gives a two-high entrance you can open and close, and lets light through so you can tell when it is day. (Beginner's guide > Making shelter.)
+        actions:
+          - {do: "craft:minecraft:oak_door"}
+      - id: shelter/mine-coal
+        name: Mine coal
+        description: Coal for torches.
+        actions:
+          - {do: "mine:minecraft:coal_ore", quantity: 1}
+      - id: shelter/smelt-charcoal
+        name: Smelt charcoal
+        description: If you have no coal, a log smelted in the furnace gives charcoal, which works the same for torches. (Beginner's guide > Light & mob spawning.)
+        actions:
+          - {do: "smelt:minecraft:charcoal"}
+      - id: shelter/craft-torches
+        name: Craft torches
+        description: Coal or charcoal and a stick make torches.
+        actions:
+          - {do: "craft:minecraft:torch"}
+
+  - id: build
+    name: Build
+    seq: 3
+    tasks:
+      - id: shelter/build-walls
+        name: Build the walls
+        description: >-
+          Four walls three blocks high around you; a crafting table or a furnace can be part of a wall. Build it before
+          night. (Shelters > Three block high hut.)
+      - id: shelter/build-roof
+        name: Add a roof
+        description: >-
+          A roof at the third block (two blocks high inside) stops spiders climbing in and endermen, which cannot fit. If
+          you leave a one-block hole in the roof spiders still cannot get through, and you can tell when day comes.
+          (Shelters > Three block high hut.)
+      - id: shelter/furnish
+        name: Put the crafting table, furnace and bed inside
+        description: So you can craft and smelt through the night. (Shelters > Three block high hut; Beginner's guide > Making shelter.)
+      - id: shelter/close-entrance
+        name: Close the entrance
+        description: >-
+          Place the door, from the outside looking in. With no wood to spare, cover the entrance with dirt or cobblestone
+          and break it now and then to check for daylight. (Shelters > Hole in the wall.)
+      - id: shelter/light-it
+        name: Light the inside
+        description: >-
+          Torches around the inside and in the corners. Most hostile mobs only spawn in complete darkness, so a lit floor
+          stops them spawning. (Beginner's guide > Light & mob spawning.)
+
+  - id: night
+    name: Night
+    seq: 4
+    tasks:
+      - id: shelter/wait-out-the-night
+        name: Wait out the night inside
+        description: >-
+          Craft and smelt, or sleep in the bed. An enderman that wanders by can take a block from the wall: wait for it
+          to go away, then replace the block from your spare blocks, without looking at it. (Shelters > Three block high hut.)
+      - id: shelter/leave-at-daylight
+        name: Leave at daylight
+        description: Open the wall or door and keep an eye out for monsters, and be ready to run from creepers. (Shelters > Three block high hut.)
+
+next:
+  - {from: shelter/chop-logs, to: shelter/make-table-and-pickaxe, condition: logs collected, default: true}
+  - {from: shelter/make-table-and-pickaxe, to: shelter/mine-cobblestone, condition: pickaxe made, default: true}
+  - {from: shelter/mine-cobblestone, to: shelter/craft-furnace, condition: cobblestone collected, default: true}
+  - {from: shelter/craft-furnace, to: shelter/get-wool, condition: furnace made, default: true}
+  - {from: shelter/get-wool, to: shelter/craft-bed, condition: three wool collected, default: true}
+  - {from: shelter/craft-bed, to: shelter/craft-door, condition: bed made, default: true}
+  - {from: shelter/craft-door, to: shelter/mine-coal, condition: door made, outcome: coal for torches, default: true}
+  - {from: shelter/craft-door, to: shelter/smelt-charcoal, condition: no coal nearby, outcome: charcoal for torches, default: false}
+  - {from: shelter/mine-coal, to: shelter/craft-torches, condition: coal collected, default: true}
+  - {from: shelter/smelt-charcoal, to: shelter/craft-torches, condition: charcoal smelted, default: false}
+  - {from: shelter/craft-torches, to: shelter/build-walls, condition: torches made, default: true}
+  - {from: shelter/build-walls, to: shelter/build-roof, condition: walls up, default: true}
+  - {from: shelter/build-roof, to: shelter/furnish, condition: roof on, default: true}
+  - {from: shelter/furnish, to: shelter/close-entrance, condition: furnished, default: true}
+  - {from: shelter/close-entrance, to: shelter/light-it, condition: entrance closed, default: true}
+  - {from: shelter/light-it, to: shelter/wait-out-the-night, condition: lit, default: true}
+  - {from: shelter/wait-out-the-night, to: shelter/leave-at-daylight, condition: day has come, default: true}

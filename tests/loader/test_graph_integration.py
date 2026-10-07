@@ -166,9 +166,22 @@ class TestModelInGraph:
                         WHERE all(r IN relationships(p) WHERE r.isDefault) RETURN [n IN nodes(p) | n.id] AS path""")
         assert paths == [{"path": ["sample/mine-iron", "sample/smelt", "sample/pickaxe", "sample/show-off"]}]
 
-    def test_every_task_of_a_confirmed_process_is_confirmed_by_the_player(self, built, db):
-        n = len(built["model_rows"]["tasks"])
-        assert db.one("MATCH (:Task)-[:CONFIRMED_BY]->(:Player {name:'martinohanlon'}) RETURN count(*)") == n
+    def test_a_confirmed_process_is_confirmed_by_the_player_and_a_candidate_is_not(self, built, db):
+        confirmed = len([t for t in built["model_rows"]["tasks"] if t["status"] == "confirmed"])
+        assert confirmed > 0
+        assert db.one("MATCH (:Task)-[:CONFIRMED_BY]->(:Player {name:'martinohanlon'}) RETURN count(*)") == confirmed
+        assert db.one("MATCH (t:Task {status:'candidate'}) WHERE (t)-[:CONFIRMED_BY]->() RETURN count(t)") == 0
+        assert db.one("MATCH (t:Task {status:'confirmed'}) WHERE NOT (t)-[:CONFIRMED_BY]->() RETURN count(t)") == 0
+
+    def test_the_shelter_is_loaded_as_a_candidate_with_its_source(self, db):
+        assert db.one("MATCH (:Process {id:'shelter'})-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == 4
+        row = db.q("MATCH (t:Task {id:'shelter/build-walls'}) RETURN t.status AS status, t.source AS source, t.confidence AS c")[0]
+        assert row["status"] == "candidate" and "Tutorial:Shelters" in row["source"] and row["c"] == 0.7
+        assert db.one("MATCH (t:Task {id:'shelter/build-walls'}) RETURN size([(t)-[:HAS_ACTION]->() | 1])") == 0   # a manual step
+
+    def test_the_shelter_has_a_branch_for_coal_or_charcoal_and_the_default_is_coal(self, db):
+        rows = db.q("MATCH (:Task {id:'shelter/craft-door'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
+        assert rows == [{"to": "shelter/mine-coal", "d": True}, {"to": "shelter/smelt-charcoal", "d": False}]
 
 
 # --------------------------------------------------------------------------- the rebuild contract (mutates the database: keep last)

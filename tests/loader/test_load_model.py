@@ -240,6 +240,41 @@ class TestRealModel:
                     assert t["id"].startswith(p["process"]["id"] + "/")
 
 
+class TestEveryRealProcessIsOneConnectedPath(object):
+    def test_every_task_can_be_reached_from_the_first_by_next(self, model):
+        _people, processes = model
+        for p in processes:
+            tasks = [t["id"] for ac in p["activities"] for t in ac["tasks"]]
+            follows: dict[str, list[str]] = {}
+            for n in p.get("next", []):
+                follows.setdefault(n["from"], []).append(n["to"])
+            seen, todo = set(), [tasks[0]]
+            while todo:
+                x = todo.pop()
+                if x not in seen:
+                    seen.add(x)
+                    todo += follows.get(x, [])
+            assert seen == set(tasks), f"{p['_file']}: not reachable from {tasks[0]}: {sorted(set(tasks) - seen)}"
+
+    def test_every_process_has_a_default_way_through(self, model):
+        _people, processes = model
+        for p in processes:
+            tasks = [t["id"] for ac in p["activities"] for t in ac["tasks"]]
+            default = {n["from"]: n["to"] for n in p.get("next", []) if n.get("default")}
+            x, path = tasks[0], [tasks[0]]
+            while x in default and default[x] not in path:
+                x = default[x]
+                path.append(x)
+            assert x not in default, f"{p['_file']}: the default path loops at {x}"
+            assert len(path) > 1
+
+    def test_a_candidate_names_a_source_that_is_a_wiki_page(self, model):
+        _people, processes = model
+        for p in processes:
+            if p.get("status", "candidate") == "candidate":
+                assert "minecraft.wiki/w/" in p["source"], p["_file"]
+
+
 class TestSampleProcess:
     """The process the tests load into the throwaway database (the real model has none yet)."""
 

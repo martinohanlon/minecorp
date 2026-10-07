@@ -757,7 +757,7 @@ The company model of v0.6 and v0.7 copied the knowledge-layer posts: five organi
 
 ### Next
 
-The first processes, as candidates from the loaded wiki pages: a shelter, then the Nether portal, then emeralds, the dragon and a mob farm (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
+The first process, the shelter, is drafted as a candidate (`model/processes/shelter.yaml`). The rest, as candidates from the loaded wiki pages: (the shelter is done), then the Nether portal, then emeralds, the dragon and a mob farm (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
 
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
