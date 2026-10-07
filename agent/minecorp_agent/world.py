@@ -109,12 +109,22 @@ def where_block(graph: Graph, block_id: str) -> dict:
             p = {"y": f"{r['minY']} to {r['maxY']}", "veinsPerChunk": count, "veinSize": r["veinSize"]}
             if r["peakY"] is not None:
                 p["mostCommonAround"] = r["peakY"]
+                p["spread"] = f"most common around y {r['peakY']}, fewer towards the ends of the range"
+            else:
+                p["spread"] = "spread evenly over the range"
             if r["rarity"]:
                 p["oneChunkIn"] = r["rarity"]
             placements.append(p)
-        where.append({"dimension": dimension, "placements": placements,
+        low, high = min(r["minY"] for r in rs), max(r["maxY"] for r in rs)
+        where.append({"dimension": dimension, "anywhereFrom": f"y {low} to {high}", "placements": placements,
                       **(biomes_text(biomes, everywhere, dimension) if biomes else {})})
     return {"where": where}
+
+
+def _in_dimensions(biome_ids: list[str], everywhere: dict[str, dict[str, str]]) -> str:
+    """' (The Nether)' for a structure whose biomes are all in one dimension, so the answer says which world."""
+    dimensions = [d for d, ids in everywhere.items() if any(b in ids for b in biome_ids)]
+    return f" ({', '.join(dimensions)})" if dimensions else ""
 
 
 def where_mob(graph: Graph, mob_id: str) -> dict:
@@ -122,7 +132,9 @@ def where_mob(graph: Graph, mob_id: str) -> dict:
     spawns = graph.read("""
         MATCH (b:Biome)-[s:SPAWNS]->(:Mob {id: $id}) RETURN b.id AS id, b.name AS name, s.category AS category, s.weight AS weight""", id=mob_id)
     structures = graph.read("""
-        MATCH (s:Structure)-[x:SPAWNS]->(:Mob {id: $id}) RETURN s.name AS name, x.category AS category ORDER BY name""", id=mob_id)
+        MATCH (s:Structure)-[:SPAWNS]->(:Mob {id: $id})
+        OPTIONAL MATCH (s)-[:GENERATES_IN]->()-[:INCLUDES*0..]->(b:Biome)
+        RETURN s.name AS name, collect(DISTINCT b.id) AS biomes ORDER BY name""", id=mob_id)
     out: dict = {}
     if spawns:
         categories = sorted({r["category"] for r in spawns if r["category"]})
@@ -130,7 +142,8 @@ def where_mob(graph: Graph, mob_id: str) -> dict:
                            for c in categories
                            for entry in by_dimension(graph, {r["id"]: r["name"] for r in spawns if r["category"] == c})]
     if structures:
-        out["structures"] = [r["name"] for r in structures][:MAX_NAMES]
+        everywhere = dimension_biomes(graph)
+        out["structures"] = [r["name"] + _in_dimensions(r["biomes"], everywhere) for r in structures][:MAX_NAMES]
     if not out:
         out["note"] = ("It does not spawn on its own in any biome or structure in the data: it comes from a trade, a "
                        "spawner, an egg, breeding or a game rule.")
@@ -217,7 +230,7 @@ def tool_where_to_find(graph: Graph, args: dict) -> dict:
     for t in things:
         results.append({"name": t["name"], "kind": t["kind"], **WHERE[t["kind"]](graph, t["id"])})
     return {"results": results,
-            "note": ("Heights are y levels (the Overworld goes from -64 to 319). 'veinsPerChunk' is how many veins the game "
+            "note": ("Heights are y levels (the Overworld goes from -64 to 319). A block can have several placements: all of them happen, so ranges overlap and 'anywhereFrom' is the whole span. 'veinsPerChunk' is how many veins the game "
                      "tries to place in each chunk. Biome lists are of the data, not of the wiki. A name that is both an "
                      "item and a block gives both results.")}
 

@@ -32,6 +32,12 @@ class TestWhereToFindAnItem:
         assert where["dimension"] == "Overworld" and where["biomes"] == "every Overworld biome"
         assert {p["y"] for p in where["placements"]} == {"-64 to 16", "-64 to -4"}
 
+    def test_each_placement_says_how_it_is_spread_and_the_whole_span_is_given(self, agent_graph):
+        where = result_for(call(agent_graph, "where_to_find", name="coal"), "item")["found"][-1]["where"][0]
+        assert where["anywhereFrom"] == "y 0 to 319"
+        assert {p["spread"] for p in where["placements"]} == {"most common around y 96, fewer towards the ends of the range",
+                                                              "spread evenly over the range"}
+
     def test_a_placement_says_how_many_veins_and_how_big(self, agent_graph):
         placements = result_for(call(agent_graph, "where_to_find", name="diamond"), "item")["found"][0]["where"][0]["placements"]
         assert all({"veinsPerChunk", "veinSize"} <= set(p) for p in placements)
@@ -41,7 +47,8 @@ class TestWhereToFindAnItem:
         sources = {f["from"]: f for f in found}
         assert {"Creeper", "Ghast", "Witch"} <= set(sources)
         assert sources["Ghast"]["spawnsIn"][0]["dimension"] == "The Nether"
-        assert "Swamp Hut" in sources["Witch"]["structures"]
+        assert "Swamp Hut (Overworld)" in sources["Witch"]["structures"]
+        assert any(s.startswith("Fortress") and "The Nether" in s for s in sources["Wither Skeleton"]["structures"]) if "Wither Skeleton" in sources else True
 
     def test_an_item_nothing_drops_has_no_place(self, agent_graph):
         out = result_for(call(agent_graph, "where_to_find", name="Iron Pickaxe"), "item")
