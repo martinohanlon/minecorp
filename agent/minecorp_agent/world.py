@@ -323,6 +323,32 @@ DESCRIBE = {"item": describe_item, "category": lambda g, i: describe_class(g, "I
             "mob class": lambda g, i: describe_class(g, "MobClass", i), "biome class": lambda g, i: describe_class(g, "BiomeClass", i)}
 
 
+MEMBER_KINDS = ("category", "mob class", "biome class")
+MAX_MEMBERS = 60
+
+
+def tool_members(graph: Graph, args: dict) -> dict:
+    """members: what an item category, a mob class or a biome class includes (planks, undead, forest)."""
+    ref = str(args.get("name") or args.get("category") or "").strip()
+    if not ref:
+        return {"error": "Give the name of the category or class.", "type": "bad_argument"}
+    things, err = resolve_things(graph, ref, MEMBER_KINDS)
+    if err:
+        return err
+    results = []
+    for t in things:
+        label = LABEL_OF[t["kind"]]
+        rows = graph.read(f"""
+            MATCH (c:{label} {{id: $id}})-[:INCLUDES*]->(m) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass
+            RETURN DISTINCT m.name AS name ORDER BY name""", id=t["id"])
+        names = [r["name"] for r in rows]
+        entry = {"name": t["name"], "kind": t["kind"], "total": len(names), "members": names[:MAX_MEMBERS]}
+        if len(names) > MAX_MEMBERS:
+            entry["note"] = f"List cut to {MAX_MEMBERS} of {len(names)}."
+        results.append(entry)
+    return {"results": results}
+
+
 def wiki_sections(graph: Graph, kind: str, node_id: str) -> list[dict]:
     """The wiki sections that name this thing most (by MENTIONS), strongest first; empty if the wiki is not linked."""
     rows = graph.read(f"""

@@ -20,7 +20,7 @@ from .budget import DEFAULT_BUDGET
 from .graph import Graph
 from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
-from .world import tool_describe, tool_where_to_find
+from .world import tool_describe, tool_members, tool_where_to_find
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
                 "use any ONE of its options (except those listed in 'except').")
@@ -182,14 +182,19 @@ def _recipes_for_each(graph: Graph, ref: str, candidates: list[dict]) -> dict:
     return {"note": f"'{ref}' fits {len(out)} items, so each is shown. " + READING_NOTE, "items": out}
 
 
+def name_arg(args: dict) -> str:
+    """The name the model gave: `name`, or `item` as older prompts and traces spell it."""
+    return str(args.get("name") or args.get("item") or "")
+
+
 def tool_get_recipes(graph: Graph, args: dict) -> dict:
     """get_recipes: every way to make one item."""
-    item, err = resolve_item(graph, str(args.get("item", "")), want_category=False)
+    item, err = resolve_item(graph, name_arg(args), want_category=False)
     if err:
         if "candidates" in err:
-            several = [r for r in search_items(graph, str(args.get("item", "")), 40) if not r["isCategory"]]
+            several = [r for r in search_items(graph, name_arg(args), 40) if not r["isCategory"]]
             if 1 < len(several) <= MANY_ITEMS:
-                return _recipes_for_each(graph, str(args.get("item", "")), several)   # "pickaxe": every kind, one call
+                return _recipes_for_each(graph, name_arg(args), several)   # "pickaxe": every kind, one call
         return err
     recipes = fetch_recipes(graph, item["id"])
     if not recipes:
@@ -206,7 +211,7 @@ def tool_get_recipes(graph: Graph, args: dict) -> dict:
 
 def tool_get_uses(graph: Graph, args: dict) -> dict:
     """get_uses: what an item (or something that counts as it) can be used to make."""
-    item, err = resolve_item(graph, str(args.get("item", "")), want_category=False)
+    item, err = resolve_item(graph, name_arg(args), want_category=False)
     if err:
         return err
     limit = max(1, min(int(args.get("limit", 25) or 25), 60))
@@ -225,23 +230,6 @@ def tool_get_uses(graph: Graph, args: dict) -> dict:
     return {"item": item["name"], "totalProducts": len(rows), "showing": min(limit, len(rows)),
             "canMake": rows[:limit],
             "note": "viaCategory means the item counts as that category in the recipe."}
-
-
-# --------------------------------------------------------------------------- category members
-
-def tool_class_members(graph: Graph, args: dict) -> dict:
-    """class_members: the items that count as a category (e.g. planks, beds)."""
-    cat, err = resolve_item(graph, str(args.get("category", "")), want_category=True)
-    if err:
-        return err
-    rows = graph.read(
-        """
-        MATCH (c:ItemClass {id: $id})-[:INCLUDES*]->(m:Item) WHERE NOT m:ItemClass
-        RETURN DISTINCT m.name AS name ORDER BY name
-        """, id=cat["id"])
-    names = [r["name"] for r in rows]
-    return {"category": cat["name"], "total": len(names), "members": names[:60],
-            **({"note": "List truncated to 60."} if len(names) > 60 else {})}
 
 
 # --------------------------------------------------------------------------- what do I need
@@ -471,7 +459,7 @@ def route_overview(graph: Graph, item_id: str) -> dict | None:
 
 def tool_what_do_i_need(graph: Graph, args: dict) -> dict:
     """what_do_i_need: ordered steps from base materials to an item, with totals to gather."""
-    item, err = resolve_item(graph, str(args.get("item", "")), want_category=False)
+    item, err = resolve_item(graph, name_arg(args), want_category=False)
     if err:
         return err
     quantity = max(1, min(int(args.get("quantity", 1) or 1), 64))
@@ -530,7 +518,7 @@ def when_text(condition: str) -> str | None:
 
 def tool_how_to_get(graph: Graph, args: dict) -> dict:
     """how_to_get: blocks to mine and mobs to kill or shear to get an item (or any item of a category)."""
-    item, err = resolve_item(graph, str(args.get("item", "")))
+    item, err = resolve_item(graph, name_arg(args))
     if err:
         return err
     category = bool(item["isCategory"])
@@ -584,7 +572,7 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         return out
     out["alsoCraftable"] = crafted
     out["howToRead"] = ("'how' is mine (break a block), kill (a mob dies) or shear (shears on a mob). Counts are typical and "
-                        "ignore looting or fortune. The data does not say where in the world to find the blocks or mobs.")
+                        "ignore looting or fortune. For where in the world to find the blocks or mobs, call where_to_find.")
     if crafted:
         out["tip"] = ("This item can also be crafted. Call what_do_i_need to see the usual route, including where its "
                       "raw materials come from, and lead with it when the ways above are unusual or rare (iron golems, "
@@ -620,28 +608,31 @@ TOOLS: list[Tool] = [
          tool_where_to_find),
     Tool("get_recipes",
          "Every way to make one item: station, ingredients and crafting grid. Use for 'how do I make X'. Give the item that is the RESULT (for an upgrade, the upgraded item such as netherite pickaxe).",
-         {"type": "object", "properties": {"item": {"type": "string", "description": "item name or id"}},
-          "required": ["item"], "additionalProperties": False},
+         {"type": "object", "properties": {"name": {"type": "string", "description": "item name or id"}},
+          "required": ["name"], "additionalProperties": False},
          tool_get_recipes),
     Tool("what_do_i_need",
          "The ordered steps to make an item from base materials (mined, found or dropped), plus the list "
-         "of base materials to gather. Use for 'what do I need for X from scratch' or 'walk me through X'.",
+         "of base materials to gather, each with how to get it. Use for 'what do I need for X from scratch' or "
+         "'walk me through X': give the steps in order. The overview (steps, chain length, base materials, "
+         "stations) answers 'how big or complicated is X'.",
          {"type": "object", "properties": {
-             "item": {"type": "string", "description": "item name or id"},
+             "name": {"type": "string", "description": "item name or id"},
              "quantity": {"type": "integer", "description": "how many to make (default 1)"}},
-          "required": ["item"], "additionalProperties": False},
+          "required": ["name"], "additionalProperties": False},
          tool_what_do_i_need, budget=9500),
     Tool("how_to_get",
          "How to get an item from the world without crafting it: blocks to mine, mobs to kill or shear, and the tool "
          "needed. Use for 'how do I get / where does X come from' about raw materials such as gunpowder, string, "
-         "wool, leather, iron or diamonds.",
-         {"type": "object", "properties": {"item": {"type": "string", "description": "item name or id"}},
-          "required": ["item"], "additionalProperties": False},
+         "wool, leather, iron or diamonds. Say the tool needed and any condition (only when a player kills it, a "
+         "rare drop). If the result has a 'tip' (the item is also crafted), follow it and call what_do_i_need too.",
+         {"type": "object", "properties": {"name": {"type": "string", "description": "item name or id"}},
+          "required": ["name"], "additionalProperties": False},
          tool_how_to_get),
     Tool("rank_recipes",
          "Craftable items ranked by how big the job is (crafting steps, base materials, chain length). Use "
          "when the player asks for a hard, easy, long or short recipe, or wants a challenge. Then offer to "
-         "walk through one of them.",
+         "walk through one of them. 'Hard' here means the most things to make, not the rarest materials: say so.",
          {"type": "object", "properties": {
              "order": {"type": "string", "enum": ["hardest", "easiest"], "description": "default hardest"},
              "limit": {"type": "integer", "description": "how many items (default 8, max 25)"}},
@@ -650,21 +641,22 @@ TOOLS: list[Tool] = [
     Tool("get_uses",
          "What an item can be used to make. Use for 'what can I make with X'.",
          {"type": "object", "properties": {
-             "item": {"type": "string", "description": "item name or id"},
+             "name": {"type": "string", "description": "item name or id"},
              "limit": {"type": "integer", "description": "max products to list (default 25)"}},
-          "required": ["item"], "additionalProperties": False},
+          "required": ["name"], "additionalProperties": False},
          tool_get_uses),
-    Tool("class_members",
-         "List the items that count as a category such as planks, beds or logs.",
-         {"type": "object", "properties": {"category": {"type": "string", "description": "category name"}},
-          "required": ["category"], "additionalProperties": False},
-         tool_class_members),
+    Tool("members",
+         "List what a category or class includes: the items that count as planks, beds or logs, the mobs in a class "
+         "such as undead, the biomes in a class such as forest. Use for 'what counts as X' and 'which X are there'.",
+         {"type": "object", "properties": {"name": {"type": "string", "description": "category or class name"}},
+          "required": ["name"], "additionalProperties": False},
+         tool_members),
     Tool("search_wiki",
          "Search the Minecraft Wiki (community-written guides and explanations) for advice, strategy and how-to "
          "questions that are not about a recipe or a drop: what to do on the first night, how to build a shelter, "
          "how to get started, controls, mob behaviour. Returns the best passages with their page and section, and the "
-         "game items, mobs and blocks each passage is about (mentions). Do not use it for exact recipes, ingredients "
-         "or drops: use the game-data tools for those.",
+         "game items, mobs and blocks each passage is about (mentions). Do not use it for exact recipes, ingredients, "
+         "drops, spawns or where things are: use get_recipes, describe or where_to_find for those.",
          {"type": "object", "properties": {
              "question": {"type": "string", "description": "the question or topic, in the player's words"},
              "limit": {"type": "integer", "description": "how many passages (default 5, max 8)"}},

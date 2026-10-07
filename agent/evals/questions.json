@@ -50,7 +50,7 @@
     "id": "planks-members",
     "question": "What counts as planks?",
     "expect_tools": [
-      "class_members"
+      "members"
     ],
     "expect_all": [
       "oak",
@@ -354,6 +354,17 @@
     "expect_all": [
       "gunpowder",
       "overworld"
+    ]
+  },
+  {
+    "id": "undead-members",
+    "question": "Which mobs count as undead?",
+    "expect_tools": [
+      "members"
+    ],
+    "expect_all": [
+      "zombie",
+      "skeleton"
     ]
   }
 ]

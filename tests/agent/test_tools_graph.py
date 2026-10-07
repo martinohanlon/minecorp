@@ -15,8 +15,8 @@ from minecorp_agent import tools
 pytestmark = [pytest.mark.integration, pytest.mark.jar]
 
 
-def call(graph, name, **args):
-    return tools.TOOLS_BY_NAME[name].fn(graph, args)
+def call(graph, tool, **args):
+    return tools.TOOLS_BY_NAME[tool].fn(graph, args)
 
 
 # --------------------------------------------------------------------------- find and name resolution
@@ -191,22 +191,47 @@ class TestGetUses:
         assert "error" in call(agent_graph, "get_uses", item="flurble")
 
 
-class TestClassMembers:
+class TestMembers:
     @pytest.mark.parametrize("name,total,member", [("planks", 12, "Oak Planks"), ("beds", 16, "Red Bed"), ("wool", 16, "White Wool")])
-    def test_members(self, agent_graph, name, total, member):
-        r = call(agent_graph, "class_members", category=name)
-        assert r["total"] == total and member in r["members"]
+    def test_the_items_in_a_category(self, agent_graph, name, total, member):
+        r = call(agent_graph, "members", name=name)["results"][0]
+        assert r["kind"] == "category" and r["total"] == total and member in r["members"]
         assert r["members"] == sorted(r["members"])
 
+    def test_the_mobs_in_a_class(self, agent_graph):
+        r = next(r for r in call(agent_graph, "members", name="undead")["results"] if r["kind"] == "mob class")
+        assert {"Zombie", "Skeleton"} <= set(r["members"]) and "Creeper" not in r["members"]
+
+    def test_the_biomes_in_a_class(self, agent_graph):
+        r = next(r for r in call(agent_graph, "members", name="is forest")["results"] if r["kind"] == "biome class")
+        assert "Forest" in r["members"] and "Desert" not in r["members"]
+
+    def test_members_are_things_not_classes(self, agent_graph):
+        r = next(r for r in call(agent_graph, "members", name="undead")["results"] if r["kind"] == "mob class")
+        assert all(not m.startswith("#") for m in r["members"])
+
     def test_a_plain_item_is_not_a_category(self, agent_graph):
-        assert "No category matches" in call(agent_graph, "class_members", category="iron pickaxe")["error"]
+        out = call(agent_graph, "members", name="iron pickaxe")
+        assert "error" in out and "results" not in out and all(c["kind"] != "item" for c in out.get("candidates", []))
+
+    def test_the_old_argument_name_still_works(self, agent_graph):
+        assert call(agent_graph, "members", category="planks")["results"][0]["total"] == 12
+
+    def test_a_missing_name_is_a_bad_argument(self, agent_graph):
+        assert call(agent_graph, "members", name=" ")["type"] == "bad_argument"
 
     def test_long_lists_are_cut_at_sixty_with_a_note(self, agent_graph, db):
         big = db.q("MATCH (c:ItemClass) WHERE c.size > 60 AND c.id STARTS WITH '#minecraft:' RETURN c.id AS id, c.size AS size ORDER BY size DESC LIMIT 1")
         if not big:
             pytest.skip("no category has more than 60 items")
-        r = call(agent_graph, "class_members", category=big[0]["id"].replace("#minecraft:", ""))
-        assert r["total"] == big[0]["size"] and len(r["members"]) == 60 and r["note"] == "List truncated to 60."
+        r = call(agent_graph, "members", name=big[0]["id"].replace("#minecraft:", ""))["results"][0]
+        assert r["total"] == big[0]["size"] and len(r["members"]) == 60 and "cut to 60" in r["note"]
+
+
+class TestNameArgument:
+    @pytest.mark.parametrize("tool", ["get_recipes", "what_do_i_need", "how_to_get", "get_uses"])
+    def test_name_and_the_older_item_give_the_same_answer(self, agent_graph, tool):
+        assert call(agent_graph, tool, name="iron ingot") == call(agent_graph, tool, item="iron ingot")
 
 
 # --------------------------------------------------------------------------- rank_recipes
