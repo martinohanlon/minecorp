@@ -69,6 +69,7 @@ Nine read-only tools, defined once in `minecorp_agent/tools.py` and `minecorp_ag
 | Tool | Answers |
 |---|---|
 | `find`, `get_recipes`, `what_do_i_need`, `how_to_get`, `get_uses`, `class_members`, `rank_recipes` | recipes, routes, drops and difficulty, from the game data (authoritative; built from the Paper jar) |
+| `describe`, `where_to_find` | what anything with a name is, and where it is in the world (ore heights and biomes, mob spawns, what a biome has, a structure's biomes), from the world graph; `describe` also lists the wiki sections that discuss it |
 | `search_wiki` | advice and how-to questions (first night, shelter, controls, mob behaviour) by vector search over the wiki chunks; returns passages with page and section, and the game nodes each passage is about (`mentions`) |
 | `read_section` | the whole text of a wiki section (by the `sectionUrl` of a hit, or its title), optionally with the passages before and after, and what it is about (`mentions`) |
 

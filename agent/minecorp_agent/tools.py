@@ -20,6 +20,7 @@ from .budget import DEFAULT_BUDGET
 from .graph import Graph
 from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
+from .world import tool_describe, tool_where_to_find
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
                 "use any ONE of its options (except those listed in 'except').")
@@ -599,6 +600,20 @@ TOOLS: list[Tool] = [
              "kind": {"type": "string", "enum": list(KIND_NAMES), "description": "only this kind (optional)"}},
           "required": ["query"], "additionalProperties": False},
          tool_find),
+    Tool("describe",
+         "A short description of anything with a name: an item, category, mob, block, biome or structure. Says what "
+         "it is, what it drops or gives, counts of related things, and which wiki sections discuss it. A name that "
+         "means several things (an item and a block) describes each. Use for 'what is X' or 'tell me about X'.",
+         {"type": "object", "properties": {"name": {"type": "string", "description": "name of the thing"}},
+          "required": ["name"], "additionalProperties": False},
+         tool_describe),
+    Tool("where_to_find",
+         "Where something is in the world: the heights, vein sizes and biomes where an ore generates, the biomes "
+         "and structures where a mob spawns, what a biome has, which biomes a structure is in. For an item it covers "
+         "each block to mine or mob to kill that gives it. Use for 'where do I find X' and 'what spawns in X'.",
+         {"type": "object", "properties": {"name": {"type": "string", "description": "item, block, mob, biome or structure"}},
+          "required": ["name"], "additionalProperties": False},
+         tool_where_to_find),
     Tool("get_recipes",
          "Every way to make one item: station, ingredients and crafting grid. Use for 'how do I make X'. Give the item that is the RESULT (for an upgrade, the upgraded item such as netherite pickaxe).",
          {"type": "object", "properties": {"item": {"type": "string", "description": "item name or id"}},

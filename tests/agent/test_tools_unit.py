@@ -9,7 +9,7 @@ import pytest
 from minecorp_agent import tools
 
 EXPECTED = {"find", "get_recipes", "what_do_i_need", "get_uses", "class_members", "how_to_get", "rank_recipes",
-            "search_wiki", "read_section"}
+            "search_wiki", "read_section", "describe", "where_to_find"}
 
 
 # --------------------------------------------------------------------------- registry
@@ -40,7 +40,7 @@ def test_every_tool_is_a_valid_openai_function_definition(tool):
 @pytest.mark.parametrize("name,required", [
     ("find", ["query"]), ("get_recipes", ["item"]), ("what_do_i_need", ["item"]), ("get_uses", ["item"]),
     ("class_members", ["category"]), ("how_to_get", ["item"]), ("rank_recipes", []),
-    ("search_wiki", ["question"]), ("read_section", ["section"])])
+    ("describe", ["name"]), ("where_to_find", ["name"]), ("search_wiki", ["question"]), ("read_section", ["section"])])
 def test_required_arguments(name, required):
     assert tools.TOOLS_BY_NAME[name].parameters.get("required", []) == required
 

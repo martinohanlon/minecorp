@@ -235,10 +235,10 @@
     ]
   },
   {
-    "id": "wiki-villager-drops",
+    "id": "villager-drops",
     "question": "Do villagers drop anything when they die?",
     "expect_tools": [
-      "search_wiki"
+      "describe"
     ],
     "expect_any": [
       "nothing",
@@ -320,6 +320,40 @@
     "expect_any": [
       "wool",
       "planks"
+    ]
+  },
+  {
+    "id": "where-diamonds",
+    "question": "Where do I find diamonds?",
+    "expect_tools": [
+      "where_to_find"
+    ],
+    "expect_all": [
+      "-64"
+    ],
+    "expect_any": [
+      "iron pickaxe",
+      "deep",
+      "y level",
+      "y -"
+    ]
+  },
+  {
+    "id": "spawns-desert",
+    "question": "What spawns in a desert?",
+    "expect_tools": [
+      "where_to_find"
+    ],
+    "expect_all": [
+      "husk"
+    ]
+  },
+  {
+    "id": "creeper-drops-and-where",
+    "question": "What do creepers drop and where do they spawn?",
+    "expect_all": [
+      "gunpowder",
+      "overworld"
     ]
   }
 ]
