@@ -48,7 +48,18 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
-The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py --pages` (free when the embedding cache is intact), then run `link_wiki.py`.
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py --pages` (free when the embedding cache is intact), then run `link_wiki.py`.
+
+## Trade loader: villager and wandering trader trades (v0.12)
+
+`load_trades.py` reads the villager trades, the trade sets and their tags from the Paper jar (the optional trade rebalance datapack inside it is not read). A trade becomes an `Action` with the verb label `Trade`; a profession offers trade sets by level; a set includes the trades the game draws from. Run it after `load_world.py` (it links maps to structures and the villager to its professions) and before `load_model.py`. **`load_actions.py` deletes every `Action`, trades included, so run this again after it.**
+
+```powershell
+.venv\Scripts\python loader\load_trades.py --dry-run     # parse and report, no database
+.venv\Scripts\python loader\load_trades.py               # load
+```
+
+It prints the counts (388 trades, 68 trade sets, 13 professions, 10 maps that lead to a structure). The Trading tutorial for the lexical graph is added with `load_wiki.py --page "Tutorial:Trading"` (about 26 chunks, a hundredth of a cent), then `link_wiki.py`.
 
 ## World loader: mobs, biomes, structures and ore (v0.10)
 
@@ -73,7 +84,7 @@ MATCH (:Item {id: 'minecraft:raw_iron'})<-[:CREATES]-(:Mine)-[:REQUIRES {role: '
 RETURN DISTINCT p.name, p.countMin, p.minY, p.maxY, p.peakY
 ```
 
-The model is described in [docs/ontology.md](../docs/ontology.md) (v0.10). Rebuild order for everything: `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
+The model is described in [docs/ontology.md](../docs/ontology.md) (v0.10). Rebuild order for everything: `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
 
 ## Wiki loader: a lexical graph of minecraft.wiki (v0.8)
 
@@ -191,6 +202,9 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 | `test_load_model.py` (42) | nothing | every validation error in the YAML model, plus the real `model/` files |
 | `test_real_jar.py` (37, marker `jar`) | the Paper jar | rules that hold for any version, and known vanilla facts that act as canaries when the server version changes |
 | `test_load_wiki.py` (211) | nothing (word-count tokenizer, fake embedder, mock HTTP) | the wiki loader: titles and URLs, the API request and errors, HTML to a section tree (noise left out, lists, tables, odd characters), tree and paths, chunk size and overlap rules, ids and hashes, the embedding cache (rebuild is free, failure keeps paid-for vectors), the page links (positions, redirects as pages, the text unchanged by links), the report and the command line (a dry run touches nothing) |
+| `test_load_trades.py` (35) | nothing (a small jar made in the test) | the trade loader: counts as whole numbers, a price that varies, a second wanted item, enchanted items, village types (a list or one string), maps and the structures they lead to, nested tags, trade sets, professions and the wandering trader, a set that names a missing trade |
+| `test_real_jar_trades.py` (21, marker `jar`) | the Paper jar | what must hold for any version (every trade is in a set, levels one to five, a price has a count unless it varies) and canary facts (every trade involves emeralds, a farmer buys wheat, a cartographer sells a map to a mansion) |
+| `test_trades_integration.py` (19, marker `integration`) | Neo4j Enterprise and the jar | the trades in the rebuilt graph: counts, a trade as an action, the shape of a trade, who buys wheat, where emeralds come from, maps that locate structures, loading twice |
 | `test_load_world.py` (75) | nothing (a small jar made in the test) | the world loader: which creatures are mobs, tag classes, biomes and their spawns, dimensions, structures and their biome links and spawn overrides, the vertical anchors (above the bottom, below the top), clamping and peaks, ore features and placements, steps |
 | `test_real_jar_world.py` (52, marker `jar`) | the Paper jar | what must hold for any version (every spawn names a mob and a biome that exist, no biome in two dimensions) and canary facts commonly quoted for the game (iron peaks at 232, diamond at the bottom of the world, ancient debris only in the nether) |
 | `test_world_integration.py` (28, marker `integration`) | Neo4j Enterprise and the jar | the world in the rebuilt graph: counts, the villager as a mob that drops nothing, classes and structures reached by `INCLUDES*`, and the path from raw iron to the places and heights it can be mined at |

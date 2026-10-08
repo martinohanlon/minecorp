@@ -6,6 +6,9 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 |---|---|---|---|---|---|
 | **Loader unit tests** | `tests/loader/test_load_recipes.py`, `test_load_actions.py`, `test_load_model.py` | pytest | nothing (synthetic data; one test builds a tiny jar in a temp folder) | under 1 s | 126 |
 | **Wiki loader unit tests** | `tests/loader/test_load_wiki.py` | pytest | nothing (word-count tokenizer, fake embedder, mock HTTP) | about 1 s | 211 |
+| **Trade loader unit tests** | `tests/loader/test_load_trades.py` | pytest | nothing (a small jar made in the test) | under 1 s | 35 |
+| **Trade real-jar tests** | `tests/loader/test_real_jar_trades.py` (marker `jar`) | pytest | the Paper jar | under 1 s | 21 |
+| **Trade graph tests** | `tests/loader/test_trades_integration.py` (marker `integration`) | pytest | Neo4j Enterprise and the jar | about 90 s with the rebuild | 19 |
 | **World loader unit tests** | `tests/loader/test_load_world.py` | pytest | nothing (a small jar made in the test) | under 1 s | 75 |
 | **World real-jar tests** | `tests/loader/test_real_jar_world.py` (marker `jar`) | pytest | the Paper jar | under 1 s | 52 |
 | **Link job unit tests** | `tests/loader/test_link_wiki.py` | pytest | nothing | under 1 s | 63 |
@@ -21,7 +24,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,402 tests (1,365 Python, 37 Java). The fast set is 905 Python tests plus the Java ones.
+Counts as of 2026-10-05: 1,477 tests (1,440 Python, 37 Java). The fast set is 961 Python tests plus the Java ones.
 
 ## Running
 

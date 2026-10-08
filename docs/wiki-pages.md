@@ -27,7 +27,7 @@ The Beginner's guide already links to five of these (Mining four times, then Exp
 Worth having, but each waits for something:
 
 - **Until enchantments are modelled (4):** Enchanting table mechanics, Anvil mechanics, Best enchantments guide, Durability management. Their value is in the nodes they would link to.
-- **Until villager trades are modelled (3):** Trading, Creating a village, Village mechanics.
+- **Until villager trades are modelled (2 held):** Creating a village, Village mechanics. Trading was loaded once trades were modelled (v0.12), the first tier 2 page to be.
 - **Until advancements are modelled (6):** the Java-only advancement guide tabs (Minecraft, Nether, The End, Husbandry, Adventure, How Did We Get Here?). They explain the game's own progression, which also lines up with MineCorp's tasks.
 - **Until mob statistics are modelled (4):** Combat (218 chunks), Getting max gear, Dual wielding, Horses.
 - **After tier 1 has been judged (16):** Best biomes to play, Best biomes for homes (188 chunks), the biome survival pages (Desert, Snowy, Island, Mushroom fields, Thunderstorm), Nether survival (104 chunks), End survival, Complete main adventure, Adventuring, Transportation methods, Navigation, Spawn-proofing (work in progress), Pillar jumping, Mining/Fossils.

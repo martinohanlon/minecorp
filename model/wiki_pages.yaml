@@ -25,10 +25,12 @@ pages:
   - "Tutorial:Phantom-proofing"
   - "Tutorial:Nether portals"
 
+  # Added once what they explain was modelled in the domain graph:
+  - "Tutorial:Trading"                           # villager trades (loader/load_trades.py, ontology v0.12)
+
   # Tier 2, held until what they explain is modelled, or until tier 1 has been judged (see docs/wiki-pages.md):
   # - "Tutorial:Enchanting table mechanics"      # enchantments
   # - "Tutorial:Anvil mechanics"                 # enchantments
-  # - "Tutorial:Trading"                         # villager trades
   # - "Tutorial:Advancement guide/Minecraft tab" # advancements (Java only)
   # - "Tutorial:Combat"                          # mob statistics
   # - "Tutorial:Best biomes to play"             # after tier 1

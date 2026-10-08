@@ -11,6 +11,7 @@ import pytest
 
 import load_actions as la
 import load_model as lm
+import load_trades as ltr
 from graphdb import TEST_DB
 
 pytestmark = [pytest.mark.integration, pytest.mark.jar]
@@ -26,7 +27,8 @@ class TestGraphShape:
             verbs[a["verb"]] = verbs.get(a["verb"], 0) + 1
         for verb, n in verbs.items():
             assert db.one(f"MATCH (a:Action:{verb}) RETURN count(a)") == n, verb
-        assert db.one("MATCH (a:Action) RETURN count(a)") == sum(verbs.values())
+        assert db.one("MATCH (a:Action) RETURN count(a)") == sum(verbs.values()) + len(built["trade_graph"]["trades"]), \
+            "the actions the action loader made, and the trades the trade loader added"
         assert db.one("MATCH (b:Block) RETURN count(b)") == len(ag["blocks"])
         assert db.one("MATCH (m:Mob) RETURN count(m)") == len(built["world_graph"]["mobs"]) > len(ag["mobs"]), \
             "the world loader adds the creatures that drop nothing to the ones the actions made"
@@ -219,6 +221,8 @@ class TestRebuildContract:
         assert links > 0
         la.write(built["action_graph"], built["uri"], built["user"], built["password"], TEST_DB)
         assert db.one("MATCH ()-[h:HAS_ACTION]->() RETURN count(h)") == 0          # why the order is a contract
+        assert db.one("MATCH (t:Trade) RETURN count(t)") == 0                      # the trades were Actions too
+        ltr.write(built["trade_graph"], built["uri"], built["user"], built["password"], TEST_DB)
         lm.write(built["model_rows"], built["uri"], built["user"], built["password"], TEST_DB)
         assert db.one("MATCH ()-[h:HAS_ACTION]->() RETURN count(h)") == links
 

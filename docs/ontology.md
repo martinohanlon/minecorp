@@ -77,7 +77,7 @@ Derived by `link_wiki.py` by following paths (`Chunk-LINKS_TO->Page-ABOUT->node`
 - **Domain, company:** authored in `model/*.yaml`, loaded by `load_model.py`.
 - **Lexical:** the 17 pages of `model/wiki_pages.yaml` (549 sections, 720 chunks), with 1,133 stub pages for the pages they link to. Built by `load_wiki.py --pages` (MediaWiki API; OpenAI embeddings, cached).
 - **Bridge:** `link_wiki.py`, reviewed through `model/wiki_links.yaml`.
-- **Rebuild order:** `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
+- **Rebuild order:** `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
 
 ### What it holds today (real database, 2026-10-05)
 
@@ -91,7 +91,7 @@ Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `A
 
 ### Not yet modelled
 
-- **Domain:** chest loot, villager trades, fishing and bartering (they fit `Action`), enchantments, advancements, the other 222 placed features (trees, vegetation, lakes), structure sets, mob and block statistics, brewing.
+- **Domain:** chest loot, fishing and bartering (they fit `Action`, as trades now do), enchantments, advancements, the other 222 placed features (trees, vegetation, lakes), structure sets, mob and block statistics, brewing.
 - **Lexical:** the 40 tutorial pages held back in [wiki-pages.md](wiki-pages.md). A full-text index on `Chunk.text`. A quality or edition note on a page (the wiki marks pages as stubs, needing cleanup, or Bedrock-only).
 - **Bridge:** links to `Recipe`, and an LLM extractor for implied mentions, to be measured against the deterministic baseline.
 
@@ -724,7 +724,7 @@ Where things are. Everything here is read from the Paper jar by `loader/load_wor
 
 ### Rebuild order
 
-`load_recipes.py --all --wipe`, `load_actions.py`, **`load_world.py`**, `load_model.py`, `compute_routes.py`, then `load_wiki.py` and `link_wiki.py`. The world loader needs the `Block` and `Mob` nodes the actions loader makes; it deletes and recreates its own nodes and merges the mobs, and `load_actions.py` leaves them alone.
+`load_recipes.py --all --wipe`, `load_actions.py`, **`load_world.py`**, `load_trades.py` (v0.12), `load_model.py`, `compute_routes.py`, then `load_wiki.py` and `link_wiki.py`. The world loader needs the `Block` and `Mob` nodes the actions loader makes; it deletes and recreates its own nodes and merges the mobs, and `load_actions.py` leaves them alone.
 
 ### Measured on the 26.2 jar
 
@@ -733,9 +733,33 @@ Where things are. Everything here is read from the Paper jar by `loader/load_wor
 ### Not in v0.10
 
 - The other 222 placed features (trees, vegetation, lakes, geodes), structure sets (spacing and frequency), carvers, spawn costs.
-- Chest loot, villager trades, fishing and bartering (these fit the `Action` model), enchantments and advancements.
+- Chest loot, fishing and bartering (these fit the `Action` model), enchantments and advancements. Villager trades are built in v0.12.
 - Mob and block statistics (health, damage, hardness) and brewing, which are in game code, not the data files.
 - Agent tools that read the world (parked while the tools are reviewed). `search_wiki` already lists Biome and Structure mentions.
+
+## v0.12: trading (built 2026-10-08)
+
+Villager and wandering trader trades from the Paper jar, which holds them as data (`villager_trade`, `trade_set` and the tags that list a set). `loader/load_trades.py`; rebuild order: after `load_world.py`, before `load_model.py`.
+
+```
+(Action:Trade {maxUses, reputationDiscount, xp, variablePrice, enchanted, enchantLevels, villagerTypes})
+    -[:REQUIRES {role: 'price', count}]->(Item)        what the villager wants
+    -[:REQUIRES {role: 'additional', count}]->(Item)   a second item some trades also want
+    -[:CREATES {count}]->(Item)                        what you get
+    -[:LOCATES {decoration, radius}]->(Structure)      an exploration map and the structure it leads to
+(Profession)-[:OFFERS {level}]->(TradeSet {amount})-[:INCLUDES]->(Trade)
+(Mob wandering_trader)-[:OFFERS {pool}]->(TradeSet {amount})-[:INCLUDES]->(Trade)
+(Mob villager)-[:HAS_PROFESSION]->(Profession)
+```
+
+- **A trade is an `Action`** with the verb label `Trade`, like `Mine`, `Kill` and `Shear`: what it needs and what it gives are the same relationships (`REQUIRES`, `CREATES`), so a task can perform it (`trade:minecraft:farmer/1/wheat_emerald`) and the "how do I get X" path can reach it. The gathering queries name their verbs (`Mine`, `Kill`, `Shear`), so trades do not appear in them until the tools are taught to.
+- **A trade set is the pool a villager draws from at one level.** The game picks `amount` trades from the set at random; eight sets ask for one more than they hold, and the villager then offers what there is. The same trade can be in several sets (the armorer, toolsmith and weaponsmith share three). `OFFERS {level}` puts the level (1 to 5) on the relationship; the wandering trader has pools (`buying`, `common`, `uncommon`) instead of levels.
+- **A price that varies has no count.** A librarian's enchanted book costs by the enchantment, so its price has `variablePrice` and its `REQUIRES` has no `count`. A trade for an enchanted item says `enchanted` (and `enchantLevels`, such as "5 to 19", for armour and tools); there is no enchantment model yet.
+- **Some trades are only offered by some villagers.** A map to a swamp hut is only sold by jungle, snow and taiga villagers: `villagerTypes`, empty when every villager offers it.
+- **A map leads somewhere.** The cartographer's ten exploration maps `LOCATES` the structure of their destination tag (woodland mansion, ocean monument, trial chambers, the villages, the jungle temple, the swamp hut), so the trading and world graphs meet at the structure.
+- **Not loaded:** the optional trade rebalance datapack that ships inside the jar; the profession's workstation and the villager's biome type (the game's code, not its data).
+
+Measured on the 26.2 jar: 388 trades (every one is in a set), 68 trade sets, 13 professions, 320 items traded, 394 set-to-trade links, 4 trades with a variable price, 21 for an enchanted item, 27 limited to some village types, 10 maps. Every trade involves emeralds (87 give them, the rest cost them), and no trade gives a diamond. The Trading tutorial of the wiki is in the lexical graph from v0.12.
 
 ## v0.11: the player's processes (built 2026-10-07)
 
@@ -787,6 +811,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 | 2026-10-02 | Item metadata beyond recipes (stack size, drops, etc.) is out of scope for now. |
 | 2026-10-02 | Minecraft versioning: ignore for now; use a separate graph if a new version is ever needed. |
 | 2026-10-02 | Label for categories is `ItemClass` (user choice). Names use the common word shared by the members where possible (e.g. "Bed"). Relationships renamed: `CONSUMES` -> `REQUIRES`, `PRODUCES` -> `CREATES` (user choice, v0.4). |
+| 2026-10-08 | v0.12 (built): villager trades from the jar's data. A trade is an `Action` with the verb label `Trade` (price in `REQUIRES`, result in `CREATES`); a profession offers trade sets by level and a set includes the trades the game draws from. Maps `LOCATES` structures. The Trading wiki page joined the lexical graph. |
 | 2026-10-07 | v0.11 (built): one role (the player), no organization. A process is a goal a player works towards (get to the Nether), holding the unknown part of the game; the known part (recipes, mining, drops, spawns) is derived and not authored. The Iron tool line was removed. Order of the first processes: shelter, emeralds, Nether, dragon, mob farm. |
 | 2026-10-05 | v0.10 (built): the world from the jar. Every creature is a `Mob` (90), a mob that drops nothing has no `Kill` action. Tag classes are separate labels (`MobClass`, `BiomeClass`) with `INCLUDES`, not marker labels. Ore is a shared `Feature` and a shared `PlacedFeature:Ore`, heights resolved to block heights and clamped to the world. Only ore placements for now. Link targets widened to Biome and Structure. |
 | 2026-10-04 | v0.9 (built): one `Page` per URL with stubs for pages only linked to; redirects are pages with `REDIRECTS_TO`; `(Chunk)-[:LINKS_TO]->(Page)`; `(Page)-[:ABOUT]->(node)` and `(Chunk)-[:MENTIONS]->(node)` for Item, Mob and Block, derived by following paths, as candidates; an ambiguous title or name is linked to every candidate with `ambiguous` and `candidates` (the reader decides with context); nothing about the node kind is stored on the relationship; links are positive evidence only; human review file `model/wiki_links.yaml`. |
@@ -812,6 +837,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 ## Change log
 
 - **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
+- **v0.12 built** (2026-10-08): villager and wandering trader trades (`Trade` actions, `TradeSet`, `Profession`; `loader/load_trades.py`), and the Trading tutorial in the lexical graph. See "v0.12".
 - **v0.11 built** (2026-10-07): one role, the player. `OrgUnit`, `Role` and their relationships removed; a process is a goal a player works towards, made of stages and steps, holding what the game data does not; `model/org.yaml` became `model/players.yaml`; the Iron tool line was deleted; `CONFIRMED_BY` points at a `Player`. See "v0.11".
 - **v0.10 built** (2026-10-05): `loader/load_world.py`: `Mob` completed to 90, `MobClass`, `Biome`, `BiomeClass`, `Structure`, `Dimension`, `Feature`, `PlacedFeature:Ore`, `SPAWNS`, `GENERATES_IN`, `HAS_BIOME`, `GENERATES`, `PLACES`, `IN_DIMENSION`; ore heights resolved to block heights. The link job now also names Biome and Structure. 75 unit, 52 real-jar and 28 graph tests; every fault injected into the loader was caught. Found while building: Neo4j does not allow constraints and data in one transaction (constraints first); the shared tag walk is order-dependent on cyclic tags (none in the data); `the_void` is in no dimension.
 - **v0.9 agent use** (2026-10-05): `search_wiki` hits and `read_section` list the nodes a passage is about (`mentions`: name, kind from the node's labels, id, `linked`, `ambiguous`), read by following `MENTIONS`; ambiguous words list every candidate so the model chooses from the passage; the model follows a mention to `get_recipes` and the other game-data tools. 83 unit and 40 graph tests for the wiki tools; all 29 eval questions pass (the wiki-then-recipe question chains search_wiki, read_section and get_recipes).

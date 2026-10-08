@@ -1141,10 +1141,11 @@ class TestMain:
         with pytest.raises(SystemExit, match="could not fetch the page"):
             cli("--pages", str(path))
 
-    def test_the_shipped_list_is_the_tier_one_pages(self):
+    def test_the_shipped_list_is_the_tier_one_pages_and_trading(self):
         titles = lw.read_page_list(lw.PAGES_PATH)
-        assert len(titles) == 17 and titles[0] == "Tutorial:Beginner's guide" and all(t.startswith("Tutorial:") for t in titles)
-        assert len(set(titles)) == 17 and "Tutorial:Mining" in titles and "Tutorial:Shelters" in titles
+        assert len(titles) == 18 and titles[0] == "Tutorial:Beginner's guide" and all(t.startswith("Tutorial:") for t in titles)
+        assert len(set(titles)) == 18 and "Tutorial:Mining" in titles and "Tutorial:Shelters" in titles
+        assert titles[-1] == "Tutorial:Trading", "added once villager trades were modelled"
 
     def test_a_full_run_embeds_through_the_cache_and_then_writes(self, cli, monkeypatch, capsys):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
