@@ -7,7 +7,7 @@ graph and needs no process: `what_do_i_need` works it out.
 
 A process has **activities** (stages, in order) and each has **tasks** (steps). A task either names the game
 **actions** it performs, when the game data has them (`mine:minecraft:obsidian`, `craft:minecraft:flint_and_steel`), or
-has none and is a **manual** step (build the frame). `next` says what follows what, with a condition, so an alternative
+has none and is a **manual** step (build the frame). The activities are numbered with `seq`, and a task's place in its activity is its place in the file; both are stored on the relationships (`HAS_ACTIVITY {seq}`, `HAS_TASK {seq}`). `next` says what follows what, with a condition, so an alternative
 route is data (`default: true` marks the usual one).
 
 ```yaml

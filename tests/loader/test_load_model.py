@@ -111,6 +111,23 @@ class TestValidateProcess:
         errs = self._bad(lambda p: p["activities"][0]["tasks"][0]["actions"][0].update(quantity=bad))
         assert any("quantity must be a whole number" in e for e in errs)
 
+    @pytest.mark.parametrize("bad", [0, -1, 1.5, "1", True, None])
+    def test_an_activity_seq_must_be_a_whole_number_of_at_least_one(self, bad):
+        errs = self._bad(lambda p: p["activities"][0].update(seq=bad))
+        assert any("seq must be a whole number" in e for e in errs)
+
+    def test_two_activities_cannot_share_a_seq(self):
+        def twice(p):
+            p["activities"].append({"id": "a2", "name": "A2", "seq": 1, "tasks": []})
+        assert any("activity a2 repeats seq 1" in e for e in self._bad(twice))
+
+    def test_the_same_seq_in_two_processes_is_fine(self):
+        other = good_process()
+        other["process"]["id"] = "q"
+        other["activities"][0]["tasks"] = [{"id": "q/only", "name": "Only"}]
+        other["next"] = []
+        assert lm.validate(good_people(), [good_process(), other], ACTIONS) == []
+
     def test_next_must_stay_inside_the_process(self):
         errs = self._bad(lambda p: p["next"].append({"from": "p/mine", "to": "other/task"}))
         assert any("next to other/task is not a task in this process" in e for e in errs)
@@ -163,6 +180,16 @@ class TestRows:
         n = self.rows()["nexts"]
         assert n[0] == {"from": "p/mine", "to": "p/sticks", "condition": "c", "outcome": "o", "isDefault": True}
         assert n[1]["isDefault"] is False and n[1]["condition"] is None
+
+    def test_a_task_seq_is_its_place_in_its_activity(self):
+        r = self.rows()
+        assert [(t["id"], t["seq"]) for t in r["tasks"]] == [("p/mine", 1), ("p/sticks", 2), ("p/build", 3)]
+
+    def test_task_seq_starts_again_in_each_activity(self):
+        proc = good_process()
+        proc["activities"].append({"id": "a2", "name": "A2", "seq": 2, "tasks": [{"id": "p/more", "name": "More"}, {"id": "p/last", "name": "Last"}]})
+        seqs = {t["id"]: t["seq"] for t in self.rows(proc)["tasks"]}
+        assert seqs == {"p/mine": 1, "p/sticks": 2, "p/build": 3, "p/more": 1, "p/last": 2}
 
     def test_activity_ids_are_prefixed_with_the_process(self):
         r = self.rows()

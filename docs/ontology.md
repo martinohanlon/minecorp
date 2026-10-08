@@ -44,7 +44,7 @@ The two regions join at the game's raw materials, which is how "where do I mine 
 **The player's processes** (v0.11). There is one role, the player, so there is no organization.
 
 ```
-(Process)-[:HAS_ACTIVITY]->(Activity)-[:HAS_TASK]->(Task)-[:NEXT {condition, isDefault}]->(Task)
+(Process)-[:HAS_ACTIVITY {seq}]->(Activity)-[:HAS_TASK {seq}]->(Task)-[:NEXT {condition, isDefault}]->(Task)
 (Task)-[:HAS_ACTION {order, quantity}]->(Action)     (Task)-[:CONFIRMED_BY {at}]->(Player)     (Player)-[:COMPLETED {at, count}]->(Task)
 ```
 
@@ -346,7 +346,7 @@ MineCorp process (authored):
 | Label | Key | Properties | Notes |
 |---|---|---|---|
 | `Process` | `id` | `name`, `description`, `family` (`collect`, `craft`, `inventory`), `criticality`, `sla` | One owner each. |
-| `Activity` | `id` | `name`, `seq` | A stage of a process. |
+| `Activity` | `id` | `name` | A stage of a process. Its place in the process is `seq` on `HAS_ACTIVITY` (v0.11). |
 | `Task` (built) | `id` | `name`, `description`, `status` (`candidate`, `confirmed`), `type` (`harvest`, `recipe`, `manual`), `automatable` (bool); for candidates also `source`, `extractedAt`, `confidence` | The delegatable unit. `manual` covers inventory work with no vanilla definition. |
 
 ### Relationships
@@ -361,8 +361,8 @@ MineCorp process (authored):
 | `IN_UNIT` | `Role` -> `OrgUnit` | | Where a role sits |
 | `FILLED_BY` | `Role` -> `Player` | `from`, `to` (null while current) | Who holds a role, with dates. The one player may fill many roles at once. |
 | `OWNS` | `Role` -> `Process` | | One owner per process |
-| `HAS_ACTIVITY` | `Process` -> `Activity` | | |
-| `HAS_TASK` | `Activity` -> `Task` | | |
+| `HAS_ACTIVITY` | `Process` -> `Activity` | `seq` (v0.11: the stage's place, from 1) | |
+| `HAS_TASK` | `Activity` -> `Task` | `seq` (v0.11: the step's place in its activity, from 1) | |
 | `PERFORMS` | `Role` -> `Task` | | Who does the task |
 | `NEXT` | `Task` -> `Task` | `condition`, `outcome`, `isDefault` | Routing is data |
 | `HANDOFF_TO` | `Task` -> `Task` | | The next task belongs to a different role: a change of hat (may be the same person) |
@@ -748,6 +748,7 @@ The company model of v0.6 and v0.7 copied the knowledge-layer posts: five organi
 - **One role: the player.** `OrgUnit`, `Role`, `PART_OF`, `IN_UNIT`, `FILLED_BY`, `OWNS`, `PERFORMS`, `HANDOFF_TO` and `ESCALATES_TO` are gone, with the task properties `automatable` and `role` and the process properties `family`, `criticality`, `sla` and `owner`. Minecraft can be played together but mostly is not; roles can come back if that changes.
 - **A process is a goal a player works towards.** `Process` is the goal ("Get to the Nether"), `Activity` a stage ("Get obsidian", "Build the frame") and `Task` a step. The labels and the shape (`HAS_ACTIVITY`, `HAS_TASK`, `NEXT`) are unchanged, so the mapping to the manifesto's process schema still reads.
 - **Known and unknown.** The *known* processes are the structured game: recipes, mining, drops and spawns, already derived from the jar and followed by `what_do_i_need` and `where_to_find`. They are not authored. A process holds the *unknown*: what a player has to do that no data file says (shelter, mob farms, getting to the Nether, defeating the dragon, getting emeralds).
+- **Order is on the relationships.** `HAS_ACTIVITY {seq}` numbers a process's stages and `HAS_TASK {seq}` its steps within a stage (from 1, in the order of the YAML file), as `HAS_ACTION {order}` does for a task's actions. The nodes carry no order, so an activity or task reads the same wherever it is used.
 - **A task is structured or manual.** It names the game actions it performs (`HAS_ACTION`) when the data has them, and has none when it is a manual step (build the frame). A route's alternatives are data: `NEXT` carries a `condition` and `isDefault`.
 - **Everything is a candidate until a player confirms it.** A process file says `status: candidate` with `source` (the wiki section the steps come from), `extracted_at` and `confidence`, or `status: confirmed` with `confirmed_by` (a player) and `confirmed_at`. A confirmed task has `(Task)-[:CONFIRMED_BY {at}]->(Player)`.
 

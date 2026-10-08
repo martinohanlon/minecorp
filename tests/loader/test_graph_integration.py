@@ -140,6 +140,26 @@ class TestModelInGraph:
         assert db.one("MATCH (:Activity)-[:HAS_TASK]->(t:Task) RETURN count(DISTINCT t)") == n
         assert db.one("MATCH (t:Task) WHERE size([(t)<-[:HAS_TASK]-() | 1]) <> 1 RETURN count(t)") == 0
 
+    def test_the_order_is_on_the_relationships_not_on_the_nodes(self, db):
+        assert db.one("MATCH (a:Activity) WHERE a.seq IS NOT NULL RETURN count(a)") == 0
+        assert db.one("MATCH (t:Task) WHERE t.seq IS NOT NULL RETURN count(t)") == 0
+        assert db.one("MATCH ()-[r:HAS_ACTIVITY]->() WHERE r.seq IS NULL RETURN count(r)") == 0
+        assert db.one("MATCH ()-[r:HAS_TASK]->() WHERE r.seq IS NULL RETURN count(r)") == 0
+
+    def test_activities_and_tasks_are_numbered_from_one_without_gaps(self, db):
+        for rel, parent in (("HAS_ACTIVITY", "Process"), ("HAS_TASK", "Activity")):
+            rows = db.q(f"MATCH (p:{parent})-[r:{rel}]->() WITH p, collect(r.seq) AS seqs RETURN p.id AS id, seqs")
+            assert rows
+            for r in rows:
+                assert sorted(r["seqs"]) == list(range(1, len(r["seqs"]) + 1)), (rel, r)
+
+    def test_the_sample_reads_in_order_through_its_relationships(self, db):
+        rows = db.q("""MATCH (:Process {id:'sample'})-[ha:HAS_ACTIVITY]->(a)-[ht:HAS_TASK]->(t)
+                       RETURN ha.seq AS activity, ht.seq AS task, t.id AS id ORDER BY activity, task""")
+        assert [r["id"] for r in rows] == ["sample/mine-iron", "sample/mine-logs", "sample/smelt", "sample/sticks",
+                                           "sample/pickaxe", "sample/show-off"]
+        assert [(r["activity"], r["task"]) for r in rows] == [(1, 1), (1, 2), (2, 1), (2, 2), (2, 3), (2, 4)]
+
     def test_has_action_orders_start_at_one_and_have_no_gaps(self, db):
         rows = db.q("MATCH (t:Task)-[h:HAS_ACTION]->() WITH t, collect(h.order) AS orders RETURN t.id AS task, orders")
         assert rows

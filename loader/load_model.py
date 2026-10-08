@@ -88,7 +88,14 @@ def validate(people: dict, processes: list[dict], action_ids: set) -> list[str]:
                 if k not in doc:
                     err(f"{f}: a candidate needs {k}")
         tasks_here = set()
+        seqs = []
         for a in doc.get("activities", []):
+            seq = a.get("seq")
+            if not isinstance(seq, int) or isinstance(seq, bool) or seq < 1:
+                err(f"{f}: activity {a.get('id')} seq must be a whole number of 1 or more")
+            elif seq in seqs:
+                err(f"{f}: activity {a.get('id')} repeats seq {seq}")
+            seqs.append(seq)
             for t in a.get("tasks", []):
                 tid = t.get("id")
                 if not tid or tid in seen_task:
@@ -138,9 +145,9 @@ def rows(people: dict, processes: list[dict]) -> dict:
         out["processes"].append({k: p.get(k) for k in ("id", "name", "description")})
         for a in doc.get("activities", []):
             out["activities"].append({"id": f"{p['id']}/{a['id']}", "process": p["id"], "name": a["name"], "seq": a["seq"]})
-            for t in a.get("tasks", []):
+            for seq, t in enumerate(a.get("tasks", []), 1):
                 out["tasks"].append({
-                    "id": t["id"], "activity": f"{p['id']}/{a['id']}", "name": t["name"],
+                    "id": t["id"], "activity": f"{p['id']}/{a['id']}", "seq": seq, "name": t["name"],
                     "description": t.get("description"), "status": status,
                     "source": doc.get("source"), "extractedAt": str(doc["extracted_at"]) if doc.get("extracted_at") else None,
                     "confidence": doc.get("confidence")})
@@ -186,15 +193,15 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
 
             s.run("UNWIND $rows AS r MERGE (p:Player {uuid: r.uuid}) SET p.name = r.name", rows=r["players"])
             s.run("UNWIND $rows AS r CREATE (:Process {id: r.id, name: r.name, description: r.description})", rows=r["processes"])
-            s.run("""UNWIND $rows AS r CREATE (a:Activity {id: r.id, name: r.name, seq: r.seq})
-                     WITH a, r MATCH (p:Process {id: r.process}) CREATE (p)-[:HAS_ACTIVITY]->(a)""", rows=r["activities"])
+            s.run("""UNWIND $rows AS r CREATE (a:Activity {id: r.id, name: r.name})
+                     WITH a, r MATCH (p:Process {id: r.process}) CREATE (p)-[:HAS_ACTIVITY {seq: r.seq}]->(a)""", rows=r["activities"])
             s.run("""UNWIND $rows AS r MERGE (t:Task {id: r.id})
                      SET t.name = r.name, t.description = r.description, t.status = r.status,
                          t.source = r.source, t.extractedAt = r.extractedAt, t.confidence = r.confidence
                      REMOVE t.type
                      WITH t, r
                      MATCH (a:Activity {id: r.activity})
-                     CREATE (a)-[:HAS_TASK]->(t)""", rows=r["tasks"])
+                     CREATE (a)-[:HAS_TASK {seq: r.seq}]->(t)""", rows=r["tasks"])
             s.run("""UNWIND $rows AS r MATCH (t:Task {id: r.task}), (a:Action {id: r.action})
                      CREATE (t)-[:HAS_ACTION {order: r.order, quantity: r.quantity}]->(a)""", rows=r["task_actions"])
             s.run("""UNWIND $rows AS r MATCH (a:Task {id: r.from}), (b:Task {id: r.to})
