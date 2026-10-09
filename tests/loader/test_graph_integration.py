@@ -207,6 +207,28 @@ class TestModelInGraph:
         assert rows == [{"to": "emeralds/find-village", "d": True}, {"to": "emeralds/make-an-iron-pickaxe", "d": False}]
         assert db.one("MATCH (t:Task {id:'emeralds/mine-the-ore'}) RETURN t.status") == "candidate"
 
+    def test_the_nether_portal_has_three_ways_to_get_obsidian_and_mining_is_the_default(self, db):
+        assert db.one("MATCH (:Process {id:'nether-portal'})-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == 5
+        rows = db.q("MATCH (:Task {id:'nether-portal/choose-a-way'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
+        assert rows == [{"to": "nether-portal/find-a-ruined-portal", "d": False}, {"to": "nether-portal/make-a-bucket", "d": False},
+                        {"to": "nether-portal/make-an-iron-pickaxe", "d": True}]
+
+    def test_every_way_to_get_obsidian_ends_at_getting_flint(self, db):
+        for start in ("make-an-iron-pickaxe", "make-a-bucket", "find-a-ruined-portal"):
+            assert db.one(f"""MATCH (:Task {{id:'nether-portal/{start}'}})-[:NEXT*]->(t:Task {{id:'nether-portal/get-flint'}}) RETURN count(DISTINCT t)""") == 1, start
+
+    def test_flint_can_be_dug_or_bought_and_the_purchase_is_a_real_trade(self, db):
+        assert db.one("MATCH (:Task {id:'nether-portal/get-flint'})-[:HAS_ACTION]->(a:Mine)-[:CREATES]->(i:Item {id:'minecraft:flint'}) RETURN count(a)") == 1
+        row = db.q("""MATCH (:Task {id:'nether-portal/buy-flint'})-[:HAS_ACTION]->(t:Trade)-[:CREATES]->(:Item {id:'minecraft:flint'})
+                      MATCH (t)-[r:REQUIRES]->(i:Item) RETURN r.role AS role, i.name AS item, r.count AS count ORDER BY role""")
+        assert row == [{"role": "additional", "item": "Emerald", "count": 1}, {"role": "price", "item": "Gravel", "count": 10}]
+        assert db.one("MATCH (:Task {id:'nether-portal/get-flint'})-[:NEXT]->(b) WHERE b.id IN ['nether-portal/make-flint-and-steel', 'nether-portal/buy-flint'] RETURN count(b)") == 2
+
+    def test_obsidian_is_mined_with_a_pickaxe_the_process_makes_first(self, db):
+        tool = db.one("MATCH (:Mine {id:'mine:minecraft:obsidian'})-[:REQUIRES {role:'tool'}]->(i:Item) RETURN i.id")
+        assert tool == "minecraft:diamond_pickaxe"
+        assert db.one("MATCH (:Task {id:'nether-portal/make-a-diamond-pickaxe'})-[:HAS_ACTION]->(:Craft {id:'craft:minecraft:diamond_pickaxe'}) RETURN count(*)") == 1
+
     def test_a_task_can_perform_a_trade_which_is_an_action_in_the_trade_graph(self, db):
         row = db.q("""MATCH (t:Task {id:'emeralds/sell-wheat-to-a-farmer'})-[:HAS_ACTION]->(a:Trade)-[:CREATES]->(i:Item)
                       MATCH (a)-[r:REQUIRES {role:'price'}]->(p:Item)

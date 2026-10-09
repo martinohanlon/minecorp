@@ -1,0 +1,178 @@
+# Process: Get to the Nether (candidate, drafted from the loaded wiki pages and the game data). Loaded by loader/load_model.py.
+# Format: model/processes/README.md. Nothing here is confirmed until a player sets `status: confirmed`.
+#
+# A portal is a frame of obsidian, lit. The wiki gives three ways to get the obsidian: mine it (the standard way, which needs a
+# diamond pickaxe), cast it from a lava pool and water (no diamond pickaxe), or find a ruined portal ("the absolute easiest way",
+# when you find one). Mining is the way through by default because it always works; the other two are alternatives.
+#
+# The steps come from three wiki sections (community-written, Java Edition survival), named in each task:
+#   Tutorial:Shelters > Nether portal room
+#   Tutorial:Nether portals > Creating a portal without getting obsidian   and   > A quick, simple method ...   and
+#                           > Finding a portal   and   > First, portals are risky   and   > Portals can accumulate Overworld mobs
+#                           > How portals work
+# Numbers come from the wiki or from the game data (recipes, tools, depths, trades), and the description says which.
+# Not covered: surviving in the Nether (the wiki's Nether survival page is not loaded) and the Nether's own structures.
+
+process:
+  id: nether-portal
+  name: Get to the Nether
+  description: Build and light a Nether portal from obsidian and go through it.
+
+status: candidate
+source: "https://minecraft.wiki/w/Tutorial:Shelters#Nether_portal_room ; https://minecraft.wiki/w/Tutorial:Nether_portals"
+extracted_at: "2026-10-09"
+confidence: 0.7
+
+activities:
+  - id: choose
+    name: Choose a way
+    seq: 1
+    tasks:
+      - id: nether-portal/choose-a-way
+        name: Choose how to get the obsidian
+        description: >-
+          You need at least 10 obsidian, "either from mining it or building a portal cast" (Shelters > Nether portal room).
+          Mining needs a diamond pickaxe and is the way through here. Casting needs a lava pool and a water bucket but no diamond
+          pickaxe. If you find a ruined portal, "the absolute easiest way of getting a Nether portal" is to rebuild it
+          (Nether portals > Finding a portal).
+
+  - id: obsidian
+    name: Get obsidian
+    seq: 2
+    tasks:
+      - id: nether-portal/make-an-iron-pickaxe
+        name: Make an iron pickaxe
+        description: Diamond ore needs an iron pickaxe or better (game data).
+        actions:
+          - {do: "craft:minecraft:iron_pickaxe"}
+      - id: nether-portal/mine-diamonds
+        name: Mine three diamonds
+        description: >-
+          A diamond pickaxe takes 3 diamonds and 2 sticks (game data). Diamond ore generates from y -64 to 16 (game data; ask
+          where_to_find).
+        actions:
+          - {do: "mine:minecraft:diamond_ore", quantity: 3}
+      - id: nether-portal/make-a-diamond-pickaxe
+        name: Make a diamond pickaxe
+        description: Obsidian can only be mined with a diamond pickaxe or better (game data).
+        actions:
+          - {do: "craft:minecraft:diamond_pickaxe"}
+      - id: nether-portal/mine-obsidian
+        name: Mine 10 obsidian
+        description: At least 10 obsidian for the frame. (Shelters > Nether portal room.)
+        actions:
+          - {do: "mine:minecraft:obsidian", quantity: 10}
+      - id: nether-portal/make-a-bucket
+        name: Make a bucket
+        description: >-
+          The casting method needs a water bucket, at least 6 ordinary blocks, a lava pool and a way to light the portal.
+          A bucket takes 3 iron ingots (game data). (Nether portals > A quick, simple method using a lava pool.)
+        actions:
+          - {do: "craft:minecraft:bucket"}
+      - id: nether-portal/cast-the-obsidian
+        name: Cast the obsidian in a lava pool
+        description: >-
+          Pour water over lava held in a mould of blocks and it turns to obsidian; the page lists the steps (a block at the
+          edge of the lava, water beside it, break the block, take the water back, then the frame in two parts, upside-down
+          L on the right, water again). A block-breaking tool is recommended. Follow the wiki's steps, since they are exact.
+          (Nether portals > Creating a portal without getting obsidian; > A quick, simple method.)
+      - id: nether-portal/find-a-ruined-portal
+        name: Find a ruined portal
+        description: >-
+          The standard ruined portal generates in 24 Overworld biomes, and there are desert, jungle, mountain, ocean and swamp
+          variants and one in the Nether (game data; ask where_to_find). They range from nearly complete to mostly destroyed,
+          often next to lava and chests with obsidian in them. (Nether portals > Finding a portal.)
+      - id: nether-portal/rebuild-the-ruined-portal
+        name: Rebuild it
+        description: >-
+          If you are lucky you can rebuild a portal using just the materials provided by the ruins. Take the obsidian from
+          what is left and the chests, and put back what is missing. (Nether portals > Finding a portal.)
+
+  - id: light
+    name: Get a light
+    seq: 3
+    tasks:
+      - id: nether-portal/get-flint
+        name: Get flint from gravel
+        description: >-
+          Flint is a rare drop when you dig gravel (game data), so expect to dig a lot of it.
+        actions:
+          - {do: "mine:minecraft:gravel"}
+      - id: nether-portal/buy-flint
+        name: Buy flint from a fletcher
+        description: >-
+          A level 1 fletcher sells 10 flint for 10 gravel and an emerald, up to 12 times before restocking (game data), which
+          saves digging for the rare drop.
+        actions:
+          - {do: "trade:minecraft:fletcher/1/gravel_and_emerald_flint"}
+      - id: nether-portal/make-flint-and-steel
+        name: Make flint and steel
+        description: >-
+          Flint and an iron ingot, shapeless (game data). A fire charge also lights a portal. (Shelters > Nether portal room.)
+        actions:
+          - {do: "craft:minecraft:flint_and_steel"}
+
+  - id: build
+    name: Build and light the portal
+    seq: 4
+    tasks:
+      - id: nether-portal/build-the-frame
+        name: Build the frame
+        description: >-
+          The game's own portals are a 4x5 obsidian frame, and the wiki's figure is at least 10 obsidian to form one. If you are
+          rebuilding a ruined portal, complete the frame you found. (Shelters > Nether portal room; Nether portals > How portals work.)
+      - id: nether-portal/light-the-portal
+        name: Light the portal
+        description: Activate it with flint and steel or a fire charge. (Shelters > Nether portal room.)
+      - id: nether-portal/secure-the-portal
+        name: Secure the Overworld side
+        description: >-
+          A portal built in the Overworld should be secured so wandering monsters cannot walk into it. They gather in the Nether
+          over time, where there is no sunlight to burn undead and time barely passes without you, and creepers are especially
+          bad there. (Nether portals > Portals can accumulate Overworld mobs.)
+
+  - id: go
+    name: Go through
+    seq: 5
+    tasks:
+      - id: nether-portal/prepare-for-the-nether
+        name: Prepare for the Nether
+        description: >-
+          Beware of ghasts, piglins, hoglins and magma cubes. (Shelters > Nether portal room.) Surviving there is a process of its
+          own, not covered here.
+      - id: nether-portal/enter-the-nether
+        name: Go through the portal
+        description: >-
+          A new portal is linked to the place whose Nether coordinates are the Overworld x and z divided by 8, and the game builds
+          a new portal if it finds none nearby. A new portal has a disproportionate chance of being next to an abyss, a lava lake
+          or a netherrack wall, and may sit on a one-block ledge, so look before you step out. (Nether portals > How portals work;
+          First, portals are risky.)
+      - id: nether-portal/build-a-portal-room
+        name: Build a room around the Nether portal
+        description: >-
+          A second portal room in the Nether gives protection. Cobblestone is a good block to build with there, since ghasts
+          cannot destroy it with their fireballs. (Shelters > Nether portal room.)
+        actions:
+          - {do: "mine:minecraft:cobblestone"}
+
+next:
+  - {from: nether-portal/choose-a-way, to: nether-portal/make-an-iron-pickaxe, condition: you can get diamonds, outcome: mine the obsidian, default: true}
+  - {from: nether-portal/choose-a-way, to: nether-portal/make-a-bucket, condition: no diamond pickaxe and a lava pool nearby, outcome: cast the obsidian, default: false}
+  - {from: nether-portal/choose-a-way, to: nether-portal/find-a-ruined-portal, condition: a ruined portal is nearby, outcome: rebuild it, default: false}
+  - {from: nether-portal/make-an-iron-pickaxe, to: nether-portal/mine-diamonds, condition: pickaxe made, default: true}
+  - {from: nether-portal/mine-diamonds, to: nether-portal/make-a-diamond-pickaxe, condition: three diamonds, default: true}
+  - {from: nether-portal/make-a-diamond-pickaxe, to: nether-portal/mine-obsidian, condition: pickaxe made, default: true}
+  - {from: nether-portal/mine-obsidian, to: nether-portal/get-flint, condition: 10 obsidian collected, default: true}
+  - {from: nether-portal/make-a-bucket, to: nether-portal/cast-the-obsidian, condition: bucket made, default: false}
+  - {from: nether-portal/cast-the-obsidian, to: nether-portal/get-flint, condition: obsidian cast, default: false}
+  - {from: nether-portal/find-a-ruined-portal, to: nether-portal/rebuild-the-ruined-portal, condition: portal found, default: false}
+  - {from: nether-portal/rebuild-the-ruined-portal, to: nether-portal/get-flint, condition: obsidian gathered, default: false}
+  - {from: nether-portal/get-flint, to: nether-portal/make-flint-and-steel, condition: flint collected, default: true}
+  - {from: nether-portal/get-flint, to: nether-portal/buy-flint, condition: no flint after a lot of gravel and a village nearby, outcome: flint bought, default: false}
+  - {from: nether-portal/buy-flint, to: nether-portal/make-flint-and-steel, condition: flint bought, default: false}
+  - {from: nether-portal/make-flint-and-steel, to: nether-portal/build-the-frame, condition: flint and steel made, default: true}
+  - {from: nether-portal/build-the-frame, to: nether-portal/light-the-portal, condition: frame built, default: true}
+  - {from: nether-portal/light-the-portal, to: nether-portal/secure-the-portal, condition: portal lit, default: true}
+  - {from: nether-portal/secure-the-portal, to: nether-portal/prepare-for-the-nether, condition: portal secured, default: true}
+  - {from: nether-portal/prepare-for-the-nether, to: nether-portal/enter-the-nether, condition: ready, default: true}
+  - {from: nether-portal/enter-the-nether, to: nether-portal/build-a-portal-room, condition: in the Nether, default: true}
