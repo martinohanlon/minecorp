@@ -235,6 +235,19 @@ class TestModelInGraph:
                          WHERE all(r IN relationships(p) WHERE r.isDefault) RETURN size(nodes(p))""")
         assert path == 19
 
+    def test_the_mob_farm_is_the_sinkhole_with_a_choice_of_trapdoors_or_fence_gates(self, db):
+        assert db.one("MATCH (:Process {id:'mob-farm'})-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == 5
+        rows = db.q("MATCH (:Task {id:'mob-farm/light-up-the-surroundings'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
+        assert rows == [{"to": "mob-farm/make-fence-gates", "d": False}, {"to": "mob-farm/make-trapdoors", "d": True}]
+        assert db.one("MATCH (:Process {id:'mob-farm'}) RETURN size([(:Process {id:'mob-farm'})-[:BUILDS_ON]->() | 1])") == 0
+
+    def test_the_farms_drops_are_the_normal_drops_of_the_mobs_it_kills(self, db):
+        drops = db.q("""MATCH (:Task {id:'mob-farm/collect-the-drops'})-[:HAS_ACTION]->(:Kill)-[c:CREATES {condition:'default'}]->(i:Item)
+                        RETURN i.name AS item ORDER BY item""")
+        assert [d["item"] for d in drops] == ["Arrow", "Bone", "Gunpowder", "Rotten Flesh", "String"]
+        assert db.one("""MATCH (:Task {id:'mob-farm/collect-the-drops'})-[:HAS_ACTION]->(:Kill)-[c:CREATES]->(i:Item {id:'minecraft:spider_eye'})
+                         RETURN c.condition""") == "killed_by_player", "a fall does not give it"
+
     def test_the_nether_portal_has_three_ways_to_get_obsidian_and_mining_is_the_default(self, db):
         assert db.one("MATCH (:Process {id:'nether-portal'})-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == 5
         rows = db.q("MATCH (:Task {id:'nether-portal/choose-a-way'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")

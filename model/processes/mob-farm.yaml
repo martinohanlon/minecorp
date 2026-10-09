@@ -1,0 +1,140 @@
+# Process: Build a simple mob farm (candidate, drafted from the loaded wiki page and the game data). Loaded by loader/load_model.py.
+# Format: model/processes/README.md. Nothing here is confirmed until a player sets `status: confirmed`.
+#
+# Mob farms come in many designs (spawning towers, canals, water pans, one-way doors, slime pushers and more, most of them redstone).
+# This is the simplest one, which the wiki itself calls "the easiest possible design": the SINKHOLE. A large, dark, empty room, with a
+# hole in the floor that mobs fall into, and the fall kills them. The wiki says it has "limited effectiveness" (a mob has little
+# chance of wandering into the hole) but "can be built quickly and cheaply". Other designs are left out on purpose.
+#
+# The steps come from one wiki page (community-written; it mixes Java and Bedrock designs, and this follows Java Edition):
+#   Tutorial:Mob farm > Locations   > Designs   > Sinkhole   > Drops   > Grinding   > Performance concerns
+# plus Tutorial:Beginner's guide > Making shelter for the trapdoor and fence gate recipes.
+# Numbers come from the wiki or from the game data (recipes and drops), and the description says which. The wiki gives no sizes for a
+# sinkhole farm, so none are invented here.
+
+process:
+  id: mob-farm
+  name: Build a simple mob farm
+  description: A dark room with a hole in the floor that mobs fall into, so their drops collect in a chest. The simplest design.
+
+status: candidate
+source: "https://minecraft.wiki/w/Tutorial:Mob_farm#Sinkhole ; https://minecraft.wiki/w/Tutorial:Mob_farm#Locations ; https://minecraft.wiki/w/Tutorial:Mob_farm#Grinding"
+extracted_at: "2026-10-09"
+confidence: 0.7
+
+activities:
+  - id: plan
+    name: Plan
+    seq: 1
+    tasks:
+      - id: mob-farm/choose-a-location
+        name: Choose where to build it
+        description: >-
+          A farm needs a large area that mobs can spawn on, and the location is the hard part. On the surface it works well by day
+          but is little use at night, when the whole surface is dark. Underground the rate does not depend on the time of day and
+          stays within your spawn range when you mine, but it depends on how many unlit caves are nearby, which compete as places for
+          mobs to spawn. Floating high up or under an ocean spawns best but is dangerous or awkward to build. For the simplest start,
+          build underground near where you mine. (Mob farm > Locations.)
+
+  - id: room
+    name: Build the spawning room
+    seq: 2
+    tasks:
+      - id: mob-farm/build-the-room
+        name: Build a large, empty room
+        description: >-
+          "A large, empty area of simple shape". Mobs spawn on the floor in the dark, so make it as big as you can. The roof height
+          matters: a height of 3 lets endermen spawn, which would break the farm, and a height of 1 allows only spiders; the canal
+          design in the same page puts the roof 2 blocks above the ground for that reason, so 2 is the figure to use here.
+          (Mob farm > Sinkhole; Canal-style.)
+      - id: mob-farm/keep-it-dark
+        name: Keep the room dark
+        description: >-
+          No torches inside. Cave sounds and bats are good signs that the room is dark enough for hostile mobs to spawn.
+          (Mob farm > Designs.)
+      - id: mob-farm/light-up-the-surroundings
+        name: Light up the other caves nearby
+        description: >-
+          The game caps hostile mobs by the number of loaded chunks, so clear out the whole chunk the farm is in by placing torches,
+          or build it high up, so that the mobs that spawn are in your farm and not in the caves around it. (Mob farm > Performance
+          concerns.)
+
+  - id: sinkhole
+    name: Make the sinkhole
+    seq: 3
+    tasks:
+      - id: mob-farm/make-trapdoors
+        name: Make trapdoors
+        description: >-
+          The edge of the hole is lined with opened trapdoors, which the mob AI treats as solid ground, so mobs walk onto them and
+          fall. A wooden trapdoor is made from planks (game data). (Mob farm > Sinkhole; Beginner's guide > Making shelter.)
+        actions:
+          - {do: "craft:minecraft:oak_trapdoor"}
+      - id: mob-farm/make-fence-gates
+        name: Make fence gates instead
+        description: >-
+          Fence gates do the same job as trapdoors, if you would rather use sticks and planks. (Mob farm > Sinkhole; Beginner's
+          guide > Making shelter.)
+        actions:
+          - {do: "craft:minecraft:oak_fence_gate"}
+      - id: mob-farm/dig-and-line-the-hole
+        name: Dig the hole and line its edge
+        description: >-
+          Make one or more holes in the floor for the mobs to drop through, and line the edge of each with the opened trapdoors or
+          fence gates. The wiki gives no size, and notes that the chance of a mob wandering into a hole is small, so expect a
+          modest catch. (Mob farm > Sinkhole.)
+
+  - id: collect
+    name: Collect the drops
+    seq: 4
+    tasks:
+      - id: mob-farm/make-a-hopper-and-chest
+        name: Make a hopper and a chest
+        description: >-
+          Hoppers collect the dropped items without you, and can feed a chest, which keeps the loot safe. A hopper takes iron ingots
+          and a chest (game data). (Mob farm > Grinding.)
+        actions:
+          - {do: "craft:minecraft:chest"}
+          - {do: "craft:minecraft:hopper"}
+      - id: mob-farm/build-the-drop-and-collector
+        name: Build the drop and the collector under the hole
+        description: >-
+          Under the hole, a drop for the mobs to fall down, with the hopper at the bottom feeding the chest. The grinder here is just
+          falling damage, a passive way to kill them; the wiki's other grinders (lava, drowning, pistons, minecarts) are not needed. A
+          nearly lethal fall leaves a mob at half a heart if you want to finish them yourself for the rare drops and experience.
+          (Mob farm > Grinding.)
+
+  - id: run
+    name: Run the farm
+    seq: 5
+    tasks:
+      - id: mob-farm/stay-in-range
+        name: Stay near the farm
+        description: >-
+          Mobs only spawn and move within range of you. In Java Edition the spawn radius is 128 blocks, and when you are so far away
+          that the mobs freeze, none will fall in. So keep working close by, and go back for the chest. The farm runs on your server's
+          mob AI, so quick kills are easier on it. (Mob farm > Designs; Sinkhole; Performance concerns.)
+      - id: mob-farm/collect-the-drops
+        name: Empty the chest
+        description: >-
+          What the common night mobs drop: rotten flesh from zombies, arrows and bones from skeletons, gunpowder from creepers and
+          string from spiders (game data). Killed by a fall, not by you, they give only these normal drops: spider eyes, and the
+          iron ingots, carrots and potatoes a zombie can drop, need a player kill. (Mob farm > Drops.)
+        actions:
+          - {do: "kill:minecraft:zombie"}
+          - {do: "kill:minecraft:skeleton"}
+          - {do: "kill:minecraft:creeper"}
+          - {do: "kill:minecraft:spider"}
+
+next:
+  - {from: mob-farm/choose-a-location, to: mob-farm/build-the-room, condition: location chosen, default: true}
+  - {from: mob-farm/build-the-room, to: mob-farm/keep-it-dark, condition: room built, default: true}
+  - {from: mob-farm/keep-it-dark, to: mob-farm/light-up-the-surroundings, condition: room dark inside, default: true}
+  - {from: mob-farm/light-up-the-surroundings, to: mob-farm/make-trapdoors, condition: surroundings lit, outcome: trapdoors for the hole, default: true}
+  - {from: mob-farm/light-up-the-surroundings, to: mob-farm/make-fence-gates, condition: you would rather use fence gates, outcome: fence gates for the hole, default: false}
+  - {from: mob-farm/make-trapdoors, to: mob-farm/dig-and-line-the-hole, condition: trapdoors made, default: true}
+  - {from: mob-farm/make-fence-gates, to: mob-farm/dig-and-line-the-hole, condition: fence gates made, default: false}
+  - {from: mob-farm/dig-and-line-the-hole, to: mob-farm/make-a-hopper-and-chest, condition: hole dug and lined, default: true}
+  - {from: mob-farm/make-a-hopper-and-chest, to: mob-farm/build-the-drop-and-collector, condition: hopper and chest made, default: true}
+  - {from: mob-farm/build-the-drop-and-collector, to: mob-farm/stay-in-range, condition: collector built, default: true}
+  - {from: mob-farm/stay-in-range, to: mob-farm/collect-the-drops, condition: mobs have fallen, default: true}

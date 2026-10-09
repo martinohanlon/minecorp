@@ -783,7 +783,7 @@ The company model of v0.6 and v0.7 copied the knowledge-layer posts: five organi
 
 ### Next
 
-The first four processes, the shelter, emeralds, the Nether portal and the ender dragon (`model/processes/`), are drafted as candidates, and tasks of three of them perform real `Trade` actions. The dragon `BUILDS_ON` the Nether portal (v0.11 and later: `builds_on: [nether-portal]` in the process file). The last, in the order you chose, also as a candidate drafted from a wiki page: a mob farm (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
+The five processes, the shelter, emeralds, the Nether portal, the ender dragon and a simple mob farm (`model/processes/`), are drafted as candidates, and tasks of three of them perform real `Trade` actions. The dragon `BUILDS_ON` the Nether portal (v0.11 and later: `builds_on: [nether-portal]` in the process file). That completes the owner's list. (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
 
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 
