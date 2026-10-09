@@ -5,7 +5,8 @@
 
 Run it after `load_recipes.py --all --wipe`, `load_actions.py` (which deletes every Action, trades included) and
 `load_world.py` (it links maps to structures and the villager to its professions), and before `load_model.py`. The graph is
-rebuilt from source: this loader deletes and recreates the nodes it owns.
+rebuilt from source: this loader deletes and recreates the nodes it owns, so a task's link to a trade (`HAS_ACTION`) is lost
+and `load_model.py` must be run again after it.
 
 What is built:
 

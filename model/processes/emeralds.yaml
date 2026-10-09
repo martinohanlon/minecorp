@@ -1,0 +1,113 @@
+# Process: Get emeralds (candidate, drafted from the loaded wiki pages and the game data). Loaded by loader/load_model.py.
+# Format: model/processes/README.md. Nothing here is confirmed until a player sets `status: confirmed`.
+#
+# Two ways, and the wiki says which is usual: "Emeralds are normally gained (and used) by trading with villagers and wandering
+# traders, but scattered blocks of emerald ore can also be found beneath mountain biomes", and mining is "dangerous and
+# inefficient". So trading is the default way through and mining is the alternative.
+#
+# The steps come from three wiki sections (community-written, Java Edition survival), named in each task:
+#   Tutorial:Trading > Benefits of villager trading   and   > Notes   and   > Farmer
+#   Tutorial:Beginner's guide > Villages and their inhabitants
+#   Tutorial:The second day > Other ores and minerals
+# Numbers come from the wiki or from the game data (the trades and the ore generation), and say which in the description.
+#
+# One place where the two disagree: the second-day guide says emerald ore is found "at the same depths as gold ore". The game's
+# data puts it from y -16 to 319, most often around y 232, in mountain biomes. The data wins, and the description says so.
+
+process:
+  id: emeralds
+  name: Get emeralds
+  description: Emeralds are the currency of villagers. You get them mainly by selling goods to villagers, or less often by mining emerald ore in the mountains.
+
+status: candidate
+source: "https://minecraft.wiki/w/Tutorial:Trading#Benefits_of_villager_trading ; https://minecraft.wiki/w/Tutorial:Beginner%27s_guide#Villages_and_their_inhabitants ; https://minecraft.wiki/w/Tutorial:The_second_day#Other_ores_and_minerals"
+extracted_at: "2026-10-09"
+confidence: 0.7
+
+activities:
+  - id: choose
+    name: Choose a way
+    seq: 1
+    tasks:
+      - id: emeralds/choose-a-way
+        name: Choose to trade or to mine
+        description: >-
+          Trading is the usual way: villagers and wandering traders pay emeralds for goods, and the wiki calls mining for
+          emerald ore "dangerous and inefficient". Mine only if there is no village to find. (Second day > Other ores and minerals.)
+
+  - id: trade
+    name: Trade with villagers
+    seq: 2
+    tasks:
+      - id: emeralds/find-village
+        name: Find a village
+        description: >-
+          Villages are in plains, meadow, desert, savanna, snowy plains and taiga biomes (game data: the five village
+          structures). Interact with an employed villager to open the trading screen; do not attack them, they become upset
+          and raise their prices. (Beginner's guide > Villages and their inhabitants.)
+      - id: emeralds/harvest-wheat
+        name: Harvest wheat
+        description: >-
+          The farmer's first trade wants 20 wheat for an emerald (game data). Take ripe wheat from the village farms and
+          replant it, or craft wheat from hay bales found around the village. The wiki also recommends pumpkins and melons,
+          which grow fast and level a farmer up. (Beginner's guide > Villages and their inhabitants; Trading > Farmer.)
+        actions:
+          - {do: "mine:minecraft:wheat", quantity: 20}
+      - id: emeralds/make-sticks
+        name: Make sticks
+        description: >-
+          A fletcher buys 32 sticks for an emerald (game data), which the wiki puts as "1 emerald for 4 logs' worth of wood":
+          4 logs make 16 planks and 16 planks make 32 sticks. Use it when you have wood to spare and no crops.
+          (Beginner's guide > Villages and their inhabitants.)
+        actions:
+          - {do: "mine:minecraft:oak_log", quantity: 4}
+          - {do: "craft:minecraft:oak_planks", quantity: 16}
+          - {do: "craft:minecraft:stick", quantity: 32}
+      - id: emeralds/sell-wheat-to-a-farmer
+        name: Sell wheat to a farmer
+        description: >-
+          20 wheat for 1 emerald, up to 16 times before the villager restocks (game data). Selling for emeralds gives a
+          villager more experience than buying, so it also levels the farmer up for better trades. The items a villager
+          offers are random. (Trading > Notes.)
+        actions:
+          - {do: "trade:minecraft:farmer/1/wheat_emerald"}
+      - id: emeralds/sell-sticks-to-a-fletcher
+        name: Sell sticks to a fletcher
+        description: 32 sticks for 1 emerald, up to 16 times before the villager restocks (game data).
+        actions:
+          - {do: "trade:minecraft:fletcher/1/stick_emerald"}
+
+  - id: mine
+    name: Mine emerald ore
+    seq: 3
+    tasks:
+      - id: emeralds/make-an-iron-pickaxe
+        name: Make an iron pickaxe
+        description: Emerald ore needs an iron pickaxe, like gold and diamond. (Second day > Other ores and minerals; game data.)
+        actions:
+          - {do: "craft:minecraft:iron_pickaxe"}
+      - id: emeralds/go-to-the-mountains
+        name: Go to a mountain biome
+        description: >-
+          The ore generates in the Cherry Grove, Frozen Peaks, Grove, Jagged Peaks, Meadow, Snowy Slopes, Stony Peaks and
+          Windswept Forest, Gravelly Hills and Hills biomes, from y -16 to 319 and most often around y 232 (game data; ask
+          where_to_find). The second-day guide says it is "at the same depths as gold ore"; the data says otherwise and
+          is followed here.
+      - id: emeralds/mine-the-ore
+        name: Mine the emerald ore
+        description: >-
+          Mining drops an emerald. There is likely only one block, and silverfish spawn at those depths in the mountains,
+          which is why the wiki calls it dangerous and inefficient. A deepslate version drops the same. (Second day >
+          Other ores and minerals.)
+        actions:
+          - {do: "mine:minecraft:emerald_ore"}
+
+next:
+  - {from: emeralds/choose-a-way, to: emeralds/find-village, condition: there is a village to find, outcome: villagers to trade with, default: true}
+  - {from: emeralds/choose-a-way, to: emeralds/make-an-iron-pickaxe, condition: no village to find, outcome: ore to mine, default: false}
+  - {from: emeralds/find-village, to: emeralds/harvest-wheat, condition: crops to harvest, default: true}
+  - {from: emeralds/find-village, to: emeralds/make-sticks, condition: no crops but wood to spare, default: false}
+  - {from: emeralds/harvest-wheat, to: emeralds/sell-wheat-to-a-farmer, condition: wheat collected, default: true}
+  - {from: emeralds/make-sticks, to: emeralds/sell-sticks-to-a-fletcher, condition: sticks made, default: false}
+  - {from: emeralds/make-an-iron-pickaxe, to: emeralds/go-to-the-mountains, condition: pickaxe made, default: false}
+  - {from: emeralds/go-to-the-mountains, to: emeralds/mine-the-ore, condition: in a mountain biome, default: false}

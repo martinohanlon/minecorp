@@ -251,7 +251,7 @@ class TestRealModel:
 
     def test_action_ids_follow_the_verb_colon_item_pattern(self, model):
         _people, processes = model
-        valid = {"mine", "kill", "shear", "craft", "smelt", "smith", "cut"}
+        valid = {"mine", "kill", "shear", "craft", "smelt", "smith", "cut", "trade"}
         for p in processes:
             for ac in p["activities"]:
                 for t in ac["tasks"]:

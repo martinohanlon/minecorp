@@ -201,6 +201,26 @@ class TestModelInGraph:
         assert row["status"] == "candidate" and "Tutorial:Shelters" in row["source"] and row["c"] == 0.7
         assert db.one("MATCH (t:Task {id:'shelter/build-walls'}) RETURN size([(t)-[:HAS_ACTION]->() | 1])") == 0   # a manual step
 
+    def test_the_emeralds_process_is_a_candidate_with_two_ways_and_trading_is_the_default(self, db):
+        assert db.one("MATCH (:Process {id:'emeralds'})-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == 3
+        rows = db.q("MATCH (:Task {id:'emeralds/choose-a-way'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
+        assert rows == [{"to": "emeralds/find-village", "d": True}, {"to": "emeralds/make-an-iron-pickaxe", "d": False}]
+        assert db.one("MATCH (t:Task {id:'emeralds/mine-the-ore'}) RETURN t.status") == "candidate"
+
+    def test_a_task_can_perform_a_trade_which_is_an_action_in_the_trade_graph(self, db):
+        row = db.q("""MATCH (t:Task {id:'emeralds/sell-wheat-to-a-farmer'})-[:HAS_ACTION]->(a:Trade)-[:CREATES]->(i:Item)
+                      MATCH (a)-[r:REQUIRES {role:'price'}]->(p:Item)
+                      RETURN a.id AS action, i.name AS gives, p.name AS price, r.count AS count""")
+        assert row == [{"action": "trade:minecraft:farmer/1/wheat_emerald", "gives": "Emerald", "price": "Wheat", "count": 20}]
+
+    def test_a_task_can_reach_who_sells_what_it_trades(self, db):
+        who = db.one("""MATCH (:Task {id:'emeralds/sell-sticks-to-a-fletcher'})-[:HAS_ACTION]->(:Trade)<-[:INCLUDES]-(:TradeSet)<-[o:OFFERS]-(p:Profession)
+                        RETURN p.name + ' level ' + toString(o.level)""")
+        assert who == "Fletcher level 1"
+
+    def test_the_mining_way_performs_the_mine_action_for_emerald_ore(self, db):
+        assert db.one("MATCH (:Task {id:'emeralds/mine-the-ore'})-[:HAS_ACTION]->(a:Mine)-[c:CREATES {condition:'default'}]->(i:Item) RETURN i.id") == "minecraft:emerald"
+
     def test_the_shelter_has_a_branch_for_coal_or_charcoal_and_the_default_is_coal(self, db):
         rows = db.q("MATCH (:Task {id:'shelter/craft-door'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
         assert rows == [{"to": "shelter/mine-coal", "d": True}, {"to": "shelter/smelt-charcoal", "d": False}]

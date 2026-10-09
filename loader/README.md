@@ -7,7 +7,7 @@ Loads Minecraft recipes (a subset by default, or everything with `--all`) from t
 ```powershell
 # 1. Neo4j (needs Docker)
 copy .env.example .env        # then set NEO4J_PASSWORD
-docker compose up -d
+docker compose up -d      # Browser http://localhost:7474, Bolt bolt://localhost:7687; ports and names are set in .env (see .env.example for a second, development server on 7475 and 7688)
 
 # 2. Loader
 python -m venv .venv
@@ -52,7 +52,7 @@ The graph can be rebuilt from source at any time. Order for a full rebuild (abou
 
 ## Trade loader: villager and wandering trader trades (v0.12)
 
-`load_trades.py` reads the villager trades, the trade sets and their tags from the Paper jar (the optional trade rebalance datapack inside it is not read). A trade becomes an `Action` with the verb label `Trade`; a profession offers trade sets by level; a set includes the trades the game draws from. Run it after `load_world.py` (it links maps to structures and the villager to its professions) and before `load_model.py`. **`load_actions.py` deletes every `Action`, trades included, so run this again after it.**
+`load_trades.py` reads the villager trades, the trade sets and their tags from the Paper jar (the optional trade rebalance datapack inside it is not read). A trade becomes an `Action` with the verb label `Trade`; a profession offers trade sets by level; a set includes the trades the game draws from. Run it after `load_world.py` (it links maps to structures and the villager to its professions) and before `load_model.py`. **`load_actions.py` deletes every `Action`, trades included, so run this again after it. Loading the trades again also drops the links from process tasks to trades (`HAS_ACTION`): run `load_model.py` after it.**
 
 ```powershell
 .venv\Scripts\python loader\load_trades.py --dry-run     # parse and report, no database
@@ -143,7 +143,7 @@ A link counts by following a path: `(Chunk)-[:LINKS_TO]->(Page)-[:ABOUT]->(node)
 
 The report lists what to review: ambiguous pages, linked pages that are about nothing in the game (Biome, Hunger...), and name-only mentions the page never links, which is where generic words show up. Put fixes in `model/wiki_links.yaml` (it explains `stoplist`, `aliases` and `pages`) and run again. The job's relationships carry `origin: 'link_wiki'`; relationships you add by hand with another origin are kept.
 
-## Sample queries (Neo4j Browser at http://localhost:7474)
+## Sample queries (Neo4j Browser at http://localhost:7474, or the port you set)
 
 ```cypher
 // A browsable slice: iron pickaxe and what it needs

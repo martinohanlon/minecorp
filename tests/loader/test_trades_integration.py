@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+import load_model as lm
 import load_trades as ltr
 from graphdb import TEST_DB
 
@@ -99,9 +100,14 @@ class TestPaths:
 
 
 class TestRebuild:
-    def test_loading_the_trades_again_gives_the_same_graph(self, built, db):
+    def test_loading_the_trades_again_gives_the_same_graph_once_the_model_is_loaded_again(self, built, db):
         before = db.q("MATCH (n) WHERE n:Trade OR n:TradeSet OR n:Profession UNWIND labels(n) AS l RETURN l, count(*) AS n ORDER BY l")
         edges = db.one("MATCH ()-[r]->() RETURN count(r)")
+        to_trades = db.one("MATCH (:Task)-[h:HAS_ACTION]->(:Trade) RETURN count(h)")
+        assert to_trades > 0, "a process task performs a trade"
         ltr.write(built["trade_graph"], built["uri"], built["user"], built["password"], TEST_DB)
         assert db.q("MATCH (n) WHERE n:Trade OR n:TradeSet OR n:Profession UNWIND labels(n) AS l RETURN l, count(*) AS n ORDER BY l") == before
+        assert db.one("MATCH (:Task)-[h:HAS_ACTION]->(:Trade) RETURN count(h)") == 0, "the trades were recreated, so the task links went"
+        lm.write(built["model_rows"], built["uri"], built["user"], built["password"], TEST_DB)       # why the model is loaded after the trades
+        assert db.one("MATCH (:Task)-[h:HAS_ACTION]->(:Trade) RETURN count(h)") == to_trades
         assert db.one("MATCH ()-[r]->() RETURN count(r)") == edges
