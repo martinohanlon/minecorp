@@ -17,7 +17,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Agent unit tests** | `tests/agent/test_tools_unit.py`, `test_wiki_unit.py`, `test_agent_loop.py`, `test_budget.py`, `test_config.py`, `test_app.py` | pytest | nothing (fake model, fake tools, scripted fake graph, FastAPI test client) | about 2 s | 235 |
 | **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py`, `test_trade_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 100 s | 199 |
 | **Agent wiki tool tests** | `tests/agent/test_wiki_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 6 s | 40 |
-| **Graph integration** | `tests/loader/test_graph_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 20 s | 34 |
+| **Graph integration** | `tests/loader/test_graph_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 20 s | 45 |
 | **World graph tests** | `tests/loader/test_world_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 5 s (on the shared rebuild) | 28 |
 | **Wiki graph tests** | `tests/loader/test_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 10 s | 37 |
 | **Link job graph tests** | `tests/loader/test_link_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 25 s | 100 |
