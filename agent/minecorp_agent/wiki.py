@@ -3,8 +3,7 @@
     search_wiki   embed the question, vector-search the chunks, return the best passages with page and section
     read_section  the whole text of one section (and, if asked, the chunks just before and after it)
 
-The wiki is community-written advice and explanation, so results carry a `source` note and the system prompt tells the
-model to say "according to the wiki". Recipes, drops and routes still come from the game-data tools.
+The wiki is community-written advice and explanation, so results carry a `source` note saying so. Recipes, drops and routes still come from the game-data tools.
 
 The question is embedded with the same model the chunks were embedded with (EMBEDDING_MODEL, default
 text-embedding-3-small); each chunk records its `embeddingModel` and a mismatch is reported rather than searched.
@@ -24,7 +23,7 @@ MAX_HIT_CHARS = 1200        # one search hit, so five fit in a tool result
 MAX_SECTION_CHARS = 6000    # one whole section
 MAX_MENTIONS = 8            # game nodes listed per passage
 MIN_OVERLAP = 8             # characters; shorter shared endings are not treated as the overlap between chunks
-SOURCE_NOTE = ("Minecraft Wiki: community-written advice, not the game data. Say 'according to the wiki'. "
+SOURCE_NOTE = ("Minecraft Wiki: community-written advice, not the game data. "
                "The wiki also covers other editions (Bedrock); this server is Java Edition.")
 
 MENTIONS_NOTE = ("'mentions' lists the game items, mobs and blocks a passage is about ('linked': the wiki itself links to it). "

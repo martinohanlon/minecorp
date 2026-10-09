@@ -135,7 +135,7 @@ class TestSearchWiki:
 
     def test_the_result_says_where_the_text_comes_from_and_how_to_read_more(self):
         result, _ = search([hit(1, "x")])
-        assert "community-written" in result["source"] and "according to the wiki" in result["source"]
+        assert "community-written" in result["source"] and "according to the wiki" not in result["source"]
         assert "read_section" in result["note"]
 
     def test_the_intro_section_is_shown_as_the_page(self):

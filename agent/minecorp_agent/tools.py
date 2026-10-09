@@ -641,7 +641,7 @@ TOOLS: list[Tool] = [
          "the steps to...', 'what do I do first'. With no name it lists the plans. With a name it gives the usual route "
          "in order and where it can branch (for example three ways to get obsidian). With a step as well it gives that step "
          "in full. Steps that are game actions (mine, craft, trade) name them: look the items up with how_to_get, "
-         "where_to_find or get_recipes. A plan is drafted from the wiki and not yet confirmed: say 'according to the wiki'.",
+         "where_to_find or get_recipes. A plan is drafted from the wiki and not yet confirmed: give it as a plan, not as a certainty.",
          {"type": "object", "properties": {
              "name": {"type": "string", "description": "the goal, such as 'nether', 'dragon', 'shelter', 'emeralds' or 'mob farm' (optional)"},
              "step": {"type": "string", "description": "words from one step, to see it in full (optional)"}},

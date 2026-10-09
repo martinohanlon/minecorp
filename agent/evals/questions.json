@@ -263,14 +263,16 @@
     ]
   },
   {
-    "id": "wiki-attributed",
+    "id": "wiki-villager-attack",
     "question": "Why should I not attack villagers?",
     "expect_tools": [
       "search_wiki"
     ],
     "expect_any": [
-      "according to the wiki",
-      "the wiki"
+      "price",
+      "upset",
+      "golem",
+      "hostile"
     ]
   },
   {
@@ -465,15 +467,15 @@
     ]
   },
   {
-    "id": "plan-says-wiki",
+    "id": "plan-emeralds-steps",
     "question": "What are the steps to get emeralds?",
     "expect_tools": [
       "get_process"
     ],
     "expect_any": [
-      "wiki",
       "villager",
-      "trade"
+      "trade",
+      "farmer"
     ]
   }
 ]

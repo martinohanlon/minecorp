@@ -125,7 +125,8 @@ class TestOutline:
 
     def test_a_candidate_says_so_and_how_to_read_it(self):
         note = pr.outline(sample())["note"]
-        assert "candidate" in note and "according to the wiki" in note and "'usualRoute'" in note
+        assert "candidate" in note and "as a plan, not as a fact" in note and "'usualRoute'" in note
+        assert "according to the wiki" not in note
 
     def test_a_confirmed_process_does_not_say_candidate(self):
         p = sample()

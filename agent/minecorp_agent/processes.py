@@ -8,7 +8,7 @@ A process is a goal a player works towards (get to the Nether, defeat the ender 
     (Process)-[:BUILDS_ON]->(Process)                       a bigger goal that needs a smaller one first
 
 A task with no action is a manual step (build the frame). Every process is a candidate drafted from the wiki until a player
-confirms it, so the tool says so and the model must say "according to the wiki".
+confirms it, so the tool says so and the model gives it as a plan, not as a fact.
 
 Called with no name it lists the processes. With a name it gives the usual route (following the default NEXT from the first
 task) and the alternatives (the other NEXT edges). With a step too it gives that one step in full, because the descriptions are
@@ -22,7 +22,7 @@ MAX_CANDIDATES = 4
 MAX_STEP_CANDIDATES = 6
 
 CANDIDATE_NOTE = ("This plan is a candidate: it was drafted from the Minecraft Wiki and the game data and has not been confirmed "
-                  "by the player. Say 'according to the wiki' and give it as a plan, not as a fact.")
+                  "by the player. Give it as a plan, not as a fact.")
 HOW_TO_READ = ("'usualRoute' is the normal way through, in order; 'alternatives' says where it can branch and why. A step in "
                "'by hand' has no game action. Call get_process again with 'step' for a step in full, and use how_to_get, "
                "where_to_find or get_recipes for the items and places a step names.")

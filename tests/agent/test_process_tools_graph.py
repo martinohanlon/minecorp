@@ -31,7 +31,8 @@ class TestList:
         assert dragon["buildsOn"] == ["Get to the Nether"]
 
     def test_the_list_says_a_plan_is_a_candidate(self, agent_graph):
-        assert "according to the wiki" in call(agent_graph)["note"]
+        note = call(agent_graph)["note"]
+        assert "candidate" in note and "as a plan, not as a fact" in note and "according to the wiki" not in note
 
 
 class TestOutline:
