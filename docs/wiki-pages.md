@@ -30,6 +30,7 @@ Worth having, but each waits for something:
 - **Until villager trades are modelled (2 held):** Creating a village, Village mechanics. Trading was loaded once trades were modelled (v0.12), the first tier 2 page to be.
 - **Until advancements are modelled (6):** the Java-only advancement guide tabs (Minecraft, Nether, The End, Husbandry, Adventure, How Did We Get Here?). They explain the game's own progression, which also lines up with MineCorp's tasks.
 - **Until mob statistics are modelled (4):** Combat (218 chunks), Getting max gear, Dual wielding, Horses.
+- **Moved to tier 3 (2026-10-09):** End survival (listed below under "after tier 1 has been judged" in the original review).
 - **After tier 1 has been judged (16):** Best biomes to play, Best biomes for homes (188 chunks), the biome survival pages (Desert, Snowy, Island, Mushroom fields, Thunderstorm), Nether survival (104 chunks), End survival, Complete main adventure, Adventuring, Transportation methods, Navigation, Spawn-proofing (work in progress), Pillar jumping, Mining/Fossils.
 - **General advice, large or in list form (7):** Things to do, Things not to do (204 chunks), Time-saving tips, Organization, Shelter types (needs cleanup), Construction, Glossary.
 
@@ -41,6 +42,22 @@ Worth having, but each waits for something:
 - **Redstone contraptions (2):** Automatic smelting, Nether hub.
 - **Reference, removed content or stubs (8):** Units of measure, Measuring distance, Mapping (describes removed content), Hitboxes, Parkour, Bridging, Breaking a fall, and the Advancement guide index (no content of its own).
 - **Flagged unreliable or hypothetical (5):** Zombie siege defense (accuracy disputed), Surviving in a single area for a long time, Survival in an infinite desert, Survival in an infinite ice spikes biome, Gathering resources on Peaceful difficulty (all marked as needing cleanup or built on a hypothetical).
+
+## Tier 3: the dragon and mob farms (added 2026-10-09)
+
+The first review stopped at Introductory and General. The Tutorial namespace has 539 pages, and the processes the owner wants (defeat the dragon, build a mob farm) have pages of their own. Five were measured the same way and added: 163 chunks, about 29 thousand tokens, well under a tenth of a cent.
+
+| Page | Chunks | Tokens | Why |
+|---|---|---|---|
+| Defeating the ender dragon | 50 | 9.3k | The core: equipment, finding the stronghold (triangulation, the portal room), the fight, the crystals. There is no separate stronghold or End portal tutorial. |
+| Exploring a Nether fortress | 49 | 7.5k | Where blaze rods come from, for eyes of ender. |
+| Enderman farming | 11 | 1.6k | Ender pearls, the other ingredient. |
+| End survival | 20 | 4.0k | Held as tier 2; relevant once the dragon is a goal. |
+| Mob farm | 33 | 6.8k | The general page for a farm: locations, designs, drops, transporting mobs, grinding. It mixes Java and Bedrock designs (13 and 20 mentions), so the process must say which. |
+
+**Held:** Nether survival (104 chunks, 23k tokens: as large as all five together, so it would dominate Nether questions; add it when a "survive the Nether" process is drafted), Monster spawner traps (43 chunks; for trapping at an existing dungeon spawner), and the single-mob farms (Creeper, Blaze, Zombified piglin) until a process needs them.
+
+**Excluded:** Experience farming (marked work in progress), Obsidian farming and End of light mob farms (marked as needing cleanup), Indestructible End crystals (an exploit), Exploring an End city (for after the dragon), and Combat (152 kB, mob statistics).
 
 ## What this suggests for the loader
 
