@@ -20,7 +20,7 @@ from .budget import DEFAULT_BUDGET
 from .graph import Graph
 from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
-from .world import tool_describe, tool_members, tool_where_to_find
+from .world import MAX_TRADES, tool_describe, tool_members, tool_where_to_find, trades_giving
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
                 "use any ONE of its options (except those listed in 'except').")
@@ -590,16 +590,21 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         if r["selfDrop"]:
             way["note"] = "the block drops itself"
         ways.append(way)
+    trades, trade_total = ([], 0) if category else trades_giving(graph, item["id"])
+    ways += trades
     out: dict = {"item": item["name"], "ways": ways}
+    if trade_total > len(trades):
+        out["moreTrades"] = trade_total - len(trades)
     if category:
         out["category"] = True
         out["note"] = "This is a category: each way gives some of its items (see 'gives')."
     if not ways:
-        out["note"] = "No block or mob in the data drops this item." + (" It can be crafted: use get_recipes." if crafted else "")
+        out["note"] = "No block or mob in the data drops this item, and no villager trades it." + (" It can be crafted: use get_recipes." if crafted else "")
         out["alsoCraftable"] = crafted
         return out
     out["alsoCraftable"] = crafted
-    out["howToRead"] = ("'how' is mine (break a block), kill (a mob dies) or shear (shears on a mob). Counts are typical and "
+    out["howToRead"] = ("'how' is mine (break a block), kill (a mob dies), shear (shears on a mob) or trade (a villager or the wandering trader, "
+                        "at a level, for the 'pay' shown; 'onlyVillagersOf' means only villagers of those village types sell it). Counts are typical and "
                         "ignore looting or fortune. For where in the world to find the blocks or mobs, call where_to_find.")
     if crafted:
         out["tip"] = ("This item can also be crafted. Call what_do_i_need to see the usual route, including where its "
@@ -621,16 +626,19 @@ TOOLS: list[Tool] = [
           "required": ["query"], "additionalProperties": False},
          tool_find),
     Tool("describe",
-         "A short description of anything with a name: an item, category, mob, block, biome or structure. Says what "
-         "it is, what it drops or gives, counts of related things, and which wiki sections discuss it. A name that "
-         "means several things (an item and a block) describes each. Use for 'what is X' or 'tell me about X'.",
+         "A short description of anything with a name: an item, category, mob, block, biome, structure or villager "
+         "profession. Says what it is, what it drops or gives, counts of related things, which wiki sections discuss "
+         "it, what a profession trades at each level, and who sells a map to a structure. A name that means several "
+         "things (an item and a block) describes each. Use for 'what is X', 'tell me about X' and 'what does a farmer "
+         "trade'.",
          {"type": "object", "properties": {"name": {"type": "string", "description": "name of the thing"}},
           "required": ["name"], "additionalProperties": False},
          tool_describe),
     Tool("where_to_find",
          "Where something is in the world: the heights, vein sizes and biomes where an ore generates, the biomes "
-         "and structures where a mob spawns, what a biome has, which biomes a structure is in. For an item it covers "
-         "each block to mine or mob to kill that gives it. Use for 'where do I find X' and 'what spawns in X'.",
+         "and structures where a mob spawns, what a biome has, which biomes a structure is in and who sells a map to "
+         "it. For an item it covers each block to mine or mob to kill that gives it, and the villagers that trade it. "
+         "Use for 'where do I find X' and 'what spawns in X'.",
          {"type": "object", "properties": {"name": {"type": "string", "description": "item, block, mob, biome or structure"}},
           "required": ["name"], "additionalProperties": False},
          tool_where_to_find),
@@ -651,10 +659,12 @@ TOOLS: list[Tool] = [
           "required": ["name"], "additionalProperties": False},
          tool_what_do_i_need, budget=9500),
     Tool("how_to_get",
-         "How to get an item from the world without crafting it: blocks to mine, mobs to kill or shear, and the tool "
-         "needed. Use for 'how do I get / where does X come from' about raw materials such as gunpowder, string, "
-         "wool, leather, iron or diamonds. Say the tool needed and any condition (only when a player kills it, a "
-         "rare drop). If the result has a 'tip' (the item is also crafted), follow it and call what_do_i_need too.",
+         "How to get an item from the world without crafting it: blocks to mine, mobs to kill or shear (and the tool "
+         "needed), and villagers or the wandering trader to trade with (their profession, level and what to pay). Use "
+         "for 'how do I get / where does X come from' about raw materials such as gunpowder, string, wool, leather, "
+         "iron, diamonds or emeralds. Say the tool needed and any condition (only when a player kills it, a rare drop), "
+         "and for a trade the profession, level and price. If the result has a 'tip' (the item is also crafted), "
+         "follow it and call what_do_i_need too.",
          {"type": "object", "properties": {"name": {"type": "string", "description": "item name or id"}},
           "required": ["name"], "additionalProperties": False},
          tool_how_to_get),

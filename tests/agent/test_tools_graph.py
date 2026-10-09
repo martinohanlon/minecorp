@@ -273,8 +273,9 @@ class TestRankRecipes:
 class TestHowToGet:
     def test_gunpowder_comes_from_killing_mobs_and_is_not_crafted(self, agent_graph):
         r = call(agent_graph, "how_to_get", item="gunpowder")
-        assert {w["from"] for w in r["ways"]} == {"Creeper", "Ghast", "Witch"}
-        assert all(w["how"] == "kill" and w["tool"] == "none needed" for w in r["ways"])
+        world = [w for w in r["ways"] if w["how"] != "trade"]          # the wandering trader also sells it
+        assert {w["from"] for w in world} == {"Creeper", "Ghast", "Witch"}
+        assert all(w["how"] == "kill" and w["tool"] == "none needed" for w in world)
         assert r["alsoCraftable"] is False and "tip" not in r and "howToRead" in r
 
     def test_raw_iron_is_mined_with_a_stone_pickaxe_or_better_and_points_at_the_route(self, agent_graph):
@@ -287,7 +288,7 @@ class TestHowToGet:
         r = call(agent_graph, "how_to_get", item="white wool")
         shear = next(w for w in r["ways"] if w["how"] == "shear")
         assert shear["from"] == "Sheep" and shear["tool"] == "Shears"
-        assert {w["how"] for w in r["ways"]} == {"shear", "kill", "mine"}
+        assert {w["how"] for w in r["ways"]} - {"trade"} == {"shear", "kill", "mine"}
 
     def test_conditions_are_put_into_words(self, agent_graph):
         r = call(agent_graph, "how_to_get", item="blaze rod")
@@ -310,9 +311,11 @@ class TestHowToGet:
         r = call(agent_graph, "how_to_get", item="oak planks")
         assert r["ways"][0]["note"] == "the block drops itself" and r["alsoCraftable"] is True
 
-    def test_an_item_nothing_drops(self, agent_graph):
-        r = call(agent_graph, "how_to_get", item="iron pickaxe")
-        assert r["ways"] == [] and r["alsoCraftable"] is True and "get_recipes" in r["note"]
+    def test_an_item_nothing_drops_and_nobody_trades(self, agent_graph, db):
+        item = db.one("""MATCH (i:Item)<-[:CREATES]-(:Recipe) WHERE NOT EXISTS { (i)<-[:CREATES]-(a:Action) WHERE a:Mine OR a:Kill OR a:Shear OR a:Trade } AND NOT i:ItemClass
+                         RETURN i.id ORDER BY i.id LIMIT 1""")
+        r = call(agent_graph, "how_to_get", item=item)
+        assert r["ways"] == [] and r["alsoCraftable"] is True and "get_recipes" in r["note"] and "no villager trades it" in r["note"]
 
     def test_errors_for_the_model(self, agent_graph):
         assert "No item matches" in call(agent_graph, "how_to_get", item="flurble")["error"]

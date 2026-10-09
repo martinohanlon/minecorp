@@ -6,6 +6,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 |---|---|---|---|---|---|
 | **Loader unit tests** | `tests/loader/test_load_recipes.py`, `test_load_actions.py`, `test_load_model.py` | pytest | nothing (synthetic data; one test builds a tiny jar in a temp folder) | under 1 s | 126 |
 | **Wiki loader unit tests** | `tests/loader/test_load_wiki.py` | pytest | nothing (word-count tokenizer, fake embedder, mock HTTP) | about 1 s | 211 |
+| **Name index tests** | `tests/loader/test_name_index.py` | pytest | nothing for the logic (a fake session); Neo4j and the jar for the rebuild of an old index | about 5 s | 10 |
 | **Trade loader unit tests** | `tests/loader/test_load_trades.py` | pytest | nothing (a small jar made in the test) | under 1 s | 35 |
 | **Trade real-jar tests** | `tests/loader/test_real_jar_trades.py` (marker `jar`) | pytest | the Paper jar | under 1 s | 21 |
 | **Trade graph tests** | `tests/loader/test_trades_integration.py` (marker `integration`) | pytest | Neo4j Enterprise and the jar | about 90 s with the rebuild | 19 |
@@ -14,7 +15,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Link job unit tests** | `tests/loader/test_link_wiki.py` | pytest | nothing | under 1 s | 63 |
 | **Real jar tests** | `tests/loader/test_real_jar.py` (marker `jar`) | pytest | `server/versions/26.2/paper-26.2.jar` (skipped if absent) | under 1 s | 37 |
 | **Agent unit tests** | `tests/agent/test_tools_unit.py`, `test_wiki_unit.py`, `test_agent_loop.py`, `test_budget.py`, `test_config.py`, `test_app.py` | pytest | nothing (fake model, fake tools, scripted fake graph, FastAPI test client) | about 2 s | 235 |
-| **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 45 s | 169 |
+| **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py`, `test_trade_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 100 s | 199 |
 | **Agent wiki tool tests** | `tests/agent/test_wiki_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 6 s | 40 |
 | **Graph integration** | `tests/loader/test_graph_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 20 s | 34 |
 | **World graph tests** | `tests/loader/test_world_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 5 s (on the shared rebuild) | 28 |
@@ -24,7 +25,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,477 tests (1,440 Python, 37 Java). The fast set is 961 Python tests plus the Java ones.
+Counts as of 2026-10-05: 1,517 tests (1,480 Python, 37 Java). The fast set is 969 Python tests plus the Java ones.
 
 ## Running
 

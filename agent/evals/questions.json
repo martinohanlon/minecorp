@@ -366,5 +366,53 @@
       "zombie",
       "skeleton"
     ]
+  },
+  {
+    "id": "get-emeralds",
+    "question": "How can I get emeralds?",
+    "expect_tools": [
+      "how_to_get"
+    ],
+    "expect_any": [
+      "trade",
+      "villager"
+    ],
+    "expect_all": [
+      "emerald"
+    ]
+  },
+  {
+    "id": "find-mansion-map",
+    "question": "How do I find a woodland mansion?",
+    "expect_any": [
+      "cartographer",
+      "map"
+    ],
+    "expect_tools": [
+      "where_to_find"
+    ]
+  },
+  {
+    "id": "farmer-trades",
+    "question": "What does a farmer villager trade?",
+    "expect_tools": [
+      "describe"
+    ],
+    "expect_any": [
+      "wheat",
+      "bread",
+      "carrot"
+    ]
+  },
+  {
+    "id": "buy-bread",
+    "question": "Can I buy bread from a villager?",
+    "expect_any": [
+      "farmer",
+      "yes"
+    ],
+    "expect_all": [
+      "emerald"
+    ]
   }
 ]

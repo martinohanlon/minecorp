@@ -14,7 +14,7 @@ from .graph import Graph
 INDEX = "names"
 
 # the label that says what a node is, most specific first
-KINDS = (("ItemClass", "category"), ("MobClass", "mob class"), ("BiomeClass", "biome class"),
+KINDS = (("ItemClass", "category"), ("MobClass", "mob class"), ("BiomeClass", "biome class"), ("Profession", "profession"),
          ("Item", "item"), ("Mob", "mob"), ("Block", "block"), ("Biome", "biome"), ("Structure", "structure"))
 KIND_NAMES = tuple(k for _, k in KINDS)
 

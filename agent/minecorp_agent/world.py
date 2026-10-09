@@ -20,8 +20,9 @@ MAX_PLACEMENTS = 5
 MAX_NAMES = 12            # names listed in one list (drops, mobs, members)
 WIKI_SECTIONS = 3
 
+MAX_TRADES = 8            # trades listed for one item before "and n more"
 LABEL_OF = {"category": "ItemClass", "item": "Item", "mob": "Mob", "block": "Block", "biome": "Biome",
-            "structure": "Structure", "mob class": "MobClass", "biome class": "BiomeClass"}
+            "structure": "Structure", "mob class": "MobClass", "biome class": "BiomeClass", "profession": "Profession"}
 WHERE_KINDS = ("item", "block", "mob", "biome", "structure")
 
 
@@ -77,6 +78,61 @@ def by_dimension(graph: Graph, biomes: dict[str, str]) -> list[dict]:
         here = {i: n for i, n in biomes.items() if i in everywhere}
         if here:
             out.append({"dimension": dimension, **biomes_text(here, everywhere, dimension)})
+    return out
+
+
+# --------------------------------------------------------------------------- trades
+
+def pay_text(pay: list[dict], variable: bool = False) -> str:
+    """What a trade costs in words: '20 Wheat', 'Emerald and Book', with a note when the price depends on the item."""
+    parts = []
+    for p in sorted(pay, key=lambda p: p["role"] != "price"):
+        n = p["count"]
+        parts.append((f"{n} " if n and n > 1 else "") + p["item"])
+    return " and ".join(parts) + (" (the price depends on what you buy)" if variable else "")
+
+
+def trades_giving(graph: Graph, item_id: str) -> tuple[list[dict], int]:
+    """The trades that give an item, lowest level first, as the model should see them, and how many there are in all."""
+    rows = graph.read("""
+        MATCH (t:Trade)-[c:CREATES]->(i:Item {id: $id})
+        MATCH (t)<-[:INCLUDES]-(:TradeSet)<-[o:OFFERS]-(p)
+        RETURN DISTINCT p.name AS who, o.level AS level, o.pool AS pool, c.count AS count, i.name AS item, t.villagerTypes AS types,
+               t.variablePrice AS variable, t.enchanted AS enchanted,
+               [(t)-[r:REQUIRES]->(x:Item) | {role: r.role, item: x.name, count: r.count}] AS pay
+        ORDER BY coalesce(level, 9), who""", id=item_id)
+    entries = []
+    for r in rows:
+        e: dict = {"how": "trade", "with": r["who"]}
+        if r["level"]:
+            e["level"] = r["level"]
+        if r["pool"]:
+            e["pool"] = r["pool"]
+        e["pay"] = pay_text(r["pay"], r["variable"])
+        if r["count"] and r["count"] > 1:
+            e["gets"] = f"{r['count']} {r['item']}"
+        if r["types"]:
+            e["onlyVillagersOf"] = ", ".join(r["types"]) + " villages"
+        if r["enchanted"]:
+            e["note"] = "the item comes enchanted"
+        entries.append(e)
+    return entries[:MAX_TRADES], len(entries)
+
+
+def map_offers(graph: Graph, structure_id: str) -> list[dict]:
+    """Who sells a map that leads to a structure, at which level, and for what."""
+    rows = graph.read("""
+        MATCH (t:Trade)-[:LOCATES]->(:Structure {id: $id})
+        MATCH (t)<-[:INCLUDES]-(:TradeSet)<-[o:OFFERS]-(p)
+        RETURN DISTINCT p.name AS who, o.level AS level, t.villagerTypes AS types, t.variablePrice AS variable,
+               [(t)-[r:REQUIRES]->(x:Item) | {role: r.role, item: x.name, count: r.count}] AS pay
+        ORDER BY level, who""", id=structure_id)
+    out = []
+    for r in rows:
+        e: dict = {"buyFrom": f"{r['who']} villager", "level": r["level"], "pay": pay_text(r["pay"], r["variable"])}
+        if r["types"]:
+            e["onlyVillagersOf"] = ", ".join(r["types"]) + " villages"
+        out.append(e)
     return out
 
 
@@ -178,6 +234,9 @@ def where_structure(graph: Graph, structure_id: str) -> dict:
     out: dict = {"generatesIn": by_dimension(graph, {r["id"]: r["name"] for r in biomes})}
     if mobs:
         out["spawns"] = [r["name"] for r in mobs][:MAX_NAMES]
+    maps = map_offers(graph, structure_id)
+    if maps:
+        out["mapToFindIt"] = maps
     return out
 
 
@@ -209,10 +268,18 @@ def where_item(graph: Graph, item_id: str) -> dict:
             same["from"] = [same["from"], entry["from"]] if isinstance(same["from"], str) else same["from"] + [entry["from"]]
         else:
             found.append(entry)
-    if not found:
-        return {"note": "No block or mob in the data drops this item, so there is no place to find it. It may be crafted "
-                        "(use get_recipes)."}
-    return {"found": found}
+    trades, total = trades_giving(graph, item_id)
+    out: dict = {}
+    if found:
+        out["found"] = found
+    if trades:
+        out["canBeTradedFor"] = trades
+        if total > len(trades):
+            out["moreTrades"] = total - len(trades)
+    if not out:
+        return {"note": "No block or mob in the data drops this item, and no villager trades it, so there is no place to find it. "
+                        "It may be crafted (use get_recipes)."}
+    return out
 
 
 WHERE = {"item": where_item, "block": where_block, "mob": where_mob, "biome": where_biome, "structure": where_structure}
@@ -269,9 +336,15 @@ def describe_item(graph: Graph, item_id: str) -> dict:
         MATCH (i:Item {id: $id})
         RETURN COUNT { (i)<-[:CREATES]-(:Recipe) } AS recipes,
                COUNT { (i)<-[:CREATES]-(h:Action) WHERE h:Mine OR h:Kill OR h:Shear } AS waysFromWorld,
-               COUNT { (i)<-[:INCLUDES*0..]-(:Item)<-[:REQUIRES]-(:Recipe) } AS usedInRecipes""", id=item_id)[0]
+               COUNT { (i)<-[:INCLUDES*0..]-(:Item)<-[:REQUIRES]-(:Recipe) } AS usedInRecipes,
+               COUNT { (i)<-[:CREATES]-(:Trade) } AS tradesGivingIt, COUNT { (i)<-[:REQUIRES]-(:Trade) } AS tradesWantingIt""", id=item_id)[0]
     out = {"craftable": counts["recipes"] > 0, "recipes": counts["recipes"], "waysFromWorld": counts["waysFromWorld"],
            "usedInRecipes": counts["usedInRecipes"]}
+    if counts["tradesGivingIt"] or counts["tradesWantingIt"]:
+        out["tradesGivingIt"] = counts["tradesGivingIt"]            # buy it from a villager
+        out["tradesWantingIt"] = counts["tradesWantingIt"]          # sell it to a villager
+        if counts["tradesGivingIt"]:
+            out["buyingIt"] = "Villagers sell this: call how_to_get to see which, at what level and for what price."
     categories = classes_of(graph, "Item", "ItemClass", item_id)
     if categories:
         out["countsAs"] = categories
@@ -301,7 +374,34 @@ def describe_mob(graph: Graph, mob_id: str) -> dict:
     classes = classes_of(graph, "Mob", "MobClass", mob_id)
     if classes:
         out["countsAs"] = classes
+    trading = graph.read("""
+        MATCH (m:Mob {id: $id})
+        RETURN [(m)-[:HAS_PROFESSION]->(p) | p.name] AS professions,
+               [(m)-[o:OFFERS]->(s:TradeSet) | {pool: o.pool, picks: s.amount, trades: COUNT { (s)-[:INCLUDES]->() }}] AS offers""", id=mob_id)[0]
+    if trading["professions"]:
+        out["professions"] = sorted(trading["professions"])
+        out["next"] = "describe a profession to see what it trades."
+    if trading["offers"]:
+        out["offers"] = sorted(trading["offers"], key=lambda o: o["pool"])
     return out
+
+
+def describe_profession(graph: Graph, profession_id: str) -> dict:
+    """What a villager of a profession offers at each level: the trades its pool holds and how many are picked."""
+    rows = graph.read("""
+        MATCH (:Profession {id: $id})-[o:OFFERS]->(s:TradeSet)-[:INCLUDES]->(t:Trade)
+        RETURN o.level AS level, s.amount AS picks, t.name AS trade ORDER BY level, trade""", id=profession_id)
+    levels: dict[int, dict] = {}
+    for r in rows:
+        entry = levels.setdefault(r["level"], {"level": r["level"], "offersAtRandom": r["picks"], "trades": []})
+        entry["trades"].append(r["trade"].removeprefix("Trade "))
+    out = []
+    for entry in levels.values():
+        if len(entry["trades"]) > MAX_TRADES:
+            entry["moreTrades"] = len(entry["trades"]) - MAX_TRADES
+            entry["trades"] = entry["trades"][:MAX_TRADES]
+        out.append(entry)
+    return {"levels": out, "next": "A villager picks 'offersAtRandom' of the trades listed at each level, so it does not offer them all."}
 
 
 def describe_biome(graph: Graph, biome_id: str) -> dict:
@@ -328,11 +428,14 @@ def describe_structure(graph: Graph, structure_id: str) -> dict:
     if s["suppressed"]:
         out["suppressesSpawnsOf"] = s["suppressed"]
     out["next"] = "where_to_find says which biomes it generates in."
+    maps = map_offers(graph, structure_id)
+    if maps:
+        out["mapSoldBy"] = maps
     return out
 
 
 DESCRIBE = {"item": describe_item, "category": lambda g, i: describe_class(g, "ItemClass", i), "block": describe_block,
-            "mob": describe_mob, "biome": describe_biome, "structure": describe_structure,
+            "mob": describe_mob, "biome": describe_biome, "structure": describe_structure, "profession": describe_profession,
             "mob class": lambda g, i: describe_class(g, "MobClass", i), "biome class": lambda g, i: describe_class(g, "BiomeClass", i)}
 
 

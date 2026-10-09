@@ -48,6 +48,7 @@ from neo4j import GraphDatabase  # noqa: E402
 
 from load_actions import tag_members  # noqa: E402
 from load_recipes import DEFAULT_JAR, display_name  # noqa: E402
+from name_index import ensure_name_index  # noqa: E402
 from minecorp_agent.config import get_settings  # noqa: E402
 
 NS = "minecraft:"
@@ -199,6 +200,7 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> None:
             for label in ("Profession", "TradeSet"):                  # schema changes cannot share a transaction with the data
                 session.run(f"CREATE CONSTRAINT {label.lower()}_id IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE").consume()
             session.run("CREATE CONSTRAINT action_id IF NOT EXISTS FOR (n:Action) REQUIRE n.id IS UNIQUE").consume()
+            ensure_name_index(session)                                  # the index covers Profession
             session.execute_write(work)
 
 

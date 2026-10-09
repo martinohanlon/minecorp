@@ -50,8 +50,10 @@ class TestWhereToFindAnItem:
         assert "Swamp Hut (Overworld)" in sources["Witch"]["structures"]
         assert any(s.startswith("Fortress") and "The Nether" in s for s in sources["Wither Skeleton"]["structures"]) if "Wither Skeleton" in sources else True
 
-    def test_an_item_nothing_drops_has_no_place(self, agent_graph):
-        out = result_for(call(agent_graph, "where_to_find", name="Iron Pickaxe"), "item")
+    def test_an_item_nothing_drops_has_no_place(self, agent_graph, db):
+        item = db.one("""MATCH (i:Item)<-[:CREATES]-(:Recipe) WHERE NOT EXISTS { (i)<-[:CREATES]-(a:Action) WHERE a:Mine OR a:Kill OR a:Shear OR a:Trade } AND NOT i:ItemClass
+                         RETURN i.id ORDER BY i.id LIMIT 1""")
+        out = result_for(call(agent_graph, "where_to_find", name=item), "item")
         assert "found" not in out and "get_recipes" in out["note"]
 
 
