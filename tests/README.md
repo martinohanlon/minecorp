@@ -14,8 +14,8 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **World real-jar tests** | `tests/loader/test_real_jar_world.py` (marker `jar`) | pytest | the Paper jar | under 1 s | 52 |
 | **Link job unit tests** | `tests/loader/test_link_wiki.py` | pytest | nothing | under 1 s | 63 |
 | **Real jar tests** | `tests/loader/test_real_jar.py` (marker `jar`) | pytest | `server/versions/26.2/paper-26.2.jar` (skipped if absent) | under 1 s | 37 |
-| **Agent unit tests** | `tests/agent/test_tools_unit.py`, `test_wiki_unit.py`, `test_agent_loop.py`, `test_budget.py`, `test_config.py`, `test_app.py` | pytest | nothing (fake model, fake tools, scripted fake graph, FastAPI test client) | about 2 s | 235 |
-| **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py`, `test_trade_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 100 s | 199 |
+| **Agent unit tests** | `tests/agent/test_tools_unit.py`, `test_wiki_unit.py`, `test_agent_loop.py`, `test_budget.py`, `test_processes_unit.py`, `test_config.py`, `test_app.py` | pytest | nothing (fake model, fake tools, scripted fake graph, FastAPI test client) | about 2 s | 268 |
+| **Agent tool tests** | `tests/agent/test_tools_graph.py`, `test_world_tools_graph.py`, `test_trade_tools_graph.py`, `test_process_tools_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 160 s | 238 |
 | **Agent wiki tool tests** | `tests/agent/test_wiki_graph.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 6 s | 40 |
 | **Graph integration** | `tests/loader/test_graph_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 20 s | 52 |
 | **World graph tests** | `tests/loader/test_world_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition, plus the jar | about 5 s (on the shared rebuild) | 28 |
@@ -25,7 +25,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,536 tests (1,499 Python, 37 Java). The fast set is 973 Python tests plus the Java ones.
+Counts as of 2026-10-05: 1,610 tests (1,573 Python, 37 Java). The fast set is 1,008 Python tests plus the Java ones.
 
 ## Running
 

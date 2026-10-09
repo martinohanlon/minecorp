@@ -197,7 +197,7 @@
     "id": "wiki-first-night",
     "question": "What should I do on my first night?",
     "expect_tools": [
-      "search_wiki"
+      "get_process"
     ],
     "expect_any": [
       "shelter",
@@ -252,7 +252,7 @@
     "id": "wiki-shelter",
     "question": "How should I build a shelter on my first day?",
     "expect_tools": [
-      "search_wiki"
+      "get_process"
     ],
     "expect_any": [
       "wood",
@@ -289,7 +289,7 @@
   },
   {
     "id": "wiki-unknown",
-    "question": "What does the wiki say about the Ender Dragon's health?",
+    "question": "What does the wiki say about the elder guardian's health?",
     "expect_tools": [
       "search_wiki"
     ],
@@ -315,7 +315,8 @@
     "id": "wiki-then-recipe",
     "question": "What should I do before my first night, and what do I need to craft the bed it tells me to make?",
     "expect_tools": [
-      "search_wiki"
+      "get_process",
+      "get_recipes"
     ],
     "expect_any": [
       "wool",
@@ -371,7 +372,7 @@
     "id": "get-emeralds",
     "question": "How can I get emeralds?",
     "expect_tools": [
-      "how_to_get"
+      "get_process"
     ],
     "expect_any": [
       "trade",
@@ -413,6 +414,66 @@
     ],
     "expect_all": [
       "emerald"
+    ]
+  },
+  {
+    "id": "plan-nether",
+    "question": "How do I get to the Nether?",
+    "expect_tools": [
+      "get_process"
+    ],
+    "expect_any": [
+      "obsidian"
+    ],
+    "expect_all": [
+      "flint"
+    ]
+  },
+  {
+    "id": "plan-dragon",
+    "question": "What do I need to do to defeat the ender dragon?",
+    "expect_tools": [
+      "get_process"
+    ],
+    "expect_any": [
+      "eye of ender",
+      "eyes of ender",
+      "stronghold"
+    ]
+  },
+  {
+    "id": "plan-mob-farm",
+    "question": "How do I build a simple mob farm?",
+    "expect_tools": [
+      "get_process"
+    ],
+    "expect_any": [
+      "hole",
+      "trapdoor",
+      "sinkhole"
+    ]
+  },
+  {
+    "id": "plan-step-detail",
+    "question": "How do I find the stronghold for the End portal?",
+    "expect_tools": [
+      "get_process"
+    ],
+    "expect_any": [
+      "eye",
+      "throw"
+    ]
+  },
+  {
+    "id": "plan-says-wiki",
+    "question": "What are the steps to get emeralds?",
+    "expect_tools": [
+      "get_process"
+    ],
+    "expect_any": [
+      "wiki",
+      "villager",
+      "trade"
     ]
   }
 ]

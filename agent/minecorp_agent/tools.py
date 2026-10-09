@@ -20,6 +20,7 @@ from .budget import DEFAULT_BUDGET
 from .graph import Graph
 from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
+from .processes import tool_get_process
 from .world import MAX_TRADES, tool_describe, tool_members, tool_where_to_find, trades_giving
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
@@ -603,13 +604,13 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         out["alsoCraftable"] = crafted
         return out
     out["alsoCraftable"] = crafted
+    if crafted:                       # before howToRead: the model must see it, and it decides what to call next
+        out["tip"] = ("This item can also be crafted, and the usual way to get it is often not in 'ways' (iron golems and rare drops "
+                      "are not how players get iron). Call what_do_i_need now for the usual route, including where the raw "
+                      "materials come from and the tool to mine them, and lead with it.")
     out["howToRead"] = ("'how' is mine (break a block), kill (a mob dies), shear (shears on a mob) or trade (a villager or the wandering trader, "
                         "at a level, for the 'pay' shown; 'onlyVillagersOf' means only villagers of those village types sell it). Counts are typical and "
                         "ignore looting or fortune. For where in the world to find the blocks or mobs, call where_to_find.")
-    if crafted:
-        out["tip"] = ("This item can also be crafted. Call what_do_i_need to see the usual route, including where its "
-                      "raw materials come from, and lead with it when the ways above are unusual or rare (iron golems, "
-                      "rare drops).")
     return out
 
 
@@ -634,6 +635,18 @@ TOOLS: list[Tool] = [
          {"type": "object", "properties": {"name": {"type": "string", "description": "name of the thing"}},
           "required": ["name"], "additionalProperties": False},
          tool_describe),
+    Tool("get_process",
+         "Step-by-step plans for goals the game's data does not spell out: build a first-night shelter, get emeralds, get "
+         "to the Nether, defeat the ender dragon, build a simple mob farm. Use for 'how do I get to the Nether', 'what are "
+         "the steps to...', 'what do I do first'. With no name it lists the plans. With a name it gives the usual route "
+         "in order and where it can branch (for example three ways to get obsidian). With a step as well it gives that step "
+         "in full. Steps that are game actions (mine, craft, trade) name them: look the items up with how_to_get, "
+         "where_to_find or get_recipes. A plan is drafted from the wiki and not yet confirmed: say 'according to the wiki'.",
+         {"type": "object", "properties": {
+             "name": {"type": "string", "description": "the goal, such as 'nether', 'dragon', 'shelter', 'emeralds' or 'mob farm' (optional)"},
+             "step": {"type": "string", "description": "words from one step, to see it in full (optional)"}},
+          "additionalProperties": False},
+         tool_get_process),
     Tool("where_to_find",
          "Where something is in the world: the heights, vein sizes and biomes where an ore generates, the biomes "
          "and structures where a mob spawns, what a biome has, which biomes a structure is in and who sells a map to "
@@ -695,7 +708,8 @@ TOOLS: list[Tool] = [
          "questions that are not about a recipe or a drop: what to do on the first night, how to build a shelter, "
          "how to get started, controls, mob behaviour. Returns the best passages with their page and section, and the "
          "game items, mobs and blocks each passage is about (mentions). Do not use it for exact recipes, ingredients, "
-         "drops, spawns or where things are: use get_recipes, describe or where_to_find for those.",
+         "drops, spawns or where things are: use get_recipes, describe or where_to_find for those. For the steps to reach a goal "
+         "(shelter, emeralds, the Nether, the ender dragon, a mob farm) use get_process first.",
          {"type": "object", "properties": {
              "question": {"type": "string", "description": "the question or topic, in the player's words"},
              "limit": {"type": "integer", "description": "how many passages (default 5, max 8)"}},
