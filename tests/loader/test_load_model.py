@@ -128,6 +128,27 @@ class TestValidateProcess:
         other["next"] = []
         assert lm.validate(good_people(), [good_process(), other], ACTIONS) == []
 
+    def test_builds_on_must_name_a_process_that_exists(self):
+        errs = self._bad(lambda p: p.update(builds_on=["ghost"]))
+        assert any("builds_on names an unknown process ghost" in e for e in errs)
+
+    def test_a_process_cannot_build_on_itself_or_list_one_twice(self):
+        assert any("cannot build on itself" in e for e in self._bad(lambda p: p.update(builds_on=["p"])))
+        other = good_process()
+        other["process"]["id"] = "q"
+        other["activities"][0]["tasks"] = [{"id": "q/only", "name": "Only"}]
+        other["next"] = []
+        other["builds_on"] = ["p", "p"]
+        assert any("lists a process twice" in e for e in lm.validate(good_people(), [good_process(), other], ACTIONS))
+
+    def test_building_on_another_process_in_the_model_is_valid(self):
+        other = good_process()
+        other["process"]["id"] = "q"
+        other["activities"][0]["tasks"] = [{"id": "q/only", "name": "Only"}]
+        other["next"] = []
+        other["builds_on"] = ["p"]
+        assert lm.validate(good_people(), [good_process(), other], ACTIONS) == []
+
     def test_next_must_stay_inside_the_process(self):
         errs = self._bad(lambda p: p["next"].append({"from": "p/mine", "to": "other/task"}))
         assert any("next to other/task is not a task in this process" in e for e in errs)
@@ -184,6 +205,12 @@ class TestRows:
     def test_a_task_seq_is_its_place_in_its_activity(self):
         r = self.rows()
         assert [(t["id"], t["seq"]) for t in r["tasks"]] == [("p/mine", 1), ("p/sticks", 2), ("p/build", 3)]
+
+    def test_builds_on_becomes_a_row_for_each_process_it_needs(self):
+        proc = good_process()
+        proc["builds_on"] = ["a", "b"]
+        assert self.rows(proc)["builds_on"] == [{"process": "p", "on": "a"}, {"process": "p", "on": "b"}]
+        assert self.rows()["builds_on"] == []
 
     def test_task_seq_starts_again_in_each_activity(self):
         proc = good_process()

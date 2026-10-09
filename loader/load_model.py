@@ -6,7 +6,8 @@
 Reads model/players.yaml and model/processes/*.yaml. The YAML files are the source of truth: Process and Activity
 nodes are rebuilt on every run, and tasks are merged by id. A process is a goal a player works towards in the game
 (get to the Nether), made of activities (stages) and tasks (steps). A task names the game actions it performs when
-the game data has them, and has none when it is a manual step. A bad reference (unknown player, unknown action id,
+the game data has them, and has none when it is a manual step. A process can `builds_on` others (a list of process ids): it is a larger goal that needs them first (defeating the dragon
+builds on getting to the Nether). A bad reference (unknown player, unknown action id,
 unknown task in NEXT...) fails the load with every error listed, and nothing is written.
 
 Run it after load_recipes.py and load_actions.py (it checks the action ids against the graph).
@@ -112,6 +113,17 @@ def validate(people: dict, processes: list[dict], action_ids: set) -> list[str]:
             for end in ("from", "to"):
                 if n.get(end) not in tasks_here:
                     err(f"{f}: next {end} {n.get(end)} is not a task in this process")
+    known = {doc.get("process", {}).get("id") for doc in processes}
+    for doc in processes:
+        pid = doc.get("process", {}).get("id")
+        wanted = doc.get("builds_on", [])
+        if len(set(wanted)) != len(wanted):
+            err(f"{doc['_file']}: builds_on lists a process twice")
+        for other in wanted:
+            if other == pid:
+                err(f"{doc['_file']}: a process cannot build on itself")
+            elif other not in known:
+                err(f"{doc['_file']}: builds_on names an unknown process {other}")
     return errors
 
 
@@ -138,11 +150,12 @@ def tool_gaps(processes: list[dict], graph: Graph) -> list[str]:
 def rows(people: dict, processes: list[dict]) -> dict:
     """Flatten the YAML into rows for the Cypher statements."""
     out = {"players": people.get("players", []),
-           "processes": [], "activities": [], "tasks": [], "task_actions": [], "nexts": [], "confirmations": []}
+           "processes": [], "builds_on": [], "activities": [], "tasks": [], "task_actions": [], "nexts": [], "confirmations": []}
     for doc in processes:
         p = doc["process"]
         status = doc.get("status", "candidate")
         out["processes"].append({k: p.get(k) for k in ("id", "name", "description")})
+        out["builds_on"] += [{"process": p["id"], "on": other} for other in doc.get("builds_on", [])]
         for a in doc.get("activities", []):
             out["activities"].append({"id": f"{p['id']}/{a['id']}", "process": p["id"], "name": a["name"], "seq": a["seq"]})
             for seq, t in enumerate(a.get("tasks", []), 1):
@@ -193,6 +206,7 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
 
             s.run("UNWIND $rows AS r MERGE (p:Player {uuid: r.uuid}) SET p.name = r.name", rows=r["players"])
             s.run("UNWIND $rows AS r CREATE (:Process {id: r.id, name: r.name, description: r.description})", rows=r["processes"])
+            s.run("UNWIND $rows AS r MATCH (a:Process {id: r.process}), (b:Process {id: r.on}) CREATE (a)-[:BUILDS_ON]->(b)", rows=r["builds_on"])
             s.run("""UNWIND $rows AS r CREATE (a:Activity {id: r.id, name: r.name})
                      WITH a, r MATCH (p:Process {id: r.process}) CREATE (p)-[:HAS_ACTIVITY {seq: r.seq}]->(a)""", rows=r["activities"])
             s.run("""UNWIND $rows AS r MERGE (t:Task {id: r.id})

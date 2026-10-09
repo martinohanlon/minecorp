@@ -774,6 +774,7 @@ The company model of v0.6 and v0.7 copied the knowledge-layer posts: five organi
 - **Known and unknown.** The *known* processes are the structured game: recipes, mining, drops and spawns, already derived from the jar and followed by `what_do_i_need` and `where_to_find`. They are not authored. A process holds the *unknown*: what a player has to do that no data file says (shelter, mob farms, getting to the Nether, defeating the dragon, getting emeralds).
 - **Order is on the relationships.** `HAS_ACTIVITY {seq}` numbers a process's stages and `HAS_TASK {seq}` its steps within a stage (from 1, in the order of the YAML file), as `HAS_ACTION {order}` does for a task's actions. The nodes carry no order, so an activity or task reads the same wherever it is used.
 - **A task is structured or manual.** It names the game actions it performs (`HAS_ACTION`) when the data has them, and has none when it is a manual step (build the frame). A route's alternatives are data: `NEXT` carries a `condition` and `isDefault`.
+- **A process can build on others.** `builds_on: [nether-portal]` in a process file becomes `(Process)-[:BUILDS_ON]->(Process)`: the dragon is a larger goal that needs the Nether, so it points at that process instead of repeating its tasks. The loader checks that the names exist, that a process does not build on itself and that none is listed twice.
 - **Everything is a candidate until a player confirms it.** A process file says `status: candidate` with `source` (the wiki section the steps come from), `extracted_at` and `confidence`, or `status: confirmed` with `confirmed_by` (a player) and `confirmed_at`. A confirmed task has `(Task)-[:CONFIRMED_BY {at}]->(Player)`.
 
 ### What was built
@@ -782,7 +783,7 @@ The company model of v0.6 and v0.7 copied the knowledge-layer posts: five organi
 
 ### Next
 
-The first three processes, the shelter, emeralds and the Nether portal (`model/processes/shelter.yaml`, `emeralds.yaml`, `nether-portal.yaml`), are drafted as candidates, and the emeralds and Nether tasks perform real `Trade` actions. The rest, in the order you chose, also as candidates drafted from wiki pages: the dragon and a mob farm (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
+The first four processes, the shelter, emeralds, the Nether portal and the ender dragon (`model/processes/`), are drafted as candidates, and tasks of three of them perform real `Trade` actions. The dragon `BUILDS_ON` the Nether portal (v0.11 and later: `builds_on: [nether-portal]` in the process file). The last, in the order you chose, also as a candidate drafted from a wiki page: a mob farm (several need wiki pages that are not loaded yet). After that: links from a task to the things it involves (items, mobs, biomes, structures) and to the wiki sections that explain it, a "builds on" link between processes (the dragon builds on the Nether), and an agent tool that reads a process.
 
 ## Mapping to the Neo4j knowledge-layer process model (earlier hypothesis, superseded by v0.6 above)
 

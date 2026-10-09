@@ -16,6 +16,9 @@ process:
   name: Get to the Nether
   description: One or two sentences.
 
+# Optional: bigger goals build on smaller ones. Stored as (Process)-[:BUILDS_ON]->(Process); the ids must be in the model.
+# builds_on: [shelter]
+
 # Everything here is a candidate until a player confirms it.
 status: candidate             # or: confirmed (then confirmed_by: <player name>, confirmed_at: <date>)
 source: https://minecraft.wiki/w/Tutorial:Nether_portals    # where the steps come from (candidates)

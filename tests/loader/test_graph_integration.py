@@ -207,6 +207,34 @@ class TestModelInGraph:
         assert rows == [{"to": "emeralds/find-village", "d": True}, {"to": "emeralds/make-an-iron-pickaxe", "d": False}]
         assert db.one("MATCH (t:Task {id:'emeralds/mine-the-ore'}) RETURN t.status") == "candidate"
 
+    def test_the_dragon_builds_on_the_nether_and_nothing_builds_on_the_dragon(self, db):
+        assert db.q("MATCH (a:Process)-[:BUILDS_ON]->(b:Process) RETURN a.id AS a, b.id AS b") == [{"a": "ender-dragon", "b": "nether-portal"}]
+
+    def test_the_eyes_of_ender_are_made_from_what_the_earlier_tasks_get(self, db):
+        eye = db.q("""MATCH (:Task {id:'ender-dragon/make-eyes-of-ender'})-[h:HAS_ACTION]->(a:Craft)-[:CREATES]->(i:Item) RETURN a.id AS action, h.quantity AS n, i.id AS item""")
+        assert eye == [{"action": "craft:minecraft:ender_eye", "n": 15, "item": "minecraft:ender_eye"}]
+        rods = db.one("""MATCH (:Task {id:'ender-dragon/kill-blazes'})-[:HAS_ACTION]->(:Kill)-[c:CREATES {condition:'killed_by_player'}]->(i:Item) RETURN i.id""")
+        assert rods == "minecraft:blaze_rod"
+        pearls = db.one("MATCH (:Task {id:'ender-dragon/kill-endermen'})-[:HAS_ACTION]->(:Kill)-[:CREATES]->(i:Item {id:'minecraft:ender_pearl'}) RETURN count(i)")
+        assert pearls == 1
+
+    def test_ender_pearls_can_be_fought_for_or_bought_from_a_cleric_with_a_real_trade(self, db):
+        rows = db.q("MATCH (:Task {id:'ender-dragon/make-blaze-powder'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")
+        assert rows == [{"to": "ender-dragon/buy-ender-pearls", "d": False}, {"to": "ender-dragon/kill-endermen", "d": True}]
+        who = db.one("""MATCH (:Task {id:'ender-dragon/buy-ender-pearls'})-[:HAS_ACTION]->(:Trade)<-[:INCLUDES]-(:TradeSet)<-[o:OFFERS]-(p:Profession)
+                        RETURN p.name + ' level ' + toString(o.level)""")
+        assert who == "Cleric level 4"
+
+    def test_the_fight_itself_is_manual_because_the_data_has_no_kill_action_for_the_dragon(self, db):
+        assert db.one("MATCH (a:Action {id:'kill:minecraft:ender_dragon'}) RETURN count(a)") == 0
+        for task in ("destroy-the-end-crystals", "kill-the-dragon", "enter-the-end"):
+            assert db.one(f"MATCH (t:Task {{id:'ender-dragon/{task}'}}) RETURN size([(t)-[:HAS_ACTION]->() | 1])") == 0, task
+
+    def test_the_dragon_process_runs_from_the_fortress_to_leaving_the_end_by_default(self, db):
+        path = db.one("""MATCH p = (:Task {id:'ender-dragon/find-a-nether-fortress'})-[:NEXT*]->(z:Task {id:'ender-dragon/leave-the-end'})
+                         WHERE all(r IN relationships(p) WHERE r.isDefault) RETURN size(nodes(p))""")
+        assert path == 19
+
     def test_the_nether_portal_has_three_ways_to_get_obsidian_and_mining_is_the_default(self, db):
         assert db.one("MATCH (:Process {id:'nether-portal'})-[:HAS_ACTIVITY]->(:Activity) RETURN count(*)") == 5
         rows = db.q("MATCH (:Task {id:'nether-portal/choose-a-way'})-[n:NEXT]->(b:Task) RETURN b.id AS to, n.isDefault AS d ORDER BY to")

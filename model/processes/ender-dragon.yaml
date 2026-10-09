@@ -1,0 +1,243 @@
+# Process: Defeat the ender dragon (candidate, drafted from the loaded wiki pages and the game data). Loaded by loader/load_model.py.
+# Format: model/processes/README.md. Nothing here is confirmed until a player sets `status: confirmed`.
+#
+# The dragon is a larger goal than the Nether, and needs it: blaze rods only come from a Nether fortress. So this process builds on
+# "Get to the Nether" and does not repeat it.
+#
+# The steps come from three wiki pages (community-written, Java Edition survival), named in each task:
+#   Tutorial:Defeating the ender dragon   (equipment, finding the stronghold, the portal room, the fight)
+#   Tutorial:Exploring a Nether fortress  (blaze rods, blaze spawners)
+#   Tutorial:Enderman farming             (not cited by a task: the dragon page already says how to get a few more pearls)
+# Numbers come from the wiki or from the game data (recipes, drops, trades, structures), and the description says which.
+#
+# Where the data cannot help, the step is manual: the game data has no kill action for the dragon and no drops for it (the dragon
+# egg and the experience are not in its loot table), so the fight itself is described in words.
+# Not covered: the End's outer islands and End cities, which come after the dragon.
+
+process:
+  id: ender-dragon
+  name: Defeat the ender dragon
+  description: Get eyes of ender, find the stronghold, open the End portal, destroy the End crystals and kill the dragon.
+
+builds_on: [nether-portal]
+
+status: candidate
+source: "https://minecraft.wiki/w/Tutorial:Defeating_the_ender_dragon ; https://minecraft.wiki/w/Tutorial:Exploring_a_Nether_fortress"
+extracted_at: "2026-10-09"
+confidence: 0.7
+
+activities:
+  - id: rods
+    name: Get blaze rods
+    seq: 1
+    tasks:
+      - id: ender-dragon/find-a-nether-fortress
+        name: Find a Nether fortress
+        description: >-
+          Fortresses are the only place to find blaze rods (and wither skeleton skulls). You may have to travel several hundred
+          blocks, possibly thousands, in the Nether, and a fortress looks like the terrain until you see blocky nether brick
+          structures. Mark your entrance and bring cobblestone, torches, a bow, armor and golden apples. Getting to the Nether is
+          the Get to the Nether process. (Exploring a Nether fortress > Finding a Nether fortress; Preparing the equipment.)
+      - id: ender-dragon/kill-blazes
+        name: Kill blazes
+        description: >-
+          A blaze drops a blaze rod only when a player kills it, about half the time (game data), so 15 eyes of ender (below) mean
+          about 16 kills for the 8 rods. Blazes spawn from the fortress and from spawners on the bridges. Fire Resistance helps (a
+          potion from bartering with a piglin works); shoot them with a bow or knock them back with a sword; snowballs and water
+          damage them. To stop a spawner, put light level 15 blocks (glowstone, shroomlights, jack o'lanterns) around it.
+          (Exploring a Nether fortress > Exploring the fortress; Blazes; Closing a blaze spawner.)
+        actions:
+          - {do: "kill:minecraft:blaze", quantity: 16}
+      - id: ender-dragon/make-blaze-powder
+        name: Make blaze powder
+        description: One blaze rod makes two blaze powder (game data), one for each eye of ender.
+        actions:
+          - {do: "craft:minecraft:blaze_powder", quantity: 16}
+
+  - id: pearls
+    name: Get ender pearls
+    seq: 2
+    tasks:
+      - id: ender-dragon/kill-endermen
+        name: Kill endermen
+        description: >-
+          An enderman drops an ender pearl about half the time (game data), so about 30 kills for 15 pearls. They spawn in nearly
+          every Overworld biome, in three Nether biomes and in the End (game data; ask where_to_find). Looting enchantment raises
+          the drops. A small 3x3 roof to stand under is the wiki's trick for killing a few. (Defeating the ender dragon >
+          Ender pearls; Sword.)
+        actions:
+          - {do: "kill:minecraft:enderman", quantity: 30}
+      - id: ender-dragon/buy-ender-pearls
+        name: Buy ender pearls from a cleric
+        description: >-
+          A level 4 cleric sells an ender pearl for 5 emeralds, up to 12 times before restocking (game data). Dear, but it saves
+          fighting endermen. Getting emeralds is the Get emeralds process.
+        actions:
+          - {do: "trade:minecraft:cleric/4/emerald_ender_pearl", quantity: 15}
+
+  - id: eyes
+    name: Make eyes of ender
+    seq: 3
+    tasks:
+      - id: ender-dragon/make-eyes-of-ender
+        name: Make 15 eyes of ender
+        description: >-
+          An eye of ender is one ender pearl and one blaze powder, shapeless (game data). The portal needs up to 12, and eyes
+          are used to find the stronghold, and a thrown eye can break, so the wiki says to bring at least 15 to spare.
+          (Defeating the ender dragon > Journey to the portal; Stronghold.)
+        actions:
+          - {do: "craft:minecraft:ender_eye", quantity: 15}
+
+  - id: prepare
+    name: Prepare for the fight
+    seq: 4
+    tasks:
+      - id: ender-dragon/make-a-diamond-sword
+        name: Make a sword
+        description: >-
+          Ideally diamond or netherite: it is what damages the dragon on its perch, when it is immune to arrows.
+          (Defeating the ender dragon > Sword.)
+        actions:
+          - {do: "craft:minecraft:diamond_sword"}
+      - id: ender-dragon/make-a-bow-and-arrows
+        name: Make a bow and arrows
+        description: >-
+          The bow is the main weapon, for the End crystals and for the dragon while it flies. Bring two to three stacks of arrows
+          (128 to 192), or a bow with Infinity. Tipped arrows do nothing: the dragon is immune to status effects.
+          (Defeating the ender dragon > Bow and throwing items.)
+        actions:
+          - {do: "craft:minecraft:bow"}
+          - {do: "craft:minecraft:arrow", quantity: 128}
+      - id: ender-dragon/make-diamond-armor
+        name: Make a full set of armor
+        description: >-
+          A full set of diamond or netherite armor enchanted with Protection IV is recommended. An unenchanted iron set cuts a
+          dragon hit on Hard to about 10 HP and diamond or netherite to about 5. Netherite also resists the dragon's knockback.
+          (Defeating the ender dragon > Armor.)
+        actions:
+          - {do: "craft:minecraft:diamond_helmet"}
+          - {do: "craft:minecraft:diamond_chestplate"}
+          - {do: "craft:minecraft:diamond_leggings"}
+          - {do: "craft:minecraft:diamond_boots"}
+      - id: ender-dragon/enchant-the-gear
+        name: Enchant the sword, bow and armor
+        description: >-
+          Sharpness on the sword; Power or Infinity on the bow; Protection IV on the armor, Feather Falling IV on the boots
+          (fall damage is some of the hardest to avoid) and Thorns, which hurts endermen that attack you. Knockback does nothing
+          to the dragon, and Fire Aspect makes endermen harder to handle. (Defeating the ender dragon > Sword; Bow; Armor.)
+      - id: ender-dragon/bring-food-and-healing
+        name: Bring food and healing
+        description: >-
+          At least one stack of food. Golden apples are the most efficient healing, and beginners should bring a lot; save an
+          enchanted golden apple for an emergency. Suspicious stew, cooked porkchops, steak and bread also work, and splash
+          potions of Healing for emergencies. (Defeating the ender dragon > Food/Healing.)
+      - id: ender-dragon/pack-the-rest
+        name: Pack the rest of the hotbar
+        description: >-
+          A pickaxe, a full stack of blocks (to climb and bridge; harder blocks give no advantage because the dragon destroys
+          blocks instantly), a potion of Slow Falling or a water bucket, ender pearls (to get up the towers and to save you from
+          falling into the void), and empty glass bottles. Optional: beds, TNT with flint and steel, Strength potions, a piece of
+          Blast Protection armor. You cannot leave the End until the dragon or you die, so check everything first.
+          (Defeating the ender dragon > Equipment checklist; Portal room.)
+
+  - id: stronghold
+    name: Find the stronghold
+    seq: 5
+    tasks:
+      - id: ender-dragon/throw-eyes-of-ender
+        name: Throw eyes of ender and follow them
+        description: >-
+          Throw an eye into the air; it floats towards the nearest stronghold and falls back for you to pick up. Walk the way it
+          went before throwing again, go to third person to see it, and follow until the eye floats downward, which means a
+          stronghold is underneath. Strongholds generate under any Overworld biome (game data). (Defeating the ender dragon >
+          Stronghold.)
+      - id: ender-dragon/triangulate
+        name: Triangulate the stronghold
+        description: >-
+          A faster way with two throws from different spots: note the coordinates and the exact angle each eye flew at (the F3
+          screen shows both) and work out where the two lines cross; the wiki gives the formula. It usually needs only three or four
+          eyes. (Defeating the ender dragon > Triangulation.)
+      - id: ender-dragon/dig-down-to-the-stronghold
+        name: Dig down and find the portal room
+        description: >-
+          Dig down to the stone bricks, putting out lava with water. Once inside, mark your exit with torches and block dead ends
+          with cobblestone. Doors flush with the wall lead away from the entrance staircase, and the portal room is at most 5
+          corridors from the entrance, so if you go farther you are probably going the wrong way. Silverfish or lava sounds mean
+          it is close. (Defeating the ender dragon > Stronghold; Stronghold navigation.)
+      - id: ender-dragon/clear-the-portal-room
+        name: Clear the portal room
+        description: >-
+          Run in quickly: an active silverfish spawner sits in the staircase up to the portal. Kill the silverfish, destroy the
+          spawner, and turn the lava into obsidian, because silverfish can come out of the blocks beside the lava basin.
+          (Defeating the ender dragon > Portal room.)
+      - id: ender-dragon/activate-the-portal
+        name: Fill the portal frames with eyes
+        description: >-
+          Put an eye of ender in every portal frame (some already hold one). When all are filled the portal opens with a loud roar.
+          Set your spawn point with a bed near the portal room first, to resume quickly if you die. (Defeating the ender dragon >
+          Portal room; Beds.)
+
+  - id: fight
+    name: The fight
+    seq: 6
+    tasks:
+      - id: ender-dragon/enter-the-end
+        name: Enter the End
+        description: >-
+          You arrive on a 5x5 obsidian platform, usually on the island. If it is away from the island, throw an ender pearl to the
+          island instead of using blocks; if it is underground, dig up. In Java Edition, press F3 + B to see the hitboxes of the
+          dragon and the endermen. Get to the center of the island quickly, drink Slow Falling in case you are knocked off, and
+          stay inside the circle of towers, because falling into the void kills you. (Defeating the ender dragon > Entering the End;
+          Terrain.)
+      - id: ender-dragon/destroy-the-end-crystals
+        name: Destroy the End crystals
+        description: >-
+          There are ten obsidian towers around the exit portal with a crystal on top of each. If even one crystal is active the
+          dragon can heal indefinitely, and a crystal that is healing the dragon when it is destroyed hurts it by 10 HP. Shoot them
+          with a bow, aiming just above the crystal; the caged ones need you to pearl or climb up and break in with a pickaxe, or to
+          drop lit TNT on the cage. Do not climb while the dragon is flying: wait until it is perched and drink Slow Falling first.
+          (Defeating the ender dragon > Destroying the End crystals; Shooting; Climbing.)
+      - id: ender-dragon/kill-the-dragon
+        name: Kill the dragon
+        description: >-
+          While it flies, shoot it with the bow; when it perches, hit it with the sword (it is immune to arrows then). Its head hits
+          hardest, and the breath does 6 HP a second and ignores armor. If you take a lot of damage at once, hide behind a tower and
+          eat a golden apple, and use splash Healing if you are close to death. Beds set off while it is perched on the exit portal remove
+          up to a quarter of its health but are dangerous; End crystals placed there and shot are safer but dearer. The game data
+          has no kill action for the dragon, so this step is manual. (Defeating the ender dragon > Killing the dragon; Healing; Beds.)
+      - id: ender-dragon/collect-the-dragons-breath
+        name: Collect the dragon's breath
+        description: >-
+          Optional: when the dragon perches and breathes, or a fireball lands, scoop up the purple clouds with an empty glass
+          bottle without touching them, for lingering potions. (Defeating the ender dragon > Dragon's breath.)
+      - id: ender-dragon/leave-the-end
+        name: Leave through the exit portal
+        description: >-
+          Killing the dragon rewards you with the dragon egg and a lot of experience, lets you see the credits and opens the exit
+          portal back to the Overworld. (Defeating the ender dragon, introduction.)
+
+next:
+  - {from: ender-dragon/find-a-nether-fortress, to: ender-dragon/kill-blazes, condition: fortress found, default: true}
+  - {from: ender-dragon/kill-blazes, to: ender-dragon/make-blaze-powder, condition: enough blaze rods, default: true}
+  - {from: ender-dragon/make-blaze-powder, to: ender-dragon/kill-endermen, condition: blaze powder made, outcome: pearls by fighting, default: true}
+  - {from: ender-dragon/make-blaze-powder, to: ender-dragon/buy-ender-pearls, condition: you have emeralds to spend, outcome: pearls by trading, default: false}
+  - {from: ender-dragon/kill-endermen, to: ender-dragon/make-eyes-of-ender, condition: 15 ender pearls, default: true}
+  - {from: ender-dragon/buy-ender-pearls, to: ender-dragon/make-eyes-of-ender, condition: 15 ender pearls, default: false}
+  - {from: ender-dragon/make-eyes-of-ender, to: ender-dragon/make-a-diamond-sword, condition: eyes made, default: true}
+  - {from: ender-dragon/make-a-diamond-sword, to: ender-dragon/make-a-bow-and-arrows, condition: sword made, default: true}
+  - {from: ender-dragon/make-a-bow-and-arrows, to: ender-dragon/make-diamond-armor, condition: bow and arrows made, default: true}
+  - {from: ender-dragon/make-diamond-armor, to: ender-dragon/enchant-the-gear, condition: armor made, default: true}
+  - {from: ender-dragon/enchant-the-gear, to: ender-dragon/bring-food-and-healing, condition: gear enchanted, default: true}
+  - {from: ender-dragon/bring-food-and-healing, to: ender-dragon/pack-the-rest, condition: food and healing packed, default: true}
+  - {from: ender-dragon/pack-the-rest, to: ender-dragon/throw-eyes-of-ender, condition: ready to go, default: true}
+  - {from: ender-dragon/pack-the-rest, to: ender-dragon/triangulate, condition: you want to find it with fewer eyes, default: false}
+  - {from: ender-dragon/throw-eyes-of-ender, to: ender-dragon/dig-down-to-the-stronghold, condition: eyes point down, default: true}
+  - {from: ender-dragon/triangulate, to: ender-dragon/dig-down-to-the-stronghold, condition: stronghold located, default: false}
+  - {from: ender-dragon/dig-down-to-the-stronghold, to: ender-dragon/clear-the-portal-room, condition: portal room found, default: true}
+  - {from: ender-dragon/clear-the-portal-room, to: ender-dragon/activate-the-portal, condition: room cleared, default: true}
+  - {from: ender-dragon/activate-the-portal, to: ender-dragon/enter-the-end, condition: portal open, default: true}
+  - {from: ender-dragon/enter-the-end, to: ender-dragon/destroy-the-end-crystals, condition: on the island, default: true}
+  - {from: ender-dragon/destroy-the-end-crystals, to: ender-dragon/kill-the-dragon, condition: all crystals destroyed, default: true}
+  - {from: ender-dragon/kill-the-dragon, to: ender-dragon/leave-the-end, condition: dragon dead, default: true}
+  - {from: ender-dragon/kill-the-dragon, to: ender-dragon/collect-the-dragons-breath, condition: you want lingering potions, default: false}
+  - {from: ender-dragon/collect-the-dragons-breath, to: ender-dragon/leave-the-end, condition: breath collected, default: false}
