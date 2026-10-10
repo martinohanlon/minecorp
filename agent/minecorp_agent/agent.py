@@ -19,6 +19,7 @@ from .config import Settings
 from .graph import Graph
 from .models import Question, Result, Step
 from .prompt import SYSTEM_PROMPT
+from .sources import sources_for
 from .tools import TOOLS, TOOLS_BY_NAME
 
 log = logging.getLogger("minecorp.agent")
@@ -111,7 +112,7 @@ class Agent:
             output = fit(output, tool.budget)
         text = json.dumps(output, separators=(",", ":"))
         step = Step(turn=turn, tool=name, args=args, ms=int((time.monotonic() - started) * 1000),
-                    result_chars=len(text), error=error)
+                    result_chars=len(text), error=error, sources=[] if error else sources_for(name, args, output))
         return text, step
 
     @staticmethod

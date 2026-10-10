@@ -22,6 +22,7 @@ class Step:
     ms: int
     result_chars: int
     error: str | None = None
+    sources: list = field(default_factory=list)      # what the tool result gave the answer (see sources.py)
 
 
 @dataclass
@@ -34,3 +35,9 @@ class Result:
     steps: list[Step] = field(default_factory=list)
     usage: dict = field(default_factory=dict)
     error: str | None = None
+
+    @property
+    def sources(self) -> list:
+        """The sources of every tool call, each once, in order: what the player may ask to see."""
+        from .sources import merge_sources
+        return merge_sources(*(s.sources for s in self.steps))

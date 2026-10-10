@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import get_settings
-from .core import answer
+from .core import answer_with_sources
 from .models import Question
 
 log = logging.getLogger("minecorp.agent")
@@ -25,10 +25,18 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
 
 
+class Source(BaseModel):
+    """Where a fact in the answer came from: game data, a wiki section (with its link) or a plan."""
+    kind: str
+    label: str
+    url: str | None = None
+
+
 class AskResponse(BaseModel):
     """Reply returned to the plugin."""
     requestId: str
     answer: str
+    sources: list[Source] = []
 
 
 @app.get("/health")
@@ -44,10 +52,10 @@ def require_key(x_minecorp_key: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
-@app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_key)])
+@app.post("/ask", response_model=AskResponse, response_model_exclude_none=True, dependencies=[Depends(require_key)])
 def ask(body: AskRequest) -> AskResponse:
     """Answer a player's question. Requires the shared secret in X-MineCorp-Key."""
     request_id = uuid.uuid4().hex[:12]
     log.info("ask %s player=%s question=%r", request_id, body.playerName, body.question)
-    text = answer(Question(body.playerUuid, body.playerName, body.sessionId, body.question), request_id)
-    return AskResponse(requestId=request_id, answer=text)
+    text, sources = answer_with_sources(Question(body.playerUuid, body.playerName, body.sessionId, body.question), request_id)
+    return AskResponse(requestId=request_id, answer=text, sources=[Source(**s) for s in sources])

@@ -432,7 +432,7 @@ class TestMain:
 
     def test_direct_runs_the_agent_here_and_needs_no_service_or_secret(self, monkeypatch, capsys):
         import minecorp_agent.core as core
-        monkeypatch.setattr(core, "answer", lambda question, request_id: f"Direct: {question.text}")
+        monkeypatch.setattr(core, "answer_with_sources", lambda question, request_id: (f"Direct: {question.text}", []))
         monkeypatch.setattr(chat.Chat, "healthy", lambda self: pytest.fail("direct mode does not check a service"))
         assert chat.main(["--direct", "hello", "there"]) == 0
         assert "Direct: hello there" in capsys.readouterr().out
@@ -462,7 +462,7 @@ class TestAgainstTheRealApp:
         monkeypatch.setenv("AGENT_SHARED_SECRET", SECRET)
         import minecorp_agent.app as app_mod
         app_mod = importlib.reload(app_mod)
-        monkeypatch.setattr(app_mod, "answer", lambda question, request_id: f"- You asked: {question.text}\n- As {question.player_name}")
+        monkeypatch.setattr(app_mod, "answer_with_sources", lambda question, request_id: (f"- You asked: {question.text}\n- As {question.player_name}", []))
         return fastapi_testclient.TestClient(app_mod.app)
 
     def test_a_question_is_answered_with_the_request_id(self, app_client):

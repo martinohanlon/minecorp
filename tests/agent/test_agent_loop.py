@@ -282,8 +282,22 @@ class TestTrace:
         assert entry["status"] == "ok" and entry["model"] == "test-model" and entry["error"] is None
         assert entry["usage"]["model_calls"] == 2 and entry["ms"] >= 0 and entry["at"]
         assert entry["steps"] == [{"turn": 1, "tool": "echo", "args": {"x": 1}, "ms": entry["steps"][0]["ms"],
-                                   "result_chars": result.steps[0].result_chars, "error": None}]
+                                   "result_chars": result.steps[0].result_chars, "error": None, "sources": []}]
 
+    def test_the_sources_of_each_tool_call_are_in_the_trace_and_on_the_result(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agent_mod, "sources_for", lambda tool, args, output: [{"kind": "game data", "label": f"From {tool} {args.get('x')}"}])
+        client = FakeClient(reply(None, [tool_call("a", "echo", {"x": 1}), tool_call("b", "echo", {"x": 1}), tool_call("c", "echo", {"x": 2})]),
+                            reply("Answer."))
+        result, _ = run(client, tmp_path)
+        (entry,) = traces(tmp_path)
+        assert [s["sources"] for s in entry["steps"]][0] == [{"kind": "game data", "label": "From echo 1"}]
+        assert result.sources == [{"kind": "game data", "label": "From echo 1"}, {"kind": "game data", "label": "From echo 2"}]   # each once
+
+    def test_a_failed_tool_call_has_no_sources(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agent_mod, "sources_for", lambda tool, args, output: [{"kind": "game data", "label": "never"}])
+        client = FakeClient(reply(None, [tool_call("a", "boom", {})]), reply("Sorry."))
+        result, _ = run(client, tmp_path)
+        assert result.steps[0].sources == [] and result.sources == []
     def test_traces_are_appended(self, tmp_path):
         run(FakeClient(reply("one")), tmp_path)
         run(FakeClient(reply("two")), tmp_path)

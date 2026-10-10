@@ -12,8 +12,9 @@ is a developer's tool it adds what a player never sees, in grey: the reason a re
 answer follows the chat style (at most 6 lines, about 90 characters each, plain text; it only flags real overruns), and with --trace the tools the
 agent called, read from agent/logs/traces.jsonl.
 
-In the chat: /trace turns the trace on or off, /name Alex changes the player, /help lists these, /quit leaves. A leading
-"/agent " is accepted, as in the game.
+In the chat: /explain shows what the plugin's /agent-explain book will contain (the last five questions, answers and sources: see
+docs/explain-book.md), /trace turns the developer trace on or off, /name Alex changes the player, /help lists these, /quit leaves.
+A leading "/agent " is accepted, as in the game.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from collections import deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -47,6 +49,10 @@ UNAVAILABLE = "The agent is not available right now. Try again later."
 THINKING = "MineCorp agent: thinking..."
 
 COLOURS = {"gold": "33", "grey": "90", "red": "31", "yellow": "93", "reset": "0"}
+MAX_HISTORY = 5                      # exchanges kept for the book (the owner's choice)
+MAX_PAGE_CHARS = 700                 # a written book holds about 1,024 characters a page; stay well under it
+BOOK_TITLE, BOOK_AUTHOR = "Agent notes", "MineCorp Agent"
+NO_SOURCES = "No sources: I answered without looking anything up."
 MARKDOWN = re.compile(r"\*\*|__|`|^\s*#+\s|^\s*\|.*\|\s*$|\[[^\]]+\]\([^)]+\)", re.M)
 
 
@@ -104,6 +110,85 @@ class Reply:
     request_id: str | None = None
     seconds: float = 0.0
     error: str | None = None
+    sources: list[dict] = field(default_factory=list)       # where the answer's facts came from (kind, label, url?)
+
+
+def clean_sources(raw) -> list[dict]:
+    """The sources in a reply, keeping only well-formed ones: a kind and a label, and a link only if it is a web address."""
+    out = []
+    for s in raw if isinstance(raw, list) else []:
+        if isinstance(s, dict) and isinstance(s.get("kind"), str) and isinstance(s.get("label"), str) and s["label"].strip():
+            url = s.get("url")
+            out.append({"kind": s["kind"], "label": s["label"].strip(), **({"url": url} if isinstance(url, str) and url.startswith(("http://", "https://")) else {})})
+    return out
+
+
+# --------------------------------------------------------------------------- the notes (what /agent-explain will put in a book)
+
+@dataclass(frozen=True)
+class Exchange:
+    """One question, its answer and its sources."""
+    question: str
+    lines: list[str]
+    sources: list[dict]
+
+
+class History:
+    """A player's last few exchanges, in memory. The plugin keeps the same; neo4j-agent-memory can replace it later."""
+
+    def __init__(self, limit: int = MAX_HISTORY):
+        self._items: deque[Exchange] = deque(maxlen=limit)
+
+    def add(self, exchange: Exchange) -> None:
+        self._items.append(exchange)
+
+    def recent(self) -> list[Exchange]:
+        """Oldest first, as a notebook reads."""
+        return list(self._items)
+
+
+def source_line(s: dict) -> str:
+    return f"- {s['kind']}: {s['label']}"
+
+
+def split_pages(lines: list[str], limit: int = MAX_PAGE_CHARS) -> list[str]:
+    """Lines packed into pages of at most `limit` characters, breaking between lines (a longer line is cut at a space)."""
+    pages, current = [], ""
+    for line in lines:
+        pieces = []
+        while len(line) > limit:                                    # one line longer than a page
+            cut = line.rfind(" ", 0, limit + 1)                     # a space just after the limit still lets `limit` characters through
+            cut = cut if cut > 0 else limit
+            pieces.append(line[:cut])
+            line = line[cut:].lstrip()
+        pieces.append(line)
+        for piece in pieces:
+            candidate = f"{current}\n{piece}" if current else piece
+            if current and len(candidate) > limit:
+                pages.append(current)
+                current = piece
+            else:
+                current = candidate
+    if current:
+        pages.append(current)
+    return pages or [""]
+
+
+def book_pages(history: History | list[Exchange]) -> list[str]:
+    """The pages of the notebook: a contents page, then for each exchange its question and answer, and its sources.
+
+    The Minecraft plugin builds the same pages (docs/explain-book.md); the links in the sources are clickable there and are not
+    shown here, since a terminal cannot click them. Returns no pages when there is nothing to explain."""
+    items = history.recent() if isinstance(history, History) else list(history)
+    if not items:
+        return []
+    contents = [f"{BOOK_TITLE}", "", f"Last {len(items)} question(s):"] + [f"{n}. {e.question[:40]}" + ("..." if len(e.question) > 40 else "") for n, e in enumerate(items, 1)]
+    pages = ["\n".join(contents)]
+    for n, e in enumerate(items, 1):
+        pages += split_pages([f"{n}. {e.question}", ""] + e.lines)
+        sources = [source_line(s) for s in e.sources] or [NO_SOURCES]
+        pages += split_pages([f"Sources for {n}:", ""] + sources)
+    return pages
 
 
 class Chat:
@@ -111,7 +196,8 @@ class Chat:
 
     def __init__(self, name: str = "Steve", url: str = DEFAULT_URL, secret: str = "", client=None, direct=None, timeout: float = DEFAULT_TIMEOUT):
         self.name, self.url, self.secret, self.timeout = name, url.rstrip("/"), secret, timeout
-        self.client, self.direct = client, direct          # direct: a function (Question, request_id) -> answer text
+        self.client, self.direct = client, direct          # direct: a function (Question, request_id) -> answer text, or (text, sources)
+        self.history = History()
 
     @property
     def configured(self) -> bool:
@@ -130,7 +216,8 @@ class Chat:
                 request_id = uuid.uuid4().hex[:12]
                 from minecorp_agent.models import Question
                 pid = player_uuid(self.name)
-                text = self.direct(Question(pid, self.name, pid, question), request_id)
+                result = self.direct(Question(pid, self.name, pid, question), request_id)
+                text, sources = result if isinstance(result, tuple) else (result, [])
             else:
                 client = self.client or httpx.Client(timeout=self.timeout)
                 response = client.post(f"{self.url}/ask", json=self.body(question), headers={"X-MineCorp-Key": self.secret})
@@ -139,10 +226,12 @@ class Chat:
                 data = response.json()
                 if not isinstance(data, dict) or not isinstance(data.get("answer"), str):
                     return Reply(error="the reply has no answer", seconds=time.monotonic() - started)
-                request_id, text = data.get("requestId"), data["answer"]
+                request_id, text, sources = data.get("requestId"), data["answer"], data.get("sources")
         except Exception as exc:                            # timeout, connection refused, bad JSON, a failure inside the agent
             return Reply(error=f"{type(exc).__name__}: {exc}", seconds=time.monotonic() - started)
-        return Reply(lines=answer_lines(text), request_id=request_id, seconds=time.monotonic() - started)
+        reply = Reply(lines=answer_lines(text), request_id=request_id, seconds=time.monotonic() - started, sources=clean_sources(sources))
+        self.history.add(Exchange(question, reply.lines, reply.sources))
+        return reply
 
     def healthy(self) -> str | None:
         """None when the service answers /health, else the reason it does not (HTTP mode only)."""
@@ -226,7 +315,24 @@ def respond(chat: Chat, question: str, term: Terminal, trace: bool) -> bool:
     return True
 
 
-HELP = "Type a question. /trace shows what the agent did, /name <player> changes the player, /quit leaves."
+NOTHING_TO_EXPLAIN = "Nothing to explain yet: ask a question first."
+HELP = "Type a question. /explain shows the notes the book would hold, /trace shows what the agent did, /name <player> changes the player, /quit leaves."
+
+
+def explain(chat: Chat, term: Terminal) -> None:
+    """What /agent-explain gives in the game: the pages of the book. Printed page by page, in grey, as the stub's own output."""
+    pages = book_pages(chat.history)
+    if not pages:
+        term.say(NOTHING_TO_EXPLAIN, "yellow")
+        return
+    term.say(f"(stub) book \"{BOOK_TITLE}\" by {BOOK_AUTHOR}, {len(pages)} page(s)", "grey")
+    for n, page in enumerate(pages, 1):
+        term.say(f"(stub) --- page {n} ---", "grey")
+        for line in page.split("\n"):
+            term.say("  " + line, "reset")
+    urls = [s["url"] for e in chat.history.recent() for s in e.sources if s.get("url")]
+    if urls:
+        term.say("(stub) links in the book (clickable in the game): " + ", ".join(dict.fromkeys(urls)), "grey")
 
 
 def repl(chat: Chat, term: Terminal, read=None, trace: bool = False) -> None:
@@ -245,6 +351,8 @@ def repl(chat: Chat, term: Terminal, read=None, trace: bool = False) -> None:
             return
         if command == "/help":
             term.say(HELP, "grey")
+        elif command in ("/explain", "/agent-explain"):
+            explain(chat, term)
         elif command == "/trace":
             trace = not trace
             term.say(f"(stub) trace {'on' if trace else 'off'}", "grey")
@@ -264,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--url", default=None, help=f"the agent service (default AGENT_URL or {DEFAULT_URL})")
     ap.add_argument("--direct", action="store_true", help="run the agent in this process instead of calling the service")
     ap.add_argument("--trace", action="store_true", help="show what the agent did after each answer")
+    ap.add_argument("--explain", action="store_true", help="after the answer, show the notes the book would hold")
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="seconds to wait for the agent")
     ap.add_argument("--no-color", action="store_true", help="plain text")
     args = ap.parse_args(argv)
@@ -276,8 +385,8 @@ def main(argv: list[str] | None = None) -> int:
     term = Terminal(colour)
 
     if args.direct:
-        from minecorp_agent.core import answer
-        chat = Chat(args.name, direct=answer, timeout=args.timeout)
+        from minecorp_agent.core import answer_with_sources
+        chat = Chat(args.name, direct=answer_with_sources, timeout=args.timeout)
     else:
         chat = Chat(args.name, args.url or os.environ.get("AGENT_URL", DEFAULT_URL), os.environ.get("AGENT_SHARED_SECRET", ""), timeout=args.timeout)
         problem = chat.healthy() if chat.configured else None
@@ -286,7 +395,10 @@ def main(argv: list[str] | None = None) -> int:
             term.say("(stub) start it with ./scripts/run-agent.ps1, or add --direct to run the agent in this process.", "grey")
             return 1
     if args.question:
-        return 0 if respond(chat, " ".join(args.question), term, args.trace) else 1
+        ok = respond(chat, " ".join(args.question), term, args.trace)
+        if ok and args.explain:
+            explain(chat, term)
+        return 0 if ok else 1
     repl(chat, term, trace=args.trace)
     return 0
 

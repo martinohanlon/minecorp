@@ -24,9 +24,9 @@ def api(monkeypatch):
 
     def fake_answer(question, request_id):
         calls.append((question, request_id))
-        return f"answer to: {question.text}"
+        return f"answer to: {question.text}", [{"kind": "game data", "label": "Recipes for Iron Ingot"}]
 
-    monkeypatch.setattr(app_mod, "answer", fake_answer)
+    monkeypatch.setattr(app_mod, "answer_with_sources", fake_answer)
     return fastapi_testclient.TestClient(app_mod.app), calls
 
 
@@ -86,7 +86,22 @@ class TestAsk:
         body = r.json()
         assert body["answer"] == "answer to: how do I smelt iron?"
         assert len(body["requestId"]) == 12 and int(body["requestId"], 16) >= 0
-        assert set(body) == {"requestId", "answer"}
+        assert set(body) == {"requestId", "answer", "sources"}
+        assert body["sources"] == [{"kind": "game data", "label": "Recipes for Iron Ingot"}]      # a source with no link has no url key
+
+    def test_a_source_with_a_link_carries_it(self, api, monkeypatch):
+        import minecorp_agent.app as app_mod
+        monkeypatch.setattr(app_mod, "answer_with_sources", lambda q, rid: ("ok", [{"kind": "wiki", "label": "Tutorial:Shelters > Hole in the wall",
+                                                                                   "url": "https://minecraft.wiki/w/Tutorial:Shelters#Hole_in_the_wall"}]))
+        client, _ = api
+        assert ask(client).json()["sources"] == [{"kind": "wiki", "label": "Tutorial:Shelters > Hole in the wall",
+                                                  "url": "https://minecraft.wiki/w/Tutorial:Shelters#Hole_in_the_wall"}]
+
+    def test_an_answer_with_no_sources_says_so_with_an_empty_list(self, api, monkeypatch):
+        import minecorp_agent.app as app_mod
+        monkeypatch.setattr(app_mod, "answer_with_sources", lambda q, rid: ("hello", []))
+        client, _ = api
+        assert ask(client).json()["sources"] == []
 
     def test_the_agent_gets_the_question_and_the_same_request_id(self, api):
         client, calls = api

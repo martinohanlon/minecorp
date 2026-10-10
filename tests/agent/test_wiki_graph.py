@@ -104,6 +104,13 @@ class TestSearchWiki:
         assert top["text"] == "Walls keep mobs out." and top["sectionUrl"] == f"{BASE}#Walls"
         assert top["section"] == "Guide > Shelter > Walls" and top["page"] == "Guide" and top["score"] == pytest.approx(1.0, abs=1e-3)
 
+    def test_every_hit_is_a_wiki_source_with_its_link(self, graph, pages, monkeypatch):
+        from minecorp_agent import sources
+        result = wiki.tool_search_wiki(graph, {"question": ask_like(monkeypatch, chunk_of(pages, "Walls")), "limit": 3})
+        got = sources.sources_for("search_wiki", {}, result)
+        assert got[0] == {"kind": "wiki", "label": "Guide > Shelter > Walls", "url": f"{BASE}#Walls"}
+        assert len(got) == len(result["hits"]) and all(s["kind"] == "wiki" and s["url"].startswith("https://minecraft.wiki/w/") for s in got)
+
     @pytest.mark.parametrize("suffix,path", [("Roof", "Guide > Shelter > Roof"), ("Bread", "Guide > Food > Bread"),
                                              ("Tips", "Guide > Tips"), ("Shelter", "Guide > Shelter")])
     def test_the_section_path_follows_the_tree(self, graph, pages, monkeypatch, suffix, path):
@@ -153,6 +160,11 @@ class TestReadSection:
         result = wiki.tool_read_section(graph, {"section": f"{BASE}#Shelter"})
         assert result["text"] == LONG, "stitching the chunks must restore the original text"
         assert result["section"] == "Guide > Shelter" and result["page"] == "Guide" and result["sectionUrl"] == f"{BASE}#Shelter"
+
+    def test_a_section_that_was_read_is_a_wiki_source_with_its_link(self, graph, pages):
+        from minecorp_agent import sources
+        result = wiki.tool_read_section(graph, {"section": f"{BASE}#Walls"})
+        assert sources.sources_for("read_section", {}, result) == [{"kind": "wiki", "label": "Guide > Shelter > Walls", "url": f"{BASE}#Walls"}]
 
     def test_subsections_are_listed_in_order(self, graph, pages):
         result = wiki.tool_read_section(graph, {"section": f"{BASE}#Shelter"})
