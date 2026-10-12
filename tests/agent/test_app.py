@@ -97,6 +97,14 @@ class TestAsk:
         assert ask(client).json()["sources"] == [{"kind": "wiki", "label": "Tutorial:Shelters > Hole in the wall",
                                                   "url": "https://minecraft.wiki/w/Tutorial:Shelters#Hole_in_the_wall"}]
 
+    def test_a_source_carries_its_graph_lines_and_one_without_has_no_graph_key(self, api, monkeypatch):
+        import minecorp_agent.app as app_mod
+        graph = ["(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})"]
+        monkeypatch.setattr(app_mod, "answer_with_sources", lambda q, rid: ("ok", [{"kind": "game data", "label": "Recipes for Ender Eye", "graph": graph},
+                                                                                   {"kind": "game data", "label": "Rank"}]))
+        client, _ = api
+        assert ask(client).json()["sources"] == [{"kind": "game data", "label": "Recipes for Ender Eye", "graph": graph}, {"kind": "game data", "label": "Rank"}]
+
     def test_an_answer_with_no_sources_says_so_with_an_empty_list(self, api, monkeypatch):
         import minecorp_agent.app as app_mod
         monkeypatch.setattr(app_mod, "answer_with_sources", lambda q, rid: ("hello", []))

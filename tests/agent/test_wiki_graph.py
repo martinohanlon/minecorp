@@ -108,7 +108,7 @@ class TestSearchWiki:
         from minecorp_agent import sources
         result = wiki.tool_search_wiki(graph, {"question": ask_like(monkeypatch, chunk_of(pages, "Walls")), "limit": 3})
         got = sources.sources_for("search_wiki", {}, result)
-        assert got[0] == {"kind": "wiki", "label": "Guide > Shelter > Walls", "url": f"{BASE}#Walls"}
+        assert got[0] == {"kind": "wiki", "label": "Guide > Shelter > Walls", "url": f"{BASE}#Walls", "graph": ["(Chunk)-[PART_OF]->(Section {Walls})"]}
         assert len(got) == len(result["hits"]) and all(s["kind"] == "wiki" and s["url"].startswith("https://minecraft.wiki/w/") for s in got)
 
     @pytest.mark.parametrize("suffix,path", [("Roof", "Guide > Shelter > Roof"), ("Bread", "Guide > Food > Bread"),
@@ -164,7 +164,16 @@ class TestReadSection:
     def test_a_section_that_was_read_is_a_wiki_source_with_its_link(self, graph, pages):
         from minecorp_agent import sources
         result = wiki.tool_read_section(graph, {"section": f"{BASE}#Walls"})
-        assert sources.sources_for("read_section", {}, result) == [{"kind": "wiki", "label": "Guide > Shelter > Walls", "url": f"{BASE}#Walls"}]
+        assert sources.sources_for("read_section", {}, result) == [{"kind": "wiki", "label": "Guide > Shelter > Walls", "url": f"{BASE}#Walls",
+                                                                    "graph": ["(Chunk)-[PART_OF]->(Section {Walls})"]}]
+
+    def test_the_pattern_shown_for_a_passage_is_a_path_in_the_wiki_graph(self, graph, pages, monkeypatch):
+        from minecorp_agent import sources
+        result = wiki.tool_search_wiki(graph, {"question": ask_like(monkeypatch, chunk_of(pages, "Walls")), "limit": 6})
+        patterns = [p for _s, ps in sources.patterned("search_wiki", {}, result) for p in ps]
+        assert patterns
+        for p in patterns:
+            assert graph.read(f"MATCH {p.cypher()} RETURN count(*) AS n")[0]["n"] > 0, p.cypher()
 
     def test_subsections_are_listed_in_order(self, graph, pages):
         result = wiki.tool_read_section(graph, {"section": f"{BASE}#Shelter"})

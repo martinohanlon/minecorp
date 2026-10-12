@@ -65,7 +65,13 @@ def odd(graph, args):
     raise RuntimeError("a bug")
 
 
-FAKE_TOOLS = [Tool("echo", "Echo the arguments back to the model.", {"type": "object", "properties": {}}, echo),
+def recipes(graph, args):
+    """A recipe result as the real tool gives it, with the private key for the category the graph really requires."""
+    return {"item": "Iron Pickaxe", "recipes": [{"station": "Crafting Table", "requires": [{"item": "Iron Ingot", "count": 3, "_via": "Iron Tool Materials"}]}]}
+
+
+FAKE_TOOLS = [Tool("get_recipes", "Recipes for an item.", {"type": "object", "properties": {}}, recipes),
+              Tool("echo", "Echo the arguments back to the model.", {"type": "object", "properties": {}}, echo),
               Tool("boom", "Always fails.", {"type": "object", "properties": {}}, boom),
               Tool("big", "Returns far too much text.", {"type": "object", "properties": {}}, big, budget=3000),
               Tool("outage", "The graph is down.", {"type": "object", "properties": {}}, outage),
@@ -111,7 +117,7 @@ class TestLoop:
         assert sent["model"] == "test-model" and sent["tool_choice"] == "auto"
         assert sent["messages"][0] == {"role": "system", "content": SYSTEM_PROMPT}
         assert sent["messages"][1] == {"role": "user", "content": "Player Steve asks: hello there"}
-        assert [t["function"]["name"] for t in sent["tools"]] == ["echo", "boom", "big", "outage", "odd"]
+        assert [t["function"]["name"] for t in sent["tools"]] == ["get_recipes", "echo", "boom", "big", "outage", "odd"]
 
     def test_a_tool_round_then_an_answer(self, tmp_path):
         client = FakeClient(reply(None, [tool_call("c1", "echo", {"item": "stick"})]), reply("Done."))
@@ -292,6 +298,19 @@ class TestTrace:
         (entry,) = traces(tmp_path)
         assert [s["sources"] for s in entry["steps"]][0] == [{"kind": "game data", "label": "From echo 1"}]
         assert result.sources == [{"kind": "game data", "label": "From echo 1"}, {"kind": "game data", "label": "From echo 2"}]   # each once
+
+    def test_a_private_key_reaches_the_sources_but_never_the_model(self, tmp_path):
+        client = FakeClient(reply(None, [tool_call("a", "get_recipes", {})]), reply("Answer."))
+        result, _ = run(client, tmp_path)
+        sent = self._second_request_tool_content(client)
+        assert "_via" not in sent and "Iron Tool Materials" not in sent and "Iron Ingot" in sent
+        graph = result.steps[0].sources[0]["graph"]
+        assert "(Item {Iron Pickaxe})<-[CREATES]-(Recipe)-[REQUIRES]->(ItemClass {Iron Tool Materials})-[INCLUDES]->(Item {Iron Ingot})" in graph
+        (entry,) = traces(tmp_path)
+        assert entry["steps"][0]["sources"][0]["graph"] == graph
+
+    def _second_request_tool_content(self, client):
+        return [m for m in client.calls[1]["messages"] if m["role"] == "tool"][0]["content"]
 
     def test_a_failed_tool_call_has_no_sources(self, tmp_path, monkeypatch):
         monkeypatch.setattr(agent_mod, "sources_for", lambda tool, args, output: [{"kind": "game data", "label": "never"}])

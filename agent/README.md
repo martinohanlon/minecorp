@@ -26,7 +26,7 @@ Settings (environment or `.env`; see `.env.example`):
 | | |
 |---|---|
 | `GET /health` | `{"status":"ok"}`; no secret needed |
-| `POST /ask` | Header `X-MineCorp-Key: <secret>` (401 without it). JSON body: `playerUuid`, `playerName`, `sessionId`, `question` (1-500 characters). Reply: `{"requestId": "...", "answer": "...", "sources": [{"kind": "game data" | "wiki" | "plan", "label": "...", "url": "..."}]}` (`url` only for a wiki section; see [docs/explain-book.md](../docs/explain-book.md)). `POST /explain` takes `{"playerUuid": "..."}` and returns the book of that player's last five answers with their sources (`{title, author, pages: [{lines: [{text, url?, goto?}]}]}`; no pages when nothing has been asked); the service keeps those in memory. Invalid bodies return 422. |
+| `POST /ask` | Header `X-MineCorp-Key: <secret>` (401 without it). JSON body: `playerUuid`, `playerName`, `sessionId`, `question` (1-500 characters). Reply: `{"requestId": "...", "answer": "...", "sources": [{"kind": "game data" | "wiki" | "plan", "label": "...", "url": "...", "graph": ["(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Ender Pearl})"]}]}` (`url` only for a wiki section, `graph` the paths the tool walked, shown under the source in the book; see [docs/explain-book.md](../docs/explain-book.md)). `POST /explain` takes `{"playerUuid": "..."}` and returns the book of that player's last five answers with their sources (`{title, author, pages: [{lines: [{text, url?, goto?}]}]}`; no pages when nothing has been asked); the service keeps those in memory. Invalid bodies return 422. |
 
 Try it:
 

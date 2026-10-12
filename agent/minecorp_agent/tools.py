@@ -132,7 +132,7 @@ def fetch_recipes(graph: Graph, item_id: str) -> list[dict]:
             ms = [m for m in members.get(q["id"], []) if m["name"] not in (q["excluded"] or [])]
             if q["options"] == 1 and ms:
                 # a category with a single member is just that item
-                q.update(id=ms[0]["id"], name=ms[0]["name"], isCategory=False, options=None)
+                q.update(via=q["name"], id=ms[0]["id"], name=ms[0]["name"], isCategory=False, options=None)
             else:
                 q["examples"] = [m["name"] for m in ms[:6]]
         by_recipe.setdefault(q["rid"], []).append(q)
@@ -152,6 +152,8 @@ def _req_view(q: dict) -> dict:
             out["except"] = q["excluded"]
     else:
         out["item"] = q["name"]
+        if q.get("via"):
+            out["_via"] = q["via"]            # the category the graph really requires (private: see budget.without_private)
     out["count"] = q["count"]
     if q["role"] != "ingredient":
         out["role"] = q["role"]
@@ -388,7 +390,7 @@ class Route:
                                             **({"except": q["excluded"]} if q["excluded"] else {})}
             else:
                 self.build(q["id"], q["name"], count, path | {item_id}, depth + 1)
-                uses[q["name"]] = {"item": q["name"], "count": count}
+                uses[q["name"]] = {"item": q["name"], "count": count, **({"_via": q["via"]} if q.get("via") else {})}
         step = self.steps.get(item_id)
         if step is None:
             self.steps[item_id] = {

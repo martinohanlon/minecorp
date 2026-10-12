@@ -88,6 +88,15 @@ class TestTheBook:
         assert pages[0]["lines"][3] == {"text": "1. how do I smelt iron?", "goto": 2}
         assert pages[2]["lines"][2] == {"text": "- game data: Recipes for Iron Pickaxe"} and pages[2]["lines"][3]["url"] == WIKI["url"]
 
+    def test_the_graph_lines_of_a_source_are_in_the_book_under_it(self, api):
+        client, agent = api
+        agent.sources = [{"kind": "game data", "label": "Recipes for Ender Eye", "graph": ["(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})"]}, WIKI]
+        ask(client)
+        lines = explain(client).json()["pages"][2]["lines"]
+        assert [l["text"] for l in lines][2:] == ["- game data: Recipes for Ender Eye", "   (Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})",
+                                                  "- wiki: Tutorial:Shelters > Hole in the wall"]
+        assert lines[4]["url"] == WIKI["url"] and "url" not in lines[3]
+
     def test_the_last_five_are_kept(self, api):
         client, _ = api
         for n in range(7):

@@ -31,6 +31,7 @@ class Source(BaseModel):
     kind: str
     label: str
     url: str | None = None
+    graph: list[str] | None = None            # the path through the graph the tool walked, as pattern lines
 
 
 class AskResponse(BaseModel):

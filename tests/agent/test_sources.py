@@ -82,7 +82,36 @@ class TestWiki:
     def test_a_section_that_was_read(self):
         out = {"page": "Tutorial:Mining", "section": "Tutorial:Mining > Mining layers", "sectionUrl": "https://minecraft.wiki/w/Tutorial:Mining#Mining_layers"}
         assert src.sources_for("read_section", {}, out) == [{"kind": "wiki", "label": "Tutorial:Mining > Mining layers",
-                                                             "url": "https://minecraft.wiki/w/Tutorial:Mining#Mining_layers"}]
+                                                             "url": "https://minecraft.wiki/w/Tutorial:Mining#Mining_layers",
+                                                             "graph": ["(Chunk)-[PART_OF]->(Section {Mining layers})"]}]
+
+
+class TestGraphLines:
+    RECIPE = {"item": "Ender Eye", "recipes": [{"station": "Crafting Table", "requires": [{"item": "Blaze Powder"}, {"item": "Ender Pearl"}]}]}
+
+    def test_a_source_with_data_carries_the_compact_graph_lines(self):
+        (s,) = src.sources_for("get_recipes", {}, self.RECIPE)
+        assert s["kind"] == "game data" and s["label"] == "Recipes for Ender Eye"
+        assert s["graph"][0] == "(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})" and len(s["graph"]) == 3
+
+    def test_a_source_with_nothing_to_draw_has_no_graph_key(self):
+        assert src.sources_for("get_recipes", {}, {"item": "Stick", "recipes": []}) == [{"kind": "game data", "label": "Recipes for Stick"}]
+
+    def test_the_patterns_are_available_for_checking_against_the_graph(self):
+        ((s, patterns),) = src.patterned("get_recipes", {}, self.RECIPE)
+        assert [p.compact() for p in patterns] == src.sources_for("get_recipes", {}, self.RECIPE)[0]["graph"]
+        assert patterns[0].cypher() == '(:Item {name: "Ender Eye"})<-[:CREATES]-(:Recipe)-[:REQUIRES]->(:Item {name: "Blaze Powder"})'
+
+    def test_the_same_source_with_different_graph_lines_is_still_one_source(self):
+        a = {"kind": "game data", "label": "X", "graph": ["(A)-[B]->(C)"]}
+        b = {"kind": "game data", "label": "X", "graph": ["(D)-[E]->(F)"]}
+        assert src.merge_sources([a], [b]) == [a]
+
+    def test_a_plan_has_graph_lines_and_the_wiki_pages_it_came_from_do_not(self):
+        out = {"process": "P", "status": "candidate", "stages": [{"stage": "S", "steps": ["T"]}], "usualRoute": [],
+               "source": "https://minecraft.wiki/w/Tutorial:X"}
+        plan, wiki = src.sources_for("get_process", {}, out)
+        assert plan["graph"] == ["(Process {P})-[HAS_ACTIVITY]->(Activity {S})-[HAS_TASK]->(Task {T})"] and "graph" not in wiki
 
 
 class TestPlans:

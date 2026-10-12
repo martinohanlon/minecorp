@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from openai import OpenAI
 
-from .budget import classify, fit
+from .budget import classify, fit, without_private
 from .config import Settings
 from .graph import Graph
 from .models import Question, Result, Step
@@ -110,9 +110,10 @@ class Agent:
             output = {"error": message, "type": kind}
         else:
             output = fit(output, tool.budget)
-        text = json.dumps(output, separators=(",", ":"))
+        sources = [] if error else sources_for(name, args, output)        # from what the model saw, with the private keys still in
+        text = json.dumps(without_private(output), separators=(",", ":"))
         step = Step(turn=turn, tool=name, args=args, ms=int((time.monotonic() - started) * 1000),
-                    result_chars=len(text), error=error, sources=[] if error else sources_for(name, args, output))
+                    result_chars=len(text), error=error, sources=sources)
         return text, step
 
     @staticmethod

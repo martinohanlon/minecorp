@@ -50,6 +50,18 @@ def fit(result, budget: int):
     return out
 
 
+def without_private(value):
+    """The value with every dict key that starts with an underscore removed, at any depth.
+
+    A tool may add `_`-keys for the code that works out the player's sources (the category a recipe really requires, say); they are
+    removed here, after the sources are taken and before the model sees the result."""
+    if isinstance(value, dict):
+        return {k: without_private(v) for k, v in value.items() if not (isinstance(k, str) and k.startswith("_"))}
+    if isinstance(value, list):
+        return [without_private(v) for v in value]
+    return value
+
+
 def too_big() -> dict:
     return {"error": "The answer is too large to show. Ask about something narrower.", "type": BAD_ARGUMENT}
 

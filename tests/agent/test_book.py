@@ -84,6 +84,33 @@ class TestBook:
         assert all(page_size(p) <= book.MAX_PAGE_CHARS for p in b["pages"])
 
 
+class TestGraphLinesInTheBook:
+    SOURCE = {"kind": "game data", "label": "Recipes for Ender Eye",
+              "graph": ["(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})", "(Item {Ender Eye})<-[CREATES]-(Recipe)-[USES_STATION]->(Item {Crafting Table})"]}
+
+    def test_the_graph_lines_come_indented_under_their_source(self):
+        page = book.build_book([ex(sources=(self.SOURCE, GAME))])["pages"][2]
+        assert texts(page)[2:] == ["- game data: Recipes for Ender Eye",
+                                   "   (Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})",
+                                   "   (Item {Ender Eye})<-[CREATES]-(Recipe)-[USES_STATION]->(Item {Crafting Table})",
+                                   "- game data: Recipes for Iron Pickaxe"]
+
+    def test_a_graph_line_is_not_a_link_but_its_source_may_be(self):
+        wiki = {**WIKI, "graph": ["(Chunk)-[PART_OF]->(Section {Hole in the wall})"]}
+        lines = book.build_book([ex(sources=(wiki,))])["pages"][2]["lines"]
+        assert lines[2]["url"] == WIKI["url"] and "url" not in lines[3]
+
+    def test_a_page_of_patterns_stays_within_the_limit(self):
+        many = tuple({"kind": "game data", "label": f"How to get Item {n}", "graph": [f"(Item {{Item {n}}})<-[CREATES]-(Mine)-[REQUIRES]->(Block {{Block {n}}})"] * 4} for n in range(8))
+        b = book.build_book([ex(sources=many)])
+        assert all(page_size(p) <= book.MAX_PAGE_CHARS for p in b["pages"]) and len(b["pages"]) > 3
+
+    def test_a_pattern_is_never_cut_inside_a_name_when_it_fits_on_a_line(self):
+        b = book.build_book([ex(sources=(self.SOURCE,))])
+        joined = [t for p in b["pages"] for t in texts(p)]
+        assert "   (Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})" in joined
+
+
 class TestPaginate:
     def lines(self, *texts_):
         return [{"text": t} for t in texts_]

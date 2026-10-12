@@ -18,9 +18,19 @@ Each tool result is turned into sources by code (`agent/minecorp_agent/sources.p
 ```json
 {"requestId": "abc123def456", "answer": "...", "sources": [
   {"kind": "plan", "label": "Get to the Nether (draft, not confirmed)"},
-  {"kind": "wiki", "label": "Tutorial:Shelters > Nether portal room", "url": "https://minecraft.wiki/w/Tutorial:Shelters#Nether_portal_room"},
-  {"kind": "game data", "label": "Recipes for Iron Pickaxe"}]}
+  {"kind": "wiki", "label": "Tutorial:Shelters > Nether portal room", "url": "https://minecraft.wiki/w/Tutorial:Shelters#Nether_portal_room",
+   "graph": ["(Chunk)-[PART_OF]->(Section {Nether portal room})"]},
+  {"kind": "game data", "label": "Recipes for Ender Eye", "graph": [
+    "(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Blaze Powder})",
+    "(Item {Ender Eye})<-[CREATES]-(Recipe)-[REQUIRES]->(Item {Ender Pearl})",
+    "(Item {Ender Eye})<-[CREATES]-(Recipe)-[USES_STATION]->(Item {Crafting Table})"]}]}
 ```
+
+### The graph patterns
+
+A source that came from the graph also carries `graph`: the paths the tool walked, written compactly, `(Label {name})-[TYPE]->(Label)`, at most 4 a source. They are built in code from the tool's result (`agent/minecorp_agent/graphs.py`), so for a demo the player sees the shape of the graph behind the answer, not just a label. A name goes in `{}` and a node with no name is just its label. Where a recipe asks for a category (iron tools take "Iron Tool Materials") the pattern goes through it: `(ItemClass {Iron Tool Materials})-[INCLUDES]->(Item {Iron Ingot})`. The category is a private key (`_via`) on the tool result: the sources use it, the model never sees it (`budget.without_private`).
+
+Every pattern also has a Cypher form (`Pattern.cypher()`), and the tests run each one as a `MATCH` against the graph: a pattern shown must be a path that exists. A source with nothing to draw has no `graph` key, and a link out to a wiki page (the pages a plan came from) has none either. The patterns are display only: they are not the query the tool ran.
 
 | kind | what it is | label | link |
 |---|---|---|---|
@@ -50,7 +60,7 @@ Title "Agent notes", author "MineCorp Agent". Pages are text of at most **700 ch
 1. **Contents:** `Agent notes`, a blank line, `Last N question(s):`, then `1. <question, cut to 40 characters and "..." if longer>` for each, oldest first.
 2. For each exchange, oldest first:
    - the **answer pages**: `<n>. <the question in full>`, a blank line, then the answer's lines;
-   - the **sources pages**: `Sources for <n>:`, a blank line, then one line per source, `- <kind>: <label>`; or `No sources: I answered without looking anything up.`
+   - the **sources pages**: `Sources for <n>:`, a blank line, then one line per source, `- <kind>: <label>`, each followed by its graph patterns indented three spaces (not links); or `No sources: I answered without looking anything up.`
 
 In the game the contents lines jump to their page (a `change_page` click event) and a line with a `url` is a clickable link (an `open_url` click event; the game normally asks the player before opening a link). In the stub, `/explain` prints the pages with `[jumps to page n]` after a jump and the link on its own line, since a terminal cannot click.
 

@@ -27,7 +27,7 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 37 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 12 |
 
-Counts as of 2026-10-05: 1,762 tests (1,725 Python, 37 Java). The fast set is 1,143 Python tests plus the Java ones.
+Counts as of 2026-10-12: 1,889 tests (1,852 Python, 37 Java). The fast set is 1,219 Python tests plus the Java ones.
 
 ## Running
 

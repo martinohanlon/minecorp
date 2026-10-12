@@ -51,8 +51,12 @@ def paginate(lines: list[dict], limit: int = MAX_PAGE_CHARS) -> list[list[dict]]
 
 
 def source_lines(sources) -> list[dict]:
-    """'- wiki: Tutorial:Mining > Mining layers' for each source, a link when it has an address."""
-    return [{"text": f"- {s['kind']}: {s['label']}", **({"url": s["url"]} if s.get("url") else {})} for s in sources]
+    """'- wiki: Tutorial:Mining > Mining layers' for each source, a link when it has an address, then the graph patterns it walked."""
+    out = []
+    for s in sources:
+        out.append({"text": f"- {s['kind']}: {s['label']}", **({"url": s["url"]} if s.get("url") else {})})
+        out += [{"text": f"   {g}"} for g in s.get("graph", [])]
+    return out
 
 
 def build_book(exchanges: list[Exchange]) -> dict | None:

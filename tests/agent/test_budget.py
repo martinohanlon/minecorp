@@ -66,3 +66,20 @@ class TestClassify:
     def test_anything_else_is_a_failure_that_is_not_called_an_outage(self):
         kind, message = budget.classify(RuntimeError("bug"))
         assert kind == budget.FAILED and "not available" not in message
+
+
+class TestWithoutPrivate:
+    def test_underscore_keys_are_removed_at_every_depth(self):
+        value = {"a": 1, "_p": 2, "list": [{"x": 1, "_q": 3}, [{"_r": 4, "y": 5}]], "d": {"_s": 6, "z": 7}}
+        assert budget.without_private(value) == {"a": 1, "list": [{"x": 1}, [{"y": 5}]], "d": {"z": 7}}
+
+    def test_other_values_are_unchanged(self):
+        assert budget.without_private("text") == "text" and budget.without_private(None) is None and budget.without_private([1, "a"]) == [1, "a"]
+
+    def test_the_original_is_not_changed(self):
+        original = {"_p": 1, "a": {"_q": 2}}
+        budget.without_private(original)
+        assert original == {"_p": 1, "a": {"_q": 2}}
+
+    def test_a_key_that_only_contains_an_underscore_is_kept(self):
+        assert budget.without_private({"max_uses": 3, "a_b": 1}) == {"max_uses": 3, "a_b": 1}
