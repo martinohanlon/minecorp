@@ -1,9 +1,10 @@
-"""Tests for the notes in scripts/chat.py: the sources in a reply, the last five exchanges, and the pages /explain shows.
+"""Tests for /explain in scripts/chat.py: the stub asks the service for the book, as the plugin does, and shows its pages.
 
-The pages are the contract for the plugin's /agent-explain book (docs/explain-book.md): the plugin must build the same ones.
-No Minecraft, no OpenAI, no database."""
+The service keeps the history and builds the pages (tests/agent/test_history.py, test_book.py, test_explain_api.py); the stub only asks
+and draws. No Minecraft, no OpenAI, no database."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -13,9 +14,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import chat  # noqa: E402
 
-GAME = {"kind": "game data", "label": "Recipes for Iron Pickaxe"}
-WIKI = {"kind": "wiki", "label": "Tutorial:Shelters > Hole in the wall", "url": "https://minecraft.wiki/w/Tutorial:Shelters#Hole_in_the_wall"}
-PLAN = {"kind": "plan", "label": "Get to the Nether (draft, not confirmed)"}
+SECRET = "stub-explain-secret-0123456789"
+URL = "https://minecraft.wiki/w/Tutorial:Shelters#Hole_in_the_wall"
+BOOK = {"title": "Agent notes", "author": "MineCorp Agent", "pages": [
+    {"lines": [{"text": "Agent notes"}, {"text": ""}, {"text": "Last 1 question(s):"}, {"text": "1. how do I smelt iron?", "goto": 2}]},
+    {"lines": [{"text": "1. how do I smelt iron?"}, {"text": ""}, {"text": "Smelt it in a furnace."}]},
+    {"lines": [{"text": "Sources for 1:"}, {"text": ""}, {"text": "- game data: Recipes for Iron Pickaxe"},
+               {"text": "- wiki: Tutorial:Shelters > Hole in the wall", "url": URL}]}]}
+EMPTY = {"title": "Agent notes", "author": "MineCorp Agent", "pages": []}
 
 
 class Screen:
@@ -28,201 +34,179 @@ class Screen:
         return "\n".join(self.lines)
 
 
-def client_with(answer="Smelt it.", sources=None):
+def service(book=BOOK, status=200):
+    """A mock service that records what it was sent and answers /explain with the book."""
+    seen = []
+
     def handler(request):
-        body = {"requestId": "abc123", "answer": answer}
-        if sources is not None:
-            body["sources"] = sources
-        return httpx.Response(200, json=body)
-    return httpx.Client(transport=httpx.MockTransport(handler))
+        seen.append(request)
+        if request.url.path == "/explain":
+            return httpx.Response(status, text=book) if isinstance(book, str) else httpx.Response(status, json=book)
+        return httpx.Response(200, json={"requestId": "r1", "answer": "hello", "sources": [{"kind": "game data", "label": "x"}]})
+    return httpx.Client(transport=httpx.MockTransport(handler)), seen
 
 
-def talk(sources, question="how do I smelt iron?", answer="Smelt it in a furnace.", c=None):
-    c = c or chat.Chat("Alex", "http://x", "secret-0123456789")
-    c.client = client_with(answer, sources)                  # a new reply each time, with the sources given
-    c.ask(question)
-    return c
+def chat_for(client, name="Alex"):
+    return chat.Chat(name, "http://svc", SECRET, client=client)
 
 
-# --------------------------------------------------------------------------- the sources in a reply
+# --------------------------------------------------------------------------- asking the service
 
-class TestSourcesInAReply:
-    def test_the_sources_come_with_the_answer(self):
-        reply = chat.Chat("Alex", "http://x", "s", client=client_with(sources=[GAME, WIKI])).ask("q")
-        assert reply.sources == [GAME, WIKI]
+class TestAskingForTheBook:
+    def test_it_posts_the_players_uuid_with_the_secret_to_explain(self):
+        client, seen = service()
+        book, error = chat_for(client).explain()
+        (request,) = seen
+        assert error is None and request.method == "POST" and request.url.path == "/explain"
+        assert request.headers["X-MineCorp-Key"] == SECRET
+        assert json.loads(request.content) == {"playerUuid": chat.player_uuid("Alex")}
 
-    def test_a_reply_without_sources_has_none(self):
-        assert chat.Chat("Alex", "http://x", "s", client=client_with()).ask("q").sources == []
+    def test_the_book_comes_back_with_its_pages_links_and_jumps(self):
+        book, _ = chat_for(service()[0]).explain()
+        assert (book["title"], book["author"], len(book["pages"])) == ("Agent notes", "MineCorp Agent", 3)
+        assert book["pages"][0][3] == {"text": "1. how do I smelt iron?", "goto": 2}
+        assert book["pages"][2][3]["url"] == URL
 
-    @pytest.mark.parametrize("raw", ["text", 5, {"kind": "wiki"}, [None, 3, "x"], [{"kind": "wiki"}], [{"label": "x"}], [{"kind": 1, "label": "x"}],
-                                     [{"kind": "wiki", "label": "  "}]])
-    def test_odd_sources_are_dropped_not_fatal(self, raw):
-        reply = chat.Chat("Alex", "http://x", "s", client=client_with(sources=raw)).ask("q")
-        assert reply.error is None and reply.sources == []
+    def test_another_player_is_another_uuid(self):
+        client, seen = service()
+        chat_for(client, "Sam").explain()
+        assert json.loads(seen[0].content)["playerUuid"] == chat.player_uuid("Sam") != chat.player_uuid("Alex")
+
+    def test_an_empty_book_has_no_pages(self):
+        book, error = chat_for(service(EMPTY)[0]).explain()
+        assert error is None and book["pages"] == []
+
+    @pytest.mark.parametrize("status", [401, 422, 500])
+    def test_a_refusal_or_failure_is_a_reason_not_an_exception(self, status):
+        book, error = chat_for(service({"detail": "no"}, status)[0]).explain()
+        assert book is None and error.startswith(f"HTTP {status}")
+
+    @pytest.mark.parametrize("raw", ["not json at all", [1, 2], {"title": "x"}, {"pages": "x"}, "null"])
+    def test_a_reply_that_is_not_a_book_is_a_reason(self, raw):
+        book, error = chat_for(service(raw)[0]).explain()
+        assert book is None and error
+
+    def test_a_service_that_cannot_be_reached_is_a_reason(self):
+        def refuse(request):
+            raise httpx.ConnectError("refused")
+        book, error = chat_for(httpx.Client(transport=httpx.MockTransport(refuse))).explain()
+        assert book is None and "ConnectError" in error
+
+    def test_the_stub_keeps_no_history_of_its_own(self):
+        c = chat_for(service()[0])
+        c.ask("hello")
+        assert not hasattr(c, "history")
+
+    def test_a_reply_with_sources_is_still_just_the_answer(self):
+        reply = chat_for(service()[0]).ask("hello")
+        assert reply.error is None and reply.lines == ["hello"] and not hasattr(reply, "sources")
+
+
+class TestDirect:
+    def test_it_asks_the_function_it_was_given_for_the_players_book(self):
+        asked = []
+        c = chat.Chat("Alex", direct=lambda q, rid: ("hi", []), direct_explain=lambda uuid: asked.append(uuid) or BOOK)
+        book, error = c.explain()
+        assert error is None and asked == [chat.player_uuid("Alex")] and len(book["pages"]) == 3
+
+    def test_nothing_to_explain_is_an_empty_book(self):
+        book, _ = chat.Chat("Alex", direct=lambda q, rid: "hi", direct_explain=lambda uuid: None).explain()
+        assert book["pages"] == []
+
+    def test_a_failure_inside_is_a_reason(self):
+        def boom(uuid):
+            raise RuntimeError("no graph")
+        book, error = chat.Chat("Alex", direct=lambda q, rid: "hi", direct_explain=boom).explain()
+        assert book is None and "RuntimeError" in error
+
+    def test_direct_answers_may_be_text_or_text_and_sources(self):
+        assert chat.Chat("Alex", direct=lambda q, rid: "plain").ask("q").lines == ["plain"]
+        assert chat.Chat("Alex", direct=lambda q, rid: ("with sources", [{"kind": "wiki", "label": "x"}])).ask("q").lines == ["with sources"]
+
+
+# --------------------------------------------------------------------------- cleaning what came back
+
+class TestCleanBook:
+    def test_a_good_book_is_kept(self):
+        assert chat.clean_book(BOOK)["pages"][2][3] == {"text": "- wiki: Tutorial:Shelters > Hole in the wall", "url": URL}
 
     def test_only_a_web_address_is_kept_as_a_link(self):
-        got = chat.clean_sources([{"kind": "wiki", "label": "a", "url": "javascript:alert(1)"}, {"kind": "wiki", "label": "b", "url": "https://minecraft.wiki/w/X"},
-                                  {"kind": "wiki", "label": "c", "url": 5}])
-        assert got == [{"kind": "wiki", "label": "a"}, {"kind": "wiki", "label": "b", "url": "https://minecraft.wiki/w/X"}, {"kind": "wiki", "label": "c"}]
+        book = chat.clean_book({"pages": [{"lines": [{"text": "a", "url": "javascript:alert(1)"}, {"text": "b", "url": "file:///etc/passwd"},
+                                                      {"text": "c", "url": "http://x.y"}, {"text": "d", "url": 5}]}]})
+        assert book["pages"][0] == [{"text": "a"}, {"text": "b"}, {"text": "c", "url": "http://x.y"}, {"text": "d"}]
 
-    def test_direct_mode_takes_text_and_sources_or_just_text(self):
-        with_sources = chat.Chat("Alex", direct=lambda q, rid: ("hello", [GAME]))
-        assert with_sources.ask("q").sources == [GAME]
-        text_only = chat.Chat("Alex", direct=lambda q, rid: "hello")
-        reply = text_only.ask("q")
-        assert reply.lines == ["hello"] and reply.sources == []
+    @pytest.mark.parametrize("goto,kept", [(2, True), (1, True), (0, False), (-3, False), ("2", False), (True, False), (None, False), (2.5, False)])
+    def test_a_jump_is_a_page_number_from_one(self, goto, kept):
+        line = chat.clean_book({"pages": [{"lines": [{"text": "a", "goto": goto}]}]})["pages"][0][0]
+        assert ("goto" in line) is kept
 
-    def test_a_failed_request_has_no_sources_and_is_not_remembered(self):
-        c = chat.Chat("Alex", "http://x", "s", client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500, text="boom"))))
-        assert c.ask("q").error and c.history.recent() == []
+    def test_odd_lines_and_pages_are_dropped_not_fatal(self):
+        book = chat.clean_book({"pages": [{"lines": [None, 3, {"x": 1}, {"text": 5}, {"text": "ok"}]}, "page", {"lines": "x"}, {}]})
+        assert book["pages"] == [[{"text": "ok"}], [], [], []]
 
+    @pytest.mark.parametrize("raw", [None, "x", [], {}, {"pages": None}, {"pages": {}}])
+    def test_anything_that_is_not_a_book_is_none(self, raw):
+        assert chat.clean_book(raw) is None
 
-# --------------------------------------------------------------------------- the last five
-
-class TestHistory:
-    def test_each_answered_question_is_kept_oldest_first(self):
-        c = talk([GAME], question="one")
-        talk([WIKI], question="two", c=c)
-        assert [e.question for e in c.history.recent()] == ["one", "two"]
-        assert c.history.recent()[1].sources == [WIKI]
-
-    def test_only_the_last_five_are_kept(self):
-        c = chat.Chat("Alex", "http://x", "s", client=client_with())
-        for n in range(8):
-            c.ask(f"question {n}")
-        assert [e.question for e in c.history.recent()] == [f"question {n}" for n in range(3, 8)]
-
-    def test_the_limit_is_five(self):
-        assert chat.MAX_HISTORY == 5
-
-    def test_a_new_chat_has_no_history(self):
-        assert chat.Chat("Alex", "http://x", "s").history.recent() == []
-
-    def test_the_history_hands_out_a_copy(self):
-        c = talk([GAME])
-        c.history.recent().clear()
-        assert len(c.history.recent()) == 1
+    def test_a_missing_title_and_author_are_empty_strings(self):
+        assert chat.clean_book({"pages": []}) == {"title": "", "author": "", "pages": []}
 
 
-# --------------------------------------------------------------------------- the pages
+# --------------------------------------------------------------------------- showing it
 
-class TestBookPages:
-    def test_no_exchanges_no_pages(self):
-        assert chat.book_pages(chat.History()) == []
+class TestShowing:
+    def test_every_page_is_shown_with_its_jumps_and_links(self):
+        screen = Screen()
+        chat.explain(chat_for(service()[0]), screen.term)
+        assert screen.lines[0] == '(stub) book "Agent notes" by MineCorp Agent, 3 page(s)'
+        assert screen.text.count("--- page") == 3
+        assert "  1. how do I smelt iron?   [jumps to page 2]" in screen.lines
+        assert "  - wiki: Tutorial:Shelters > Hole in the wall" in screen.lines and f"    link: {URL}" in screen.lines
+        assert "  Smelt it in a furnace." in screen.lines
 
-    def test_a_contents_page_then_the_answer_and_the_sources(self):
-        c = talk([GAME, WIKI], question="how do I smelt iron?", answer="Smelt it in a furnace.")
-        pages = chat.book_pages(c.history)
-        assert pages[0] == "Agent notes\n\nLast 1 question(s):\n1. how do I smelt iron?"
-        assert pages[1] == "1. how do I smelt iron?\n\nSmelt it in a furnace."
-        assert pages[2] == "Sources for 1:\n\n- game data: Recipes for Iron Pickaxe\n- wiki: Tutorial:Shelters > Hole in the wall"
-        assert len(pages) == 3
+    def test_no_link_line_for_a_line_without_one(self):
+        screen = Screen()
+        chat.explain(chat_for(service()[0]), screen.term)
+        assert screen.text.count("link:") == 1
 
-    def test_links_are_not_in_the_text_of_a_page(self):
-        pages = chat.book_pages(talk([WIKI]).history)
-        assert not any("http" in p for p in pages)            # they are clickable in the game, not printed
-
-    def test_an_answer_without_lookups_says_so(self):
-        assert chat.NO_SOURCES in chat.book_pages(talk([]).history)[2]
-
-    def test_questions_are_numbered_in_order_and_the_contents_lists_them(self):
-        c = talk([GAME], question="first")
-        talk([PLAN], question="second", c=c)
-        pages = chat.book_pages(c.history)
-        assert pages[0] == "Agent notes\n\nLast 2 question(s):\n1. first\n2. second"
-        assert pages[1].startswith("1. first") and pages[3].startswith("2. second")
-        assert pages[4].startswith("Sources for 2:") and "- plan: Get to the Nether (draft, not confirmed)" in pages[4]
-
-    def test_a_long_question_is_cut_in_the_contents_only(self):
-        question = "how do I build a really quite elaborate automatic farm that sorts everything?"
-        pages = chat.book_pages(talk([GAME], question=question).history)
-        assert f"1. {question[:40]}..." in pages[0] and f"1. {question}" in pages[1]
-
-    def test_no_page_is_longer_than_the_limit(self):
-        answer = "\n".join(f"- line {n} " + "word " * 20 for n in range(30))
-        pages = chat.book_pages(talk([GAME] * 1, answer=answer).history)
-        assert len(pages) > 3 and all(len(p) <= chat.MAX_PAGE_CHARS for p in pages)
-
-    def test_a_long_answer_keeps_every_line(self):
-        lines = [f"line {n}" for n in range(200)]
-        pages = chat.book_pages(talk([], answer="\n".join(lines)).history)
-        joined = "\n".join(pages)
-        assert all(f"line {n}" in joined for n in (0, 99, 199))
-
-    def test_many_sources_split_onto_more_pages(self):
-        sources = [{"kind": "game data", "label": f"Recipes for Item Number {n} " + "x" * 40} for n in range(30)]
-        pages = chat.book_pages(talk(sources).history)
-        assert len([p for p in pages if "Recipes for Item Number" in p]) >= 2 and all(len(p) <= chat.MAX_PAGE_CHARS for p in pages)
-
-    def test_a_list_of_exchanges_works_too(self):
-        assert chat.book_pages([chat.Exchange("q", ["a"], [])])[1] == "1. q\n\na"
-
-
-class TestSplitPages:
-    def test_short_text_is_one_page(self):
-        assert chat.split_pages(["a", "b"]) == ["a\nb"]
-
-    def test_lines_break_between_lines(self):
-        assert chat.split_pages(["aaaa", "bbbb", "cccc"], limit=9) == ["aaaa\nbbbb", "cccc"]
-
-    def test_one_line_longer_than_a_page_is_cut_at_a_space(self):
-        pages = chat.split_pages(["one two three four five"], limit=10)
-        assert pages == ["one two", "three four", "five"]
-
-    def test_a_line_with_no_space_is_cut_at_the_limit(self):
-        assert chat.split_pages(["x" * 25], limit=10) == ["x" * 10, "x" * 10, "x" * 5]
-
-    def test_nothing_is_one_empty_page(self):
-        assert chat.split_pages([]) == [""]
-
-
-# --------------------------------------------------------------------------- /explain
-
-class TestExplainCommand:
     def test_nothing_to_explain_before_a_question(self):
         screen = Screen()
-        chat.explain(chat.Chat("Alex", "http://x", "s"), screen.term)
+        chat.explain(chat_for(service(EMPTY)[0]), screen.term)
         assert screen.lines == [chat.NOTHING_TO_EXPLAIN]
 
-    def test_it_shows_every_page_and_lists_the_links(self):
+    def test_a_failure_is_shown_as_the_player_would_see_it_with_the_reason_in_grey(self):
         screen = Screen()
-        chat.explain(talk([GAME, WIKI]), screen.term)
-        assert screen.lines[0] == '(stub) book "Agent notes" by MineCorp Agent, 3 page(s)'
-        assert screen.text.count("--- page") == 3 and "- wiki: Tutorial:Shelters > Hole in the wall" in screen.text
-        assert screen.lines[-1] == "(stub) links in the book (clickable in the game): https://minecraft.wiki/w/Tutorial:Shelters#Hole_in_the_wall"
+        chat.explain(chat_for(service({"detail": "unauthorized"}, 401)[0]), screen.term)
+        assert screen.lines[0] == chat.UNAVAILABLE and screen.lines[1].startswith("(stub) HTTP 401")
 
-    def test_no_links_line_when_there_are_none(self):
+    @pytest.mark.parametrize("command", ["/explain", "/agent-explain", "/EXPLAIN"])
+    def test_the_chat_command_works_under_both_names(self, command):
         screen = Screen()
-        chat.explain(talk([GAME]), screen.term)
-        assert "links in the book" not in screen.text
-
-    def test_the_repl_command_works_and_so_does_the_plugins_name(self):
-        for command in ("/explain", "/agent-explain", "/EXPLAIN"):
-            c = talk([GAME])
-            screen = Screen()
-            inputs = iter([command, "/quit"])
-            chat.repl(c, screen.term, read=lambda prompt: next(inputs))
-            assert 'book "Agent notes"' in screen.text, command
+        inputs = iter([command, "/quit"])
+        chat.repl(chat_for(service()[0]), screen.term, read=lambda prompt: next(inputs))
+        assert 'book "Agent notes"' in screen.text
 
     def test_help_mentions_it(self):
         assert "/explain" in chat.HELP
 
-    def test_asking_in_the_repl_then_explaining(self):
-        c = chat.Chat("Alex", "http://x", "s", client=client_with("Use a furnace.", [GAME]))
-        screen = Screen()
-        inputs = iter(["how do I smelt iron?", "/explain", "/quit"])
-        chat.repl(c, screen.term, read=lambda prompt: next(inputs))
-        assert "Use a furnace." in screen.text and "- game data: Recipes for Iron Pickaxe" in screen.text
 
-    def test_the_explain_option_shows_the_notes_after_one_question(self, monkeypatch, capsys):
+class TestCommandLine:
+    def test_the_explain_option_shows_the_book_after_one_question(self, monkeypatch, capsys):
         import minecorp_agent.core as core
-        monkeypatch.setattr(core, "answer_with_sources", lambda q, rid: ("Mine it.", [GAME]))
+        monkeypatch.setattr(core, "answer_with_sources", lambda q, rid: ("Mine it.", []))
+        monkeypatch.setattr(core, "explain", lambda uuid: BOOK)
         assert chat.main(["--direct", "--explain", "how", "do", "I", "get", "iron?"]) == 0
         out = capsys.readouterr().out
-        assert "Mine it." in out and 'book "Agent notes"' in out and "- game data: Recipes for Iron Pickaxe" in out
+        assert "Mine it." in out and 'book "Agent notes"' in out and f"link: {URL}" in out
 
     def test_a_refused_question_is_not_explained(self, monkeypatch, capsys):
         import minecorp_agent.core as core
         monkeypatch.setattr(core, "answer_with_sources", lambda q, rid: pytest.fail("not asked"))
         assert chat.main(["--direct", "--explain", "x" * 600]) == 1
         assert "book" not in capsys.readouterr().out
+
+    def test_without_the_option_no_book_is_asked_for(self, monkeypatch, capsys):
+        import minecorp_agent.core as core
+        monkeypatch.setattr(core, "answer_with_sources", lambda q, rid: ("Mine it.", []))
+        monkeypatch.setattr(core, "explain", lambda uuid: pytest.fail("not asked for"))
+        assert chat.main(["--direct", "how", "do", "I", "get", "iron?"]) == 0

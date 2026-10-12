@@ -9,7 +9,7 @@
 - The book shows **sources only**: not the tool calls, their arguments, timings or tokens. Those stay in the developer's `/trace` in the chat stub.
 - No unprompted footer in the answer.
 - **The book is opened, not given**: no item, nothing to carry or drop. (The first proposal also gave a copy; the owner chose open only.)
-- The book holds the **last five** questions, answers and sources. They are kept **in memory**, per player; neo4j-agent-memory is planned for the agent, so the history sits behind a small `History` class (the stub) and interface (the plugin) that can be swapped.
+- The book holds the **last five** questions, answers and sources. The **agent service keeps them**, per player, **in memory** for now (not the plugin): it already knows the player, it is where neo4j-agent-memory will live, and the page layout is then written once. The plugin only asks for the book and draws it. `History` (`agent/minecorp_agent/history.py`) is the one place to replace when the memory comes. (The first version kept the history in the client; the owner pointed out the service should.)
 
 ## Sources
 
@@ -30,6 +30,19 @@ Each tool result is turned into sources by code (`agent/minecorp_agent/sources.p
 
 Each source appears once, in the order the agent looked things up, at most 8. A search by name and the list of plans are not sources; a lookup that failed is not a source. An answer with no sources (a greeting, an off-topic question) has an empty list. A source's `url` is only ever an `http://` or `https://` address (the game ignores any other kind of link), and the stub and plugin drop anything else. The plugin ignores fields it does not know, so the older plugin keeps working with the new reply.
 
+## Asking for the book
+
+`POST /explain` (header `X-MineCorp-Key`, like `/ask`), body `{"playerUuid": "..."}`. The service answers with the book as plain data, and `pages` is empty when the player has asked nothing yet (the plugin then says so):
+
+```json
+{"title": "Agent notes", "author": "MineCorp Agent", "pages": [
+  {"lines": [{"text": "Agent notes"}, {"text": ""}, {"text": "Last 1 question(s):"}, {"text": "1. How do I get to the Nether?", "goto": 2}]},
+  {"lines": [{"text": "1. How do I get to the Nether?"}, {"text": ""}, {"text": "- Build and light a Nether portal..."}]},
+  {"lines": [{"text": "Sources for 1:"}, {"text": ""}, {"text": "- wiki: Tutorial:Nether portals", "url": "https://minecraft.wiki/w/Tutorial:Nether_portals"}]}]}
+```
+
+A line is one line of text. `url` makes it a link to open, and `goto` makes it jump to that page (counted from 1). Only a good answer is remembered: a failure or a run that hit its turn limit is not. Asking for the book is not itself remembered. Players only ever see their own: the book is built from the uuid in the request, and the plugin is the only caller (it holds the shared secret).
+
 ## The pages
 
 Title "Agent notes", author "MineCorp Agent". Pages are text of at most **700 characters** (a written book holds about 1,024), split between lines, or at a space inside a very long line:
@@ -39,15 +52,18 @@ Title "Agent notes", author "MineCorp Agent". Pages are text of at most **700 ch
    - the **answer pages**: `<n>. <the question in full>`, a blank line, then the answer's lines;
    - the **sources pages**: `Sources for <n>:`, a blank line, then one line per source, `- <kind>: <label>`; or `No sources: I answered without looking anything up.`
 
-In the game the contents lines jump to their page and a `wiki` source's line is a clickable link (an `open_url` click event; the game asks the player before opening a link). In the stub, `/explain` prints the pages and lists the links underneath, since a terminal cannot click.
+In the game the contents lines jump to their page (a `change_page` click event) and a line with a `url` is a clickable link (an `open_url` click event; the game normally asks the player before opening a link). In the stub, `/explain` prints the pages with `[jumps to page n]` after a jump and the link on its own line, since a terminal cannot click.
 
 ## Where it lives
 
 | piece | where | status |
 |---|---|---|
 | sources from each tool result | `agent/minecorp_agent/sources.py`, collected on each `Step` and the `Result` | built |
-| sources in the reply | `AskResponse.sources` in `agent/minecorp_agent/app.py` | built |
-| the last five and the pages | `scripts/chat.py`: `History`, `book_pages`, `/explain` | built (the reference) |
-| the book in Minecraft | the plugin: a per-player history, a class that builds the pages (so it can be tested without Minecraft), `/agent-explain` with permission `minecorp.explain`, `Audience#openBook` | next |
+| the last five per player | `agent/minecorp_agent/history.py` (`History`, `Exchange`), filled by `core.answer_with_sources` | built |
+| the pages | `agent/minecorp_agent/book.py` (`build_book`), returned by `core.explain` and `POST /explain` | built |
+| the stub | `scripts/chat.py`: `Chat.explain()` asks the service (or calls `core.explain` with `--direct`), `/explain` shows the pages | built |
+| the book in Minecraft | the plugin: `/agent-explain` (permission `minecorp.explain`) posts the player's uuid to `/explain` and opens the book with `Audience#openBook`, drawing `url` as `open_url` and `goto` as `change_page` | next |
 
 The developer's trace (`/trace`, `agent/logs/traces.jsonl`) also records each step's sources now.
+
+A later benefit of the service owning the history: it could give the model the previous exchange, so a follow-up such as "and for stone?" makes sense. That is a separate change.

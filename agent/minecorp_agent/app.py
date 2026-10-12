@@ -9,7 +9,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import get_settings
-from .core import answer_with_sources
+from .book import AUTHOR, TITLE
+from .core import answer_with_sources, explain as explain_book
 from .models import Question
 
 log = logging.getLogger("minecorp.agent")
@@ -39,6 +40,29 @@ class AskResponse(BaseModel):
     sources: list[Source] = []
 
 
+class ExplainRequest(BaseModel):
+    """Body sent by the plugin when a player asks how their answers were made."""
+    playerUuid: str = Field(min_length=1, max_length=64)
+
+
+class BookLine(BaseModel):
+    """One line of a page: a link when it has a url, a jump to another page when it has a goto (counted from 1)."""
+    text: str
+    url: str | None = None
+    goto: int | None = None
+
+
+class BookPage(BaseModel):
+    lines: list[BookLine]
+
+
+class Book(BaseModel):
+    """The book the plugin opens for the player (see book.py); no pages means there is nothing to explain yet."""
+    title: str
+    author: str
+    pages: list[BookPage] = []
+
+
 @app.get("/health")
 def health() -> dict:
     """Liveness check; needs no secret and reveals nothing."""
@@ -59,3 +83,11 @@ def ask(body: AskRequest) -> AskResponse:
     log.info("ask %s player=%s question=%r", request_id, body.playerName, body.question)
     text, sources = answer_with_sources(Question(body.playerUuid, body.playerName, body.sessionId, body.question), request_id)
     return AskResponse(requestId=request_id, answer=text, sources=[Source(**s) for s in sources])
+
+
+@app.post("/explain", response_model=Book, response_model_exclude_none=True, dependencies=[Depends(require_key)])
+def explain(body: ExplainRequest) -> Book:
+    """The book of a player's last answers, their questions and sources. Requires the shared secret in X-MineCorp-Key."""
+    log.info("explain player=%s", body.playerUuid)
+    book = explain_book(body.playerUuid)
+    return Book(**book) if book else Book(title=TITLE, author=AUTHOR, pages=[])
