@@ -345,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
         problem = chat.healthy() if chat.configured else None
         if problem:
             term.say(f"(stub) the agent service at {chat.url} is not answering ({problem}).", "red")
-            term.say("(stub) start it with ./scripts/run-agent.ps1, or add --direct to run the agent in this process.", "grey")
+            term.say("(stub) start it with ./scripts/start-agent.ps1 (or .sh), or add --direct to run the agent in this process.", "grey")
             return 1
     if args.question:
         ok = respond(chat, " ".join(args.question), term, args.trace)

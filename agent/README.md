@@ -7,7 +7,7 @@ Receives questions from the Minecraft plugin over HTTP and answers them. **Stub 
 From the project root (needs the `.venv`; `python -m venv .venv` if it does not exist):
 
 ```powershell
-./scripts/run-agent.ps1
+./scripts/start-agent.ps1
 ```
 
 It installs the requirements, reads settings from `.env` and listens on `http://127.0.0.1:8080`. Stop it with Ctrl+C.
@@ -41,9 +41,9 @@ curl -X POST http://127.0.0.1:8080/ask -H "Content-Type: application/json" -H "X
 `scripts/chat.py` stands in for the plugin, so the agent can be tried from a terminal:
 
 ```powershell
-./scripts/chat.ps1                                   # a chat (the agent service must be running: ./scripts/run-agent.ps1)
-./scripts/chat.ps1 how do I make a bed?              # ask once and exit
-./scripts/chat.ps1 -Direct -Trace                    # no service: run the agent in this process, and show what it did
+./scripts/chat-with-agent.ps1                                   # a chat (the agent service must be running: ./scripts/start-agent.ps1)
+./scripts/chat-with-agent.ps1 how do I make a bed?              # ask once and exit
+./scripts/chat-with-agent.ps1 -Direct -Trace                    # no service: run the agent in this process, and show what it did
 ```
 
 It sends what the plugin sends (the same `POST /ask` with the shared secret from `.env`, the player's name and a uuid made from it) and shows what the plugin shows: "MineCorp agent: thinking...", the answer as gold lines, and "The agent is not available right now. Try again later." when it fails. It applies the plugin's rules (a question is required, at most 500 characters, a leading `/agent ` is accepted). Because it is a developer's tool it adds, in grey and marked `(stub)`, what a player never sees: why a request failed (for example `HTTP 401`), how long it took, whether the answer breaks the chat style (more than 6 lines, a line over 100 characters, markdown), and with `--trace` the agent's tool calls, timings and tokens, read from `agent/logs/traces.jsonl`. In the chat, `/explain` asks the service for the book the plugin's `/agent-explain` will open (the last five questions, answers and sources, kept by the service; `--explain` does it after one question), `/trace` turns the developer trace on and off, `/name Alex` changes the player, `/help` and `/quit` do what they say. `--url` (or `AGENT_URL`) points at a service elsewhere.
@@ -106,4 +106,4 @@ cd agent
 python -m evals.run_evals
 ```
 
-Run the tests from the project root with `./scripts/test.ps1` (add `-Integration` for the graph tests). More in [../tests/README.md](../tests/README.md).
+Run the tests from the project root with `./scripts/run-tests.ps1` (add `-Integration` for the graph tests). More in [../tests/README.md](../tests/README.md).

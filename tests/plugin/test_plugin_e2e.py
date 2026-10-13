@@ -3,7 +3,7 @@
 It builds the plugin, copies the server files from server/ into .test-server/ (first run only, about 230 MB),
 starts Paper on a free port with the plugin and a config pointing at the stub, then types commands on the server
 console and checks both what the player would see and what the agent received. Your real server (server/) is not
-touched and may keep running. Needs: Java 25, Maven, and server/ set up once with scripts/start.ps1.
+touched and may keep running. Needs: Java 25, Maven, and server/ set up once with scripts/start-server.ps1.
 
 Run with:  pytest -m e2e      (about a minute)
 """
@@ -168,7 +168,7 @@ def console(stub):
         pytest.skip("Maven not found")
     jars = sorted(SERVER_DIR.glob("paper-*.jar"))
     if not jars or not (SERVER_DIR / "libraries").exists():
-        pytest.skip("server/ is not set up (run scripts/start.ps1 once)")
+        pytest.skip("server/ is not set up (run scripts/start-server.ps1 once)")
     eula = SERVER_DIR / "eula.txt"
     if not eula.exists() or "eula=true" not in eula.read_text():
         pytest.skip("the Minecraft EULA has not been accepted in server/eula.txt")

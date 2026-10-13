@@ -3,9 +3,9 @@
   Try the MineCorp agent from a terminal, without Minecraft (a stand-in for the plugin).
 
 .EXAMPLE
-  ./scripts/chat.ps1                              # a chat; the agent service must be running (./scripts/run-agent.ps1)
-  ./scripts/chat.ps1 how do I make a bed?         # ask once
-  ./scripts/chat.ps1 -Trace -Direct               # run the agent in this process, and show what it did
+  ./scripts/chat-with-agent.ps1                              # a chat; the agent service must be running (./scripts/start-agent.ps1)
+  ./scripts/chat-with-agent.ps1 how do I make a bed?         # ask once
+  ./scripts/chat-with-agent.ps1 -Trace -Direct               # run the agent in this process, and show what it did
 #>
 param(
     [switch]$Direct,

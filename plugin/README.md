@@ -13,7 +13,7 @@ A thin [Paper](https://papermc.io) plugin that connects Minecraft to the MineCor
 
 - A JDK 25 on `PATH` (`javac -version`). Install one with `./scripts/install-java.ps1`.
 - Maven 3.9+ on `PATH` (`mvn -version`). Maven uses `JAVA_HOME` if it is set, otherwise the `java` on `PATH`; `mvn -version` should report Java 25.
-- The server set up as described in the project root: `./scripts/start.ps1 -AcceptEula` downloads Paper into `server/` on first run.
+- The server set up as described in the project root: `./scripts/start-server.ps1 -AcceptEula` downloads Paper into `server/` on first run.
 
 ## Build
 
@@ -55,7 +55,7 @@ You need three things running: Neo4j is **not** required for the stub.
 1. **Agent service** (leave it running):
 
    ```powershell
-   ./scripts/run-agent.ps1
+   ./scripts/start-agent.ps1
    ```
 
 2. **Build and install the plugin.** Stop the Minecraft server first (a running server keeps the old jar open), then:
@@ -67,7 +67,7 @@ You need three things running: Neo4j is **not** required for the stub.
 3. **Start the Minecraft server:**
 
    ```powershell
-   ./scripts/start.ps1 -AcceptEula
+   ./scripts/start-server.ps1 -AcceptEula
    ```
 
    (`-AcceptEula` is only needed until `server/eula.txt` says `eula=true`.) The startup log should show `[MineCorp] MineCorp plugin enabled (agent: http://127.0.0.1:8080)`.
@@ -121,7 +121,7 @@ plugin/
 
 When the server is moved to a new Paper version, update all of these together:
 
-1. [scripts/paper-version.txt](../scripts/paper-version.txt), or run `./scripts/start.ps1 -Update`.
+1. [scripts/paper-version.txt](../scripts/paper-version.txt), or run `./scripts/start-server.ps1 -Update`.
 2. `paper.api.version` in [pom.xml](pom.xml). List the available builds at <https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/>.
 3. `api-version` in [src/main/resources/plugin.yml](src/main/resources/plugin.yml) (the major.minor, e.g. `'26.2'`).
 
@@ -158,4 +158,4 @@ mvn -B test                      # 54 JUnit tests, about 5 seconds
 
 The end-to-end test (`tests/plugin/test_plugin_e2e.py`) runs the built plugin in a real Paper server with a stub agent.
 
-Or from the project root: `./scripts/test.ps1`; add `-E2E` to also start a real Paper server with this plugin and a stub agent (about 25 seconds, on a random port, so your own server can keep running). Details in [../tests/README.md](../tests/README.md).
+Or from the project root: `./scripts/run-tests.ps1`; add `-E2E` to also start a real Paper server with this plugin and a stub agent (about 25 seconds, on a random port, so your own server can keep running). Details in [../tests/README.md](../tests/README.md).

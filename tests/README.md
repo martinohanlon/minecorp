@@ -1,6 +1,6 @@
 # Tests
 
-One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -All` (everything, about a minute).
+One command runs them: `./scripts/run-tests.ps1` (fast set) or `./scripts/run-tests.ps1 -All` (everything, about a minute).
 
 | Layer | Where | Tool | What it needs | Time | Count |
 |---|---|---|---|---|---|
@@ -22,21 +22,22 @@ One command runs them: `./scripts/test.ps1` (fast set) or `./scripts/test.ps1 -A
 | **Wiki graph tests** | `tests/loader/test_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 10 s | 37 |
 | **Link job graph tests** | `tests/loader/test_link_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 25 s | 100 |
 | **Chat stub tests** | `tests/scripts/test_chat.py`, `test_chat_explain.py` | pytest | nothing (mock HTTP, or the real app with a fake agent) | about 1 s | 141 |
+| **Script tests** | `tests/scripts/test_build_graph.py` | pytest | nothing (the loaders are not run) | under 1 s | 43 |
 | **Explain tests** | `tests/agent/test_history.py`, `test_book.py`, `test_explain_api.py` | pytest | nothing (fake agent behind the real core and HTTP layer) | about 2 s | 48 |
 | **Source tests** | `tests/agent/test_sources.py` (unit), `test_sources_graph.py` (marker `integration`) | pytest | nothing; Neo4j and the jar for the graph ones | about 20 s | 50 |
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 54 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 13 |
 
-Counts as of 2026-10-13: 1,907 tests (1,853 Python, 54 Java). The fast set is 1,219 Python tests plus the Java ones.
+Counts as of 2026-10-13: 1,950 tests (1,896 Python, 54 Java). The fast set is about 1,262 Python tests plus the Java ones.
 
 ## Running
 
 ```powershell
-./scripts/test.ps1                 # loader and agent unit tests, real jar tests, plugin JUnit tests
-./scripts/test.ps1 -Integration    # also rebuild the graph in a throwaway database and check it
-./scripts/test.ps1 -E2E            # also start a real Paper server with the plugin
-./scripts/test.ps1 -All
-./scripts/test.ps1 -PythonOnly     # skip Maven
+./scripts/run-tests.ps1                 # loader and agent unit tests, real jar tests, plugin JUnit tests
+./scripts/run-tests.ps1 -Integration    # also rebuild the graph in a throwaway database and check it
+./scripts/run-tests.ps1 -E2E            # also start a real Paper server with the plugin
+./scripts/run-tests.ps1 -All
+./scripts/run-tests.ps1 -PythonOnly     # skip Maven
 ```
 
 Or by hand: `.venv\Scripts\python -m pytest` (fast set; `pytest.ini` leaves out `integration` and `e2e`), `pytest -m integration`, `pytest -m e2e`, `pytest -m ""` for all Python tests, and `mvn -B test` in `plugin/`. Install the test tools with `pip install -r requirements-dev.txt`.

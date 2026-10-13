@@ -48,6 +48,8 @@ Use `--dry-run` to see the numbers without writing.
 
 Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.json`.
 
+**To rebuild everything in one go, run `./scripts/build-graph.ps1` (or `.sh`)**: it runs the steps below in order, loads `.env` for you, asks before wiping, and tells you where to carry on (`--from <step>`) if one fails; see [../scripts/README.md](../scripts/README.md).
+
 The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py --pages` (free when the embedding cache is intact), then run `link_wiki.py`.
 
 ## Trade loader: villager and wandering trader trades (v0.12)
@@ -193,7 +195,7 @@ The neo4j driver is first-class, `zipfile` and `json` in the standard library re
 
 ## Tests
 
-`./scripts/test.ps1` runs the loader tests (125 unit tests, 37 against the real jar), and `-Integration` also rebuilds the whole graph in a throwaway database and checks it. See [../tests/README.md](../tests/README.md).
+`./scripts/run-tests.ps1` runs the loader tests (125 unit tests, 37 against the real jar), and `-Integration` also rebuilds the whole graph in a throwaway database and checks it. See [../tests/README.md](../tests/README.md).
 
 | File (in `tests/loader/`) | Needs | What it checks |
 |---|---|---|

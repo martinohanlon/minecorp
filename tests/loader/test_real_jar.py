@@ -1,7 +1,7 @@
 """Tests against the real Paper jar: invariants that must hold for any Minecraft version, plus
 known vanilla facts that act as canaries when the server version is changed.
 
-Skipped when the jar has not been downloaded (run scripts/start.ps1 once).
+Skipped when the jar has not been downloaded (run scripts/start-server.ps1 once).
 """
 from __future__ import annotations
 

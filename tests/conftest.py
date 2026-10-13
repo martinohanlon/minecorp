@@ -17,7 +17,7 @@ JAR = ROOT / "server" / "versions" / "26.2" / "paper-26.2.jar"
 def jar_path() -> Path:
     """The real Paper jar. Tests that need it are skipped when it has not been downloaded."""
     if not JAR.exists():
-        pytest.skip(f"Paper jar not found: {JAR} (run scripts/start.ps1 once)")
+        pytest.skip(f"Paper jar not found: {JAR} (run scripts/start-server.ps1 once)")
     return JAR
 
 

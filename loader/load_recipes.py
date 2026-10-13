@@ -420,7 +420,7 @@ def main():
 
     seeds = a.seed or ["minecraft:iron_pickaxe"]
     if not a.jar.exists():
-        sys.exit(f"Jar not found: {a.jar}\nRun scripts/start.ps1 once to download Paper.")
+        sys.exit(f"Jar not found: {a.jar}\nRun scripts/start-server.ps1 once to download Paper.")
 
     raw_recipes, tags = read_jar(a.jar)
     recipes = {rid: normalise(rid, r) for rid, r in raw_recipes.items()}

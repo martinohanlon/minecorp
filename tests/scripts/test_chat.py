@@ -417,7 +417,7 @@ class TestMain:
         monkeypatch.setattr(chat.Chat, "ask", lambda self, q: pytest.fail("must not ask"))
         assert chat.main(["hi"]) == 1
         out = capsys.readouterr().out
-        assert "is not answering (ConnectError: refused)" in out and "run-agent.ps1" in out and "--direct" in out
+        assert "is not answering (ConnectError: refused)" in out and "start-agent.ps1" in out and "--direct" in out
 
     def test_without_a_secret_the_plugin_message_is_shown(self, monkeypatch, capsys):
         monkeypatch.setattr(chat.Chat, "ask", lambda self, q: pytest.fail("must not ask"))
@@ -445,7 +445,7 @@ class TestMain:
         assert "Steve is in the MineCorp stub chat" in capsys.readouterr().out
 
     def test_the_shipped_powershell_wrapper_exists_and_passes_the_options_on(self):
-        script = (Path(chat.__file__).parent / "chat.ps1").read_text(encoding="utf-8")
+        script = (Path(chat.__file__).parent / "chat-with-agent.ps1").read_text(encoding="utf-8")
         assert "chat.py" in script and "--direct" in script and "--trace" in script and "--name" in script
 
 

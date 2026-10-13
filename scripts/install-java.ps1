@@ -22,4 +22,4 @@ $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [En
 
 Write-Host "`nInstalled. Verifying:"
 cmd /c "java -version 2>&1"
-Write-Host "`nOpen a new terminal before running start.ps1 so PATH is picked up."
+Write-Host "`nOpen a new terminal before running start-server.ps1 so PATH is picked up."

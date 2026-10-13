@@ -17,8 +17,8 @@
   Skip the plugin's Maven tests.
 
 .EXAMPLE
-  ./scripts/test.ps1              # fast: loader unit tests, tests against the Paper jar, plugin JUnit tests
-  ./scripts/test.ps1 -All         # everything
+  ./scripts/run-tests.ps1              # fast: loader unit tests, tests against the Paper jar, plugin JUnit tests
+  ./scripts/run-tests.ps1 -All         # everything
 #>
 [CmdletBinding()]
 param(

@@ -7,3 +7,6 @@
 # Binary
 *.jar binary
 *.png binary
+
+# Shell scripts must keep LF (a CRLF breaks the shebang on Linux and macOS)
+*.sh text eol=lf
