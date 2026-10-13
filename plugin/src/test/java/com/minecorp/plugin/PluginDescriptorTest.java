@@ -62,8 +62,16 @@ class PluginDescriptorTest {
     }
 
     @Test
-    void theOnlyDeclaredCommandIsAgent() throws Exception {
-        assertEquals(java.util.Set.of("agent"), load("plugin.yml").getConfigurationSection("commands").getKeys(false));
+    void theDeclaredCommandsAreAgentAndAgentExplain() throws Exception {
+        assertEquals(java.util.Set.of("agent", "agent-explain"), load("plugin.yml").getConfigurationSection("commands").getKeys(false));
+    }
+
+    @Test
+    void theExplainCommandHasItsOwnPermissionGrantedToEveryone() throws Exception {
+        YamlConfiguration yml = load("plugin.yml");
+        assertEquals("minecorp.explain", yml.getString("commands.agent-explain.permission"));
+        assertEquals("/agent-explain", yml.getString("commands.agent-explain.usage"));
+        assertEquals("true", String.valueOf(yml.get("permissions.minecorp.explain.default")));
     }
 
     @Test

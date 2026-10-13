@@ -87,8 +87,14 @@ Behaviours to expect:
 | A second question while one is still being answered | "Still thinking about your last question..." |
 | Agent service not running or times out | "The agent is not available right now. Try again later." (details in the server log) |
 | `shared-secret` empty | "The agent is not configured yet. Ask an admin." |
+| `/agent-explain` before any question | "Nothing to show yet. Ask something with /agent <question> first." |
+| `/agent-explain` from the server console | "Only a player can open the notes book." |
 
 The permission `minecorp.agent` controls who may use the command (everyone by default).
+
+### `/agent-explain`
+
+Opens a book with the player's last five questions, answers and the sources behind them (for a graph source, the paths the tool walked). The plugin only posts the player's uuid to `POST /explain` and opens what comes back (`Audience#openBook`: the book is opened, not given as an item); the agent service keeps the history and lays out the pages ([docs/explain-book.md](../docs/explain-book.md)). A line with an `http(s)` address opens it (`open_url`, blue and underlined; the game asks before opening) and a contents line jumps to its page (`change_page`). Any other kind of address from the service is dropped. Permission `minecorp.explain` (everyone by default).
 
 After rebuilding, **restart the server**. Avoid `/reload`, which Paper discourages for plugins.
 
@@ -100,10 +106,12 @@ plugin/
   src/main/resources/plugin.yml                Plugin descriptor: name, main class, api-version, command, permission
   src/main/resources/config.yml                Default config (copied to the server on first start)
   src/main/java/com/minecorp/plugin/
-    MineCorpPlugin.java                        Entry point and the /agent command; connects the pieces below to Bukkit
+    MineCorpPlugin.java                        Entry point and the /agent and /agent-explain commands; connects the pieces below to Bukkit
     AskGuard.java                              The rules for accepting a question (usage, length, configured, one at a time)
     Replies.java                               Splits an answer into chat lines
-    AgentClient.java                           HTTP client for the agent service (POST /ask)
+    AgentClient.java                           HTTP client for the agent service (POST /ask, POST /explain)
+    ExplainBook.java                           The book from /explain as plain data; keeps only http(s) links and jumps to real pages
+    BookRender.java                            Turns that into an Adventure book with the click events
   src/test/java/com/minecorp/plugin/           JUnit tests (see ../tests/README.md)
 ```
 
@@ -136,13 +144,15 @@ The agent service gets an LLM loop and graph tools; the plugin does not change. 
 
 ```powershell
 cd plugin
-mvn -B test                      # 37 JUnit tests, about 5 seconds
+mvn -B test                      # 54 JUnit tests, about 5 seconds
 ```
 
 | Test class (in `plugin/src/test/java/com/minecorp/plugin/`) | What it checks |
 |---|---|
 | `AskGuardTest` | empty question, 500-character limit (exactly 500 allowed), not configured, one question at a time per sender, the order the rules are checked in, and 16 simultaneous attempts letting only one through |
 | `AgentClientTest` | against a local HTTP server: method, path, secret header, JSON body and escaping, the answer, trailing slashes, and every failure (non-200, not JSON, no answer, answer not a string, empty body, timeout, nothing listening) |
+| `ExplainBookTest` | reading the book: title and author defaults, line order, only `http`/`https` links kept (not `javascript:`, `file:`...), jumps only to pages that exist, every malformed shape an IO error |
+| `BookRenderTest` | a link line opens its address, a jump line changes page, a plain line has no click, page and book layout |
 | `RepliesTest` | how an answer splits into chat lines |
 | `PluginDescriptorTest` | `plugin.yml` and `config.yml` as packaged: main class exists, version filled in, `api-version` matches Paper, the `/agent` command and permission, no secret shipped |
 

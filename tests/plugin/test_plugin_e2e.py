@@ -294,6 +294,15 @@ def test_a_slow_agent_times_out_and_the_player_can_ask_again(console):
     console.wait_for("Echo: after the timeout", again)
 
 
+def test_the_explain_command_is_for_players_and_the_console_is_told_so_without_asking(console, stub):
+    # opening a book needs a real player; the console only proves the command is registered and guarded
+    before = len(stub.requests)
+    since = console.send("agent-explain")
+    console.wait_for("Only a player can open the notes book.", since)
+    time.sleep(0.5)
+    assert len(stub.requests) == before
+
+
 def test_an_unreachable_agent_is_reported_and_does_not_hang_the_server(console, stub):
     stub.stop()
     since = console.send("agent anyone there")

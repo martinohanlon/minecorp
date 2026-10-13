@@ -20,11 +20,14 @@ final class AgentClient {
             .connectTimeout(Duration.ofSeconds(5))
             .build();
     private final URI askUri;
+    private final URI explainUri;
     private final String sharedSecret;
     private final Duration timeout;
 
     AgentClient(String baseUrl, String sharedSecret, Duration timeout) {
-        this.askUri = URI.create(baseUrl.replaceAll("/+$", "") + "/ask");
+        String base = baseUrl.replaceAll("/+$", "");
+        this.askUri = URI.create(base + "/ask");
+        this.explainUri = URI.create(base + "/explain");
         this.sharedSecret = sharedSecret;
         this.timeout = timeout;
     }
@@ -41,7 +44,25 @@ final class AgentClient {
         body.addProperty("sessionId", sessionId);
         body.addProperty("question", question);
 
-        HttpRequest request = HttpRequest.newBuilder(askUri)
+        JsonObject json = post(askUri, body);
+        if (json == null || !json.has("answer") || !json.get("answer").isJsonPrimitive()) {
+            throw new IOException("Agent reply had no answer");
+        }
+        return json.get("answer").getAsString();
+    }
+
+    /**
+     * Asks for the book of this player's last answers and their sources (POST /explain). The service keeps the history and
+     * builds the pages; the book has no pages when the player has asked nothing yet. Same failures as {@link #ask}.
+     */
+    ExplainBook explain(String playerUuid) throws IOException, InterruptedException {
+        JsonObject body = new JsonObject();
+        body.addProperty("playerUuid", playerUuid);
+        return ExplainBook.parse(post(explainUri, body));
+    }
+
+    private JsonObject post(URI uri, JsonObject body) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
                 .header("X-MineCorp-Key", sharedSecret)
@@ -52,15 +73,10 @@ final class AgentClient {
         if (response.statusCode() != 200) {
             throw new IOException("Agent returned HTTP " + response.statusCode());
         }
-        JsonObject json;
         try {
-            json = GSON.fromJson(response.body(), JsonObject.class);
+            return GSON.fromJson(response.body(), JsonObject.class);
         } catch (JsonParseException e) {
             throw new IOException("Agent reply was not valid JSON", e);
         }
-        if (json == null || !json.has("answer") || !json.get("answer").isJsonPrimitive()) {
-            throw new IOException("Agent reply had no answer");
-        }
-        return json.get("answer").getAsString();
     }
 }

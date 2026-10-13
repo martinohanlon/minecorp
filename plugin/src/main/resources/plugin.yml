@@ -9,8 +9,15 @@ commands:
     description: Ask the MineCorp agent a question
     usage: /agent <question>
     permission: minecorp.agent
+  agent-explain:
+    description: Open a book with the sources behind the agent's last answers
+    usage: /agent-explain
+    permission: minecorp.explain
 
 permissions:
   minecorp.agent:
     description: Allows asking the MineCorp agent questions
+    default: true
+  minecorp.explain:
+    description: Allows opening the book of sources behind the agent's last answers
     default: true

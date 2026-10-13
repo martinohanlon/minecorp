@@ -50,6 +50,9 @@ public final class MineCorpPlugin extends JavaPlugin {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
+        if (command.getName().equalsIgnoreCase("agent-explain")) {
+            return explain(sender);
+        }
         if (!command.getName().equalsIgnoreCase("agent")) {
             return false;
         }
@@ -101,6 +104,51 @@ public final class MineCorpPlugin extends JavaPlugin {
                 CommandSender target = player == null ? sender : Bukkit.getPlayer(id);
                 if (target != null) {
                     target.sendMessage(message);
+                }
+            });
+        });
+        return true;
+    }
+
+    /**
+     * /agent-explain: asks the service for the player's book (their last answers and the sources behind them) and opens it.
+     * The service keeps the history and lays out the pages; the book is opened, not given as an item.
+     */
+    private boolean explain(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only a player can open the notes book.", NamedTextColor.RED));
+            return true;
+        }
+        if (!configured) {
+            sender.sendMessage(Component.text("The agent is not configured yet. Ask an admin.", NamedTextColor.RED));
+            return true;
+        }
+        UUID id = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            ExplainBook book = null;
+            Component failure = null;
+            try {
+                book = agent.explain(id.toString());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failure = Component.text("The agent request was interrupted.", NamedTextColor.RED);
+            } catch (Exception e) {
+                getLogger().warning("Agent explain request failed: " + e);
+                failure = Component.text("The agent is not available right now. Try again later.", NamedTextColor.RED);
+            }
+            ExplainBook result = book;
+            Component message = failure;
+            Bukkit.getScheduler().runTask(this, () -> {
+                Player target = Bukkit.getPlayer(id);
+                if (target == null) {
+                    return;
+                }
+                if (message != null) {
+                    target.sendMessage(message);
+                } else if (result.isEmpty()) {
+                    target.sendMessage(Component.text("Nothing to show yet. Ask something with /agent <question> first.", NamedTextColor.YELLOW));
+                } else {
+                    target.openBook(BookRender.book(result));
                 }
             });
         });

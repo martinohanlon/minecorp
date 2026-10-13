@@ -160,6 +160,56 @@ class AgentClientTest {
         assertTrue(tookMillis < 1400, "should give up near the timeout, not wait for the reply (took " + tookMillis + " ms)");
     }
 
+    private static final String BOOK = "{\"title\":\"Agent notes\",\"author\":\"MineCorp Agent\",\"pages\":["
+            + "{\"lines\":[{\"text\":\"Agent notes\"},{\"text\":\"1. how?\",\"goto\":2}]},"
+            + "{\"lines\":[{\"text\":\"- wiki: Tutorial:Nether portals\",\"url\":\"https://minecraft.wiki/w/Tutorial:Nether_portals\"}]}]}";
+
+    @Test
+    void explainPostsThePlayerUuidToExplainWithTheSharedSecret() throws Exception {
+        reply = BOOK;
+        client(baseUrl(), Duration.ofSeconds(5)).explain("11111111-2222-3333-4444-555555555555");
+        assertEquals("POST", method.get());
+        assertEquals("/explain", path.get());
+        assertEquals("secret-123", key.get());
+        assertTrue(contentType.get().startsWith("application/json"));
+        JsonObject sent = new Gson().fromJson(body.get(), JsonObject.class);
+        assertEquals("11111111-2222-3333-4444-555555555555", sent.get("playerUuid").getAsString());
+        assertEquals(1, sent.size());
+    }
+
+    @Test
+    void explainReturnsTheBook() throws Exception {
+        reply = BOOK;
+        ExplainBook book = client(baseUrl(), Duration.ofSeconds(5)).explain("u");
+        assertEquals(2, book.pages().size());
+        assertEquals(2, book.pages().get(0).get(1).jumpTo());
+        assertEquals("https://minecraft.wiki/w/Tutorial:Nether_portals", book.pages().get(1).get(0).url());
+    }
+
+    @Test
+    void explainAcceptsABookWithNoPages() throws Exception {
+        reply = "{\"title\":\"Agent notes\",\"author\":\"MineCorp Agent\",\"pages\":[]}";
+        assertTrue(client(baseUrl(), Duration.ofSeconds(5)).explain("u").isEmpty());
+    }
+
+    @Test
+    void explainFailsLikeAskDoes() {
+        status = 401;
+        assertThrows(IOException.class, () -> client(baseUrl(), Duration.ofSeconds(5)).explain("u"));
+        status = 200;
+        reply = "<html>oops</html>";
+        assertThrows(IOException.class, () -> client(baseUrl(), Duration.ofSeconds(5)).explain("u"));
+        reply = "{\"answer\":\"not a book\"}";
+        assertThrows(IOException.class, () -> client(baseUrl(), Duration.ofSeconds(5)).explain("u"));
+    }
+
+    @Test
+    void aTrailingSlashOnTheBaseUrlIsIgnoredForExplainToo() throws Exception {
+        reply = BOOK;
+        client(baseUrl() + "//", Duration.ofSeconds(5)).explain("u");
+        assertEquals("/explain", path.get());
+    }
+
     @Test
     void anAgentThatIsNotRunningIsAnIoError() {
         int closedPort = server.getAddress().getPort();

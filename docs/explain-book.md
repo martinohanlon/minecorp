@@ -72,7 +72,7 @@ In the game the contents lines jump to their page (a `change_page` click event) 
 | the last five per player | `agent/minecorp_agent/history.py` (`History`, `Exchange`), filled by `core.answer_with_sources` | built |
 | the pages | `agent/minecorp_agent/book.py` (`build_book`), returned by `core.explain` and `POST /explain` | built |
 | the stub | `scripts/chat.py`: `Chat.explain()` asks the service (or calls `core.explain` with `--direct`), `/explain` shows the pages | built |
-| the book in Minecraft | the plugin: `/agent-explain` (permission `minecorp.explain`) posts the player's uuid to `/explain` and opens the book with `Audience#openBook`, drawing `url` as `open_url` and `goto` as `change_page` | next |
+| the book in Minecraft | the plugin: `/agent-explain` (permission `minecorp.explain`) posts the player's uuid to `/explain` and opens the book with `Audience#openBook`, drawing `url` as `open_url` and `goto` as `change_page` | built (`ExplainBook`, `BookRender`, `AgentClient#explain`); click behaviour not yet seen in a real client |
 
 The developer's trace (`/trace`, `agent/logs/traces.jsonl`) also records each step's sources now.
 
