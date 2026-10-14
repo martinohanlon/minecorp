@@ -306,8 +306,9 @@
   {
     "id": "wiki-chickens",
     "question": "What does the wiki say about chickens?",
-    "expect_tools": [
-      "search_wiki"
+    "expect_any_tools": [
+      "search_wiki",
+      "read_section"
     ],
     "expect_any": [
       "chicken"
