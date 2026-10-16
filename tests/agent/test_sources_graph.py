@@ -29,7 +29,10 @@ CALLS = [
     ("where_to_find", {"name": "emerald"}), ("where_to_find", {"name": "bread"}), ("get_process", {"name": "nether"}),
     ("get_process", {"name": "dragon"}), ("get_process", {"name": "emeralds"}), ("get_process", {"name": "shelter"}), ("get_process", {"name": "mob farm"}),
     ("get_process", {"name": "nether", "step": "mine 10 obsidian"}), ("get_process", {"name": "emeralds", "step": "sell wheat"}),
-    ("get_process", {"name": "dragon", "step": "kill the dragon"})]
+    ("get_process", {"name": "dragon", "step": "kill the dragon"}),
+    ("list", {"kind": "biome"}), ("list", {"kind": "biome class"}), ("list", {"kind": "mob"}), ("list", {"kind": "mob class"}), ("list", {"kind": "category"}),
+    ("list", {"kind": "structure"}), ("list", {"kind": "profession"}), ("list", {"kind": "dimension"}), ("list", {"kind": "item", "contains": "sword"}),
+    ("list", {"kind": "block", "contains": "ender"})]
 
 
 def call(graph, tool, **args):
@@ -45,7 +48,7 @@ def labels(sources):
     return [(s["kind"], s["label"]) for s in sources]
 
 
-@pytest.mark.parametrize("tool,args", CALLS, ids=lambda v: v if isinstance(v, str) else v.get("name", "") + ("/" + v["step"] if "step" in v else ""))
+@pytest.mark.parametrize("tool,args", CALLS, ids=lambda v: v if isinstance(v, str) else (v.get("name") or v.get("kind", "")) + ("/" + v["step"] if "step" in v else ""))
 def test_every_pattern_shown_is_a_path_that_exists(agent_graph, tool, args):
     patterns = patterns_of(agent_graph, tool, args)
     assert patterns, f"{tool} {args} gave no pattern"
@@ -71,7 +74,8 @@ class TestGameData:
         ("members", {"name": "planks"}, "What counts as Planks"),
         ("describe", {"name": "creeper"}, "About Creeper"),
         ("where_to_find", {"name": "desert"}, "Where to find Desert"),
-        ("rank_recipes", {}, "Recipe difficulty ranking")])
+        ("rank_recipes", {}, "Recipe difficulty ranking"),
+        ("list", {"kind": "biome"}, "All biomes"), ("list", {"kind": "mob class"}, "All mob classes"), ("list", {"kind": "item", "contains": "sword"}, "Items matching 'sword'")])
     def test_each_game_data_tool_gives_one_named_source(self, agent_graph, tool, args, label):
         assert labels(src.sources_for(tool, args, call(agent_graph, tool, **args))) == [("game data", label)]
 

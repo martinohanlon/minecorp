@@ -45,6 +45,11 @@ def check(case: dict, answer: str, tools: list[str]) -> list[str]:
             failures.append(f"tool used but not wanted: {t}")
     if case.get("expect_no_tools") and tools:
         failures.append(f"tools used but none expected: {tools}")
+    limit = case.get("max_lines")
+    if limit is not None:
+        lines = [x for x in answer.splitlines() if x.strip()]
+        if len(lines) > limit:
+            failures.append(f"{len(lines)} lines, more than {limit}")
     for s in case.get("expect_all", []):
         if s not in text:
             failures.append(f"missing: {s!r}")

@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from .budget import DEFAULT_BUDGET
 from .graph import Graph
+from .listing import LIST_KINDS, kind_of, tool_list
 from .names import KIND_NAMES, search_names
 from .wiki import tool_read_section, tool_search_wiki
 from .processes import tool_get_process
@@ -86,7 +87,11 @@ def tool_find(graph: Graph, args: dict) -> dict:
     kind = str(args.get("kind") or "").lower().strip() or None
     if kind and kind not in KIND_NAMES:
         return {"error": f"Unknown kind '{kind}'. Use one of: {', '.join(KIND_NAMES)}."}
-    rows = search_names(graph, str(args.get("query", "")), (kind,) if kind else None, 10)
+    query = str(args.get("query", ""))
+    rows = search_names(graph, query, (kind,) if kind else None, 10)
+    whole_kind = None if kind else kind_of(query)
+    if whole_kind and not any(r["rank"] <= 1 for r in rows):         # "biomes" or "mobs" is a kind of thing, not the name of one
+        return {"matches": [], "hint": f"'{query.strip()}' is a kind of thing, not a name. Call list with kind '{whole_kind}' to see all of them."}
     if not rows:
         return {"matches": [], "note": "Nothing matched."}
     return {"matches": [{**_brief(r), "kind": r["kind"]} for r in rows]}
@@ -622,12 +627,25 @@ TOOLS: list[Tool] = [
     Tool("find",
          "Search for things in Minecraft by name: items, categories, mobs, blocks, biomes and structures. "
          "Typos and plurals are fine. Each match says what kind of thing it is. The other tools accept a name "
-         "directly, so use this only when one of them says a name is unknown or ambiguous.",
+         "directly, so use this only when one of them says a name is unknown or ambiguous. To see ALL things of "
+         "a kind (every biome, every mob) use list, not find.",
          {"type": "object", "properties": {
              "query": {"type": "string", "description": "words from the name"},
              "kind": {"type": "string", "enum": list(KIND_NAMES), "description": "only this kind (optional)"}},
           "required": ["query"], "additionalProperties": False},
          tool_find),
+    Tool("list",
+         "List everything of one kind: all the biomes (grouped by dimension), mobs, structures, villager professions, dimensions, "
+         "item categories, mob classes or biome classes, or items and blocks (a page of 100 at a time: narrow them with contains). "
+         "Use for 'list the biomes', 'what mobs are there', 'what structures exist', 'what kinds of X are there', 'which swords are "
+         "there' (kind item, contains sword), and when the player writes only a kind such as 'biomes' or 'mobs'. Classes are Minecraft's own tags with the number of things in each, not a tree of types; "
+         "to see what is inside one class or category call members. For facts about one named thing use describe.",
+         {"type": "object", "properties": {
+             "kind": {"type": "string", "enum": list(LIST_KINDS), "description": "what to list"},
+             "contains": {"type": "string", "description": "only names with these words in them (optional)"},
+             "offset": {"type": "integer", "description": "skip this many (to read the next page of a long list)"}},
+          "required": ["kind"], "additionalProperties": False},
+         tool_list),
     Tool("describe",
          "A short description of anything with a name: an item, category, mob, block, biome, structure or villager "
          "profession. Says what it is, what it drops or gives, counts of related things, which wiki sections discuss "

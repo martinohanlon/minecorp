@@ -38,7 +38,7 @@ import json  # noqa: E402
 
 from evals.run_evals import QUESTIONS, context_of  # noqa: E402
 
-KNOWN_KEYS = {"id", "question", "history", "expect_tools", "expect_any_tools", "expect_not_tools", "expect_no_tools", "expect_all", "expect_any", "expect_none"}
+KNOWN_KEYS = {"id", "question", "history", "expect_tools", "expect_any_tools", "expect_not_tools", "expect_no_tools", "expect_all", "expect_any", "expect_none", "max_lines"}
 
 
 def test_a_case_with_history_becomes_the_conversation_so_far():
@@ -66,3 +66,20 @@ def test_the_follow_up_cases_all_have_a_conversation_to_follow():
     cases = {c["id"]: c for c in json.loads(QUESTIONS.read_text(encoding="utf-8"))}
     follow_ups = [c for i, c in cases.items() if i.startswith("followup-")]
     assert len(follow_ups) >= 3 and all(c.get("history") for c in follow_ups)
+
+
+def test_an_answer_longer_than_max_lines_fails_and_blank_lines_do_not_count():
+    case = {"max_lines": 3}
+    assert check(case, "a\nb\nc", []) == []
+    assert check(case, "a\n\nb\n\nc\n", []) == []
+    assert check(case, "a\nb\nc\nd", []) == ["4 lines, more than 3"]
+
+
+def test_without_max_lines_any_length_will_do():
+    assert check({"expect_any": ["a"]}, "a\n" * 30, []) == []
+
+
+def test_the_list_cases_all_have_a_line_limit():
+    cases = json.loads(QUESTIONS.read_text(encoding="utf-8"))
+    lists = [c for c in cases if c["id"].startswith("list-") and c["id"] != "list-not-for-one-thing"]
+    assert len(lists) >= 8 and all(c.get("max_lines") for c in lists)

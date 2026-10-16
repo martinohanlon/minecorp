@@ -9,7 +9,7 @@ import pytest
 from minecorp_agent import tools
 
 EXPECTED = {"find", "get_recipes", "what_do_i_need", "get_uses", "members", "how_to_get", "rank_recipes",
-            "search_wiki", "read_section", "describe", "where_to_find", "get_process"}
+            "search_wiki", "read_section", "describe", "where_to_find", "get_process", "list"}
 
 
 # --------------------------------------------------------------------------- registry

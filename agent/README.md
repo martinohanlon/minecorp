@@ -70,11 +70,12 @@ agent/
 
 ## Tools
 
-Nine read-only tools, defined once in `minecorp_agent/tools.py` and `minecorp_agent/wiki.py`:
+Thirteen read-only tools, defined once in `minecorp_agent/tools.py` and `minecorp_agent/wiki.py`:
 
 | Tool | Answers |
 |---|---|
 | `find`, `get_recipes`, `what_do_i_need`, `how_to_get`, `get_uses`, `members`, `rank_recipes` | recipes, routes, drops and difficulty, from the game data (authoritative; built from the Paper jar) |
+| `list` | everything of one kind: all the biomes (by dimension), mobs, structures, villager professions, dimensions, item categories, mob and biome classes, or items and blocks a page of 100 at a time (`contains` narrows them). A long list is summarised for chat. Classes come with the number of things in them, flat, not as a tree (they are Minecraft's tags); `members` opens one |
 | `get_process` | step-by-step plans for goals the game's data does not spell out (shelter, emeralds, the Nether, the ender dragon, a simple mob farm): with no name it lists them, with a name it gives the usual route and where it branches, with a step it gives that step in full; steps that are game actions name them. Plans are candidates drafted from the wiki and say so |
 | `describe`, `where_to_find` | what anything with a name is, and where it is in the world (ore heights and biomes, mob spawns, what a biome has, a structure's biomes and who sells a map to it), from the world graph; `describe` also lists the wiki sections that discuss it and what a villager profession trades at each level |
 | `how_to_get` (trades) | also lists the villagers and the wandering trader that trade an item: profession, level, price (8 at most, lowest level first, then a count of the rest) |

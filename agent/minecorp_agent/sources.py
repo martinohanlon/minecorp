@@ -18,6 +18,7 @@ from __future__ import annotations
 from urllib.parse import unquote
 
 from . import graphs
+from .listing import PLURAL
 
 GAME_DATA, WIKI, PLAN = "game data", "wiki", "plan"
 MAX_SOURCES = 8
@@ -78,6 +79,12 @@ def patterned(tool: str, args: dict, output) -> list[tuple[dict, list]]:
         return _one(output, "What {} is used for", graphs.uses_patterns(output))
     if tool == "rank_recipes":
         return [(source(GAME_DATA, "Recipe difficulty ranking"), [])] if output.get("items") else []
+    if tool == "list":
+        if not output.get("total") or output.get("kind") not in PLURAL:
+            return []
+        what = PLURAL[output["kind"]]
+        label = f"{what.capitalize()} matching '{output['matching']}'" if output.get("matching") else f"All {what}"
+        return [(source(GAME_DATA, label), graphs.list_patterns(output))]
     if tool == "members":
         return [(source(GAME_DATA, f"What counts as {r['name']}"), graphs.members_patterns(r)) for r in output.get("results", [])]
     if tool == "describe":

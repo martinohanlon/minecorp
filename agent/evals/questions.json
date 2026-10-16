@@ -300,7 +300,12 @@
       "couldn't find",
       "can't find",
       "cannot find",
-      "not find"
+      "not find",
+      "doesn't say",
+      "does not say",
+      "not mention",
+      "doesn't mention",
+      "no mention"
     ]
   },
   {
@@ -526,6 +531,124 @@
     ],
     "expect_none": [
       "ender"
+    ]
+  },
+  {
+    "id": "list-biomes-bare",
+    "question": "biomes",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_all": [
+      "overworld",
+      "nether"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-biomes-types",
+    "question": "types of biomes",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_any": [
+      "forest",
+      "ocean",
+      "desert"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-biomes-typo",
+    "question": "can you list the biome?",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_all": [
+      "overworld"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-mobs",
+    "question": "what mobs are there?",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_any": [
+      "creeper",
+      "zombie",
+      "cow"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-structures",
+    "question": "what structures can I find in the world?",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_any": [
+      "ancient city",
+      "bastion",
+      "pyramid",
+      "village",
+      "shipwreck",
+      "stronghold",
+      "mansion",
+      "fortress",
+      "igloo",
+      "monument"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-professions",
+    "question": "what villager professions are there?",
+    "expect_any_tools": [
+      "list",
+      "describe"
+    ],
+    "expect_all": [
+      "farmer",
+      "librarian"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-swords",
+    "question": "which swords are there?",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_all": [
+      "diamond",
+      "iron",
+      "netherite"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-dimensions",
+    "question": "how many dimensions are there?",
+    "expect_any_tools": [
+      "list",
+      "describe"
+    ],
+    "expect_all": [
+      "nether",
+      "end"
+    ],
+    "max_lines": 7
+  },
+  {
+    "id": "list-not-for-one-thing",
+    "question": "what is a creeper?",
+    "expect_not_tools": [
+      "list"
+    ],
+    "expect_any": [
+      "creeper"
     ]
   }
 ]

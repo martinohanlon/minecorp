@@ -156,6 +156,29 @@ def members_patterns(result: dict) -> list[Pattern]:
     return [path(named(cls[0], result["name"]), Rel("INCLUDES", length="*1.."), named(cls[1], m)) for m in result.get("members", [])[:2]] if cls else []
 
 
+def list_patterns(result: dict) -> list[Pattern]:
+    """Where the things of a listed kind sit in the graph: the dimensions that have the biomes, a class and what it includes, a biome and
+    the mob it spawns. (A list walks no path of its own: this is the relationship that makes each kind what it is.)"""
+    kind = result.get("kind")
+    if not result.get("total"):
+        return []
+    if kind == "biome":
+        return [path(named("Dimension", g["group"]), Rel("HAS_BIOME"), Node("BiomeClass"), Rel("INCLUDES", length="*0.."), Node("Biome"))
+                for g in result.get("groups", []) if g.get("group") != "Other"][:3]
+    shapes = {
+        "biome class": path("BiomeClass", Rel("INCLUDES", length="*1.."), "Biome"),
+        "mob class": path("MobClass", Rel("INCLUDES", length="*1.."), "Mob"),
+        "category": path("ItemClass", Rel("INCLUDES", length="*1.."), "Item"),
+        "mob": path("Biome", Rel("SPAWNS"), "Mob"),
+        "structure": path("Structure", Rel("GENERATES_IN"), Node()),
+        "profession": path(named("Mob", "Villager"), Rel("HAS_PROFESSION"), "Profession"),
+        "dimension": path("Dimension", Rel("HAS_BIOME"), "BiomeClass"),
+        "item": path("Recipe", Rel("CREATES"), "Item"),
+        "block": path("Mine", Rel("REQUIRES"), "Block"),
+    }
+    return [shapes[kind]] if kind in shapes else []
+
+
 # --------------------------------------------------------------------------- the world
 
 def ore_biomes(block: str) -> Pattern:
