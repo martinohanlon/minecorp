@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 MAX_EXCHANGES = 5            # per player: the owner's choice
 MAX_PLAYERS = 500            # players remembered at once; the longest-quiet one is forgotten first
@@ -20,6 +20,9 @@ class Exchange:
     question: str
     lines: tuple[str, ...]
     sources: tuple[dict, ...]
+    # when it was answered, seconds since the epoch; 0 when not known. It decides where a conversation ends, and is not part of what an
+    # exchange IS: one read back from memory equals the one that was written.
+    at: float = field(default=0.0, compare=False)
 
 
 class History:

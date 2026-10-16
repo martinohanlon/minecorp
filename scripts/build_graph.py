@@ -101,7 +101,7 @@ def describe(steps: list[Step]) -> str:
 def confirm(target: str, steps: list[Step], ask=None) -> bool:
     if not any(s.key == "recipes" for s in steps):
         return True                    # nothing is wiped when the first step is not run
-    print(f"This WIPES everything in {target} and rebuilds it:\n{describe(steps)}")
+    print(f"This WIPES everything in {target} and rebuilds it (agent memory too, if it lives in the same database):\n{describe(steps)}")
     return (ask or input)("Type yes to go on: ").strip().lower() == "yes"
 
 

@@ -35,7 +35,7 @@ Minecraft client --chat--> Paper server + MineCorp plugin --HTTP--> agent servic
    /agent-explain                                                  read-only graph tools + wiki search
 ```
 
-The plugin only forwards the question and opens the answer book. The agent service owns the logic, the history of each player's last five answers and the layout of the book. More: [docs/architecture.md](docs/architecture.md), [docs/knowledge-layer.md](docs/knowledge-layer.md), [docs/explain-book.md](docs/explain-book.md).
+The plugin only forwards the question and opens the answer book. The agent service owns the logic, the history of each player's last five answers (optionally kept in Neo4j with [neo4j-agent-memory](docs/agent-memory.md), together with a trace of how each answer was reached) and the layout of the book. More: [docs/architecture.md](docs/architecture.md), [docs/knowledge-layer.md](docs/knowledge-layer.md), [docs/explain-book.md](docs/explain-book.md).
 
 ## Install
 
@@ -64,6 +64,10 @@ The scripts come in two flavours, `./scripts/<name>.ps1` (Windows PowerShell) an
 1. Start the agent: `./scripts/start-agent.ps1` (listens on 127.0.0.1:8080).
 2. Start the server: `./scripts/start-server.ps1`, and join it with a Minecraft 26.2 Java client.
 3. In chat: `/agent <question>`, for example `/agent where do I find diamonds?` or `/agent how do I get to the Nether?`. Then `/agent-explain` opens a book with your last five questions, answers and sources (wiki sources are links).
+
+Follow-up questions work ("and how many of those do I need?"): the agent is sent your last three exchanges, for as long as you keep asking within 15 minutes of each other.
+
+**Agent memory (optional).** Set `AGENT_MEMORY=neo4j` in `.env` before starting the agent to keep each player's questions and answers, and a trace of the tools every run used, in Neo4j with neo4j-agent-memory; `/agent-explain` then works after a restart too. It is off by default. Memory is written into the game graph's database, so `build-graph` wipes it along with the graph unless you give it a database of its own. Settings and design: [docs/agent-memory.md](docs/agent-memory.md).
 
 **Without Minecraft:** `./scripts/chat-with-agent.ps1` is a terminal stand-in for the plugin (`-Trace` shows the tools the agent called, `-Direct` runs the agent in the same process; type `/explain` for the book). Details in [agent/README.md](agent/README.md).
 

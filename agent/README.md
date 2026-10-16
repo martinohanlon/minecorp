@@ -48,6 +48,12 @@ curl -X POST http://127.0.0.1:8080/ask -H "Content-Type: application/json" -H "X
 
 It sends what the plugin sends (the same `POST /ask` with the shared secret from `.env`, the player's name and a uuid made from it) and shows what the plugin shows: "MineCorp agent: thinking...", the answer as gold lines, and "The agent is not available right now. Try again later." when it fails. It applies the plugin's rules (a question is required, at most 500 characters, a leading `/agent ` is accepted). Because it is a developer's tool it adds, in grey and marked `(stub)`, what a player never sees: why a request failed (for example `HTTP 401`), how long it took, whether the answer breaks the chat style (more than 6 lines, a line over 100 characters, markdown), and with `--trace` the agent's tool calls, timings and tokens, read from `agent/logs/traces.jsonl`. In the chat, `/explain` asks the service for the book the plugin's `/agent-explain` will open (the last five questions, answers and sources, kept by the service; `--explain` does it after one question), `/trace` turns the developer trace on and off, `/name Alex` changes the player, `/help` and `/quit` do what they say. `--url` (or `AGENT_URL`) points at a service elsewhere.
 
+## Memory
+
+Optional: `AGENT_MEMORY=neo4j` keeps each player's questions and answers, and a trace of the tools each run used, in Neo4j with neo4j-agent-memory, so the explain book survives a restart. Off by default (`local`). Settings, what is stored and the design: [../docs/agent-memory.md](../docs/agent-memory.md).
+
+**Follow-up questions** work with or without it: the player's last `AGENT_CONVERSATION_TURNS` exchanges (3) of the current conversation (it ends after `AGENT_CONVERSATION_IDLE_MINUTES` quiet, 15) are sent to the model with the new question, so "and how many of those?" has something to refer to.
+
 ## Layout
 
 ```

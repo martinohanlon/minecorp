@@ -347,13 +347,18 @@ def main(argv: list[str] | None = None) -> int:
             term.say(f"(stub) the agent service at {chat.url} is not answering ({problem}).", "red")
             term.say("(stub) start it with ./scripts/start-agent.ps1 (or .sh), or add --direct to run the agent in this process.", "grey")
             return 1
-    if args.question:
-        ok = respond(chat, " ".join(args.question), term, args.trace)
-        if ok and args.explain:
-            explain(chat, term)
-        return 0 if ok else 1
-    repl(chat, term, trace=args.trace)
-    return 0
+    try:
+        if args.question:
+            ok = respond(chat, " ".join(args.question), term, args.trace)
+            if ok and args.explain:
+                explain(chat, term)
+            return 0 if ok else 1
+        repl(chat, term, trace=args.trace)
+        return 0
+    finally:
+        if args.direct:                                     # the agent memory (when on) writes in the background: let it finish
+            from minecorp_agent.core import close_memory
+            close_memory()
 
 
 if __name__ == "__main__":

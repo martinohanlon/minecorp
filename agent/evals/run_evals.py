@@ -6,6 +6,8 @@
     python -m evals.run_evals -v         # also print each answer
 
 Calls the agent directly (not over HTTP) and the real model and graph, so it costs tokens.
+A case may have a "history": earlier exchanges ({"question", "answer"}, oldest first) that are sent to the agent as the conversation so far,
+so follow-up questions ("and how many of those?") can be tested without asking the earlier ones.
 Checks are simple substring tests on the lower-cased answer; they catch gross failures, not nuance.
 Read the answers (-v) before trusting a pass.
 """
@@ -17,9 +19,15 @@ import uuid
 from pathlib import Path
 
 from minecorp_agent.core import get_agent
+from minecorp_agent.history import Exchange
 from minecorp_agent.models import Question
 
 QUESTIONS = Path(__file__).with_name("questions.json")
+
+
+def context_of(case: dict) -> list[Exchange]:
+    """The conversation so far for a case: its "history", as the exchanges the agent would have in memory."""
+    return [Exchange(h["question"], tuple(h["answer"].split("\n")), ()) for h in case.get("history", [])]
 
 
 def check(case: dict, answer: str, tools: list[str]) -> list[str]:
@@ -60,7 +68,7 @@ def main(argv: list[str]) -> int:
     total_tokens = 0
     for c in cases:
         q = Question("eval", "Evaluator", "eval", c["question"])
-        r = agent.run(q, "eval-" + uuid.uuid4().hex[:6])
+        r = agent.run(q, "eval-" + uuid.uuid4().hex[:6], context=context_of(c))
         tools = [s.tool for s in r.steps]
         fails = check(c, r.answer, tools)
         tokens = r.usage.get("prompt_tokens", 0) + r.usage.get("completion_tokens", 0)

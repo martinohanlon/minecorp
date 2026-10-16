@@ -30,3 +30,39 @@ def test_alternatives_and_required_tools_are_checked_separately():
 
 def test_a_case_without_the_key_is_unchanged():
     assert check({"expect_any": ["chicken"]}, "Chickens lay eggs", ["x"]) == []
+
+
+# --------------------------------------------------------------------------- the question file and conversation history
+
+import json  # noqa: E402
+
+from evals.run_evals import QUESTIONS, context_of  # noqa: E402
+
+KNOWN_KEYS = {"id", "question", "history", "expect_tools", "expect_any_tools", "expect_not_tools", "expect_no_tools", "expect_all", "expect_any", "expect_none"}
+
+
+def test_a_case_with_history_becomes_the_conversation_so_far():
+    case = {"history": [{"question": "q1", "answer": "line one\nline two"}, {"question": "q2", "answer": "a2"}]}
+    got = context_of(case)
+    assert [(e.question, e.lines) for e in got] == [("q1", ("line one", "line two")), ("q2", ("a2",))]
+
+
+def test_a_case_without_history_has_no_context():
+    assert context_of({"question": "q"}) == []
+
+
+def test_the_question_file_is_well_formed():
+    cases = json.loads(QUESTIONS.read_text(encoding="utf-8"))
+    assert len({c["id"] for c in cases}) == len(cases), "ids must be unique"
+    for c in cases:
+        assert set(c) <= KNOWN_KEYS, (c["id"], set(c) - KNOWN_KEYS)
+        assert c["question"].strip()
+        assert any(k.startswith("expect") for k in c), f"{c['id']} checks nothing"
+        for h in c.get("history", []):
+            assert set(h) == {"question", "answer"} and h["question"].strip() and h["answer"].strip(), c["id"]
+
+
+def test_the_follow_up_cases_all_have_a_conversation_to_follow():
+    cases = {c["id"]: c for c in json.loads(QUESTIONS.read_text(encoding="utf-8"))}
+    follow_ups = [c for i, c in cases.items() if i.startswith("followup-")]
+    assert len(follow_ups) >= 3 and all(c.get("history") for c in follow_ups)

@@ -2,3 +2,4 @@ fastapi>=0.115
 uvicorn>=0.30
 openai>=1.50
 neo4j>=5.20
+neo4j-agent-memory[openai]>=0.7,<0.8

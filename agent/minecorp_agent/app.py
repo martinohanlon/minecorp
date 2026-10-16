@@ -4,18 +4,28 @@ from __future__ import annotations
 import hmac
 import logging
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .book import AUTHOR, TITLE
-from .core import answer_with_sources, explain as explain_book
+from .core import answer_with_sources, close_memory, explain as explain_book, get_memory
 from .models import Question
 
 log = logging.getLogger("minecorp.agent")
 settings = get_settings()
-app = FastAPI(title="MineCorp agent", docs_url=None, redoc_url=None)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    yield
+    close_memory()        # a stopping service lets agent memory finish its writes
+
+
+app = FastAPI(title="MineCorp agent", docs_url=None, redoc_url=None, lifespan=lifespan)
+get_memory()          # decide the memory mode now, so the start-up log says which it is (no connection is made yet)
 
 
 class AskRequest(BaseModel):

@@ -13,6 +13,17 @@ for path in (ROOT / "loader", ROOT / "agent"):
 JAR = ROOT / "server" / "versions" / "26.2" / "paper-26.2.jar"
 
 
+@pytest.fixture(autouse=True)
+def _agent_memory_off_and_reset(monkeypatch):
+    """Tests never use neo4j-agent-memory unless they ask for it: whatever the real .env says, memory is local, and the core decides again."""
+    monkeypatch.setenv("AGENT_MEMORY", "local")
+    from minecorp_agent import core
+    monkeypatch.setattr(core, "_memory", None)
+    monkeypatch.setattr(core, "_memory_ready", False)
+    monkeypatch.setattr(core, "_conversation", None)
+    monkeypatch.setattr(core, "load_dotenv", lambda *a, **k: None)         # the real .env is not read either
+
+
 @pytest.fixture(scope="session")
 def jar_path() -> Path:
     """The real Paper jar. Tests that need it are skipped when it has not been downloaded."""

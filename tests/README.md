@@ -23,12 +23,14 @@ One command runs them: `./scripts/run-tests.ps1` (fast set) or `./scripts/run-te
 | **Link job graph tests** | `tests/loader/test_link_wiki_integration.py` (marker `integration`) | pytest | Neo4j running with Enterprise Edition (no jar, no OpenAI) | about 25 s | 100 |
 | **Chat stub tests** | `tests/scripts/test_chat.py`, `test_chat_explain.py` | pytest | nothing (mock HTTP, or the real app with a fake agent) | about 1 s | 141 |
 | **Script tests** | `tests/scripts/test_build_graph.py` | pytest | nothing (the loaders are not run) | under 1 s | 43 |
+| **Conversation tests** | `tests/agent/test_conversation.py`, `test_eval_checks.py` | pytest | nothing (fake model and memory) | about 1 s | 60 |
+| **Agent memory tests** | `tests/agent/test_memory_unit.py`, `test_memory_core.py` (fake client, no Neo4j); `test_memory_graph.py` (marker `integration`) | pytest | nothing; Neo4j Enterprise for the graph ones (throwaway databases `minecorpmemorytest`, and memory inside `minecorptest`) | about 15 s | 84 |
 | **Explain tests** | `tests/agent/test_history.py`, `test_book.py`, `test_explain_api.py` | pytest | nothing (fake agent behind the real core and HTTP layer) | about 2 s | 48 |
 | **Source tests** | `tests/agent/test_sources.py` (unit), `test_sources_graph.py` (marker `integration`) | pytest | nothing; Neo4j and the jar for the graph ones | about 20 s | 50 |
 | **Plugin unit tests** | `plugin/src/test/java/com/minecorp/plugin/` | JUnit 6 via Maven | JDK 25, Maven | about 5 s | 54 |
 | **Plugin end to end** | `tests/plugin/test_plugin_e2e.py` (marker `e2e`) | pytest | JDK 25, Maven, `server/` set up once | about 25 s | 13 |
 
-Counts as of 2026-10-13: 1,954 tests (1,900 Python, 54 Java). The fast set is about 1,266 Python tests plus the Java ones.
+Counts as of 2026-10-16: 2,094 tests (2,040 Python, 54 Java). The fast set is 1,396 Python tests plus the Java ones.
 
 ## Running
 

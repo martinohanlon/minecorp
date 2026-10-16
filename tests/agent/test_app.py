@@ -154,7 +154,7 @@ class TestAsk:
 
 class TestCore:
     def test_returns_the_agents_answer(self, monkeypatch):
-        fake = type("A", (), {"run": lambda self, q, rid: Result(answer="Smelt it.", status="ok", model="m", ms=1)})()
+        fake = type("A", (), {"run": lambda self, q, rid, context=(): Result(answer="Smelt it.", status="ok", model="m", ms=1)})()
         monkeypatch.setattr(core, "get_agent", lambda: fake)
         assert core.answer(Question("u", "n", "s", "q"), "r") == "Smelt it."
 

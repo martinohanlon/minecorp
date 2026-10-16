@@ -9,7 +9,7 @@
 - The book shows **sources only**: not the tool calls, their arguments, timings or tokens. Those stay in the developer's `/trace` in the chat stub.
 - No unprompted footer in the answer.
 - **The book is opened, not given**: no item, nothing to carry or drop. (The first proposal also gave a copy; the owner chose open only.)
-- The book holds the **last five** questions, answers and sources. The **agent service keeps them**, per player, **in memory** for now (not the plugin): it already knows the player, it is where neo4j-agent-memory will live, and the page layout is then written once. The plugin only asks for the book and draws it. `History` (`agent/minecorp_agent/history.py`) is the one place to replace when the memory comes. (The first version kept the history in the client; the owner pointed out the service should.)
+- The book holds the **last five** questions, answers and sources. The **agent service keeps them**, per player, **in memory** (not the plugin): it already knows the player, it is where neo4j-agent-memory lives, and the page layout is written once. The plugin only asks for the book and draws it. `History` (`agent/minecorp_agent/history.py`) is the in-process cache; with `AGENT_MEMORY=neo4j` every answer is also written to neo4j-agent-memory and the book is rebuilt from it after a restart ([agent-memory.md](agent-memory.md)). (The first version kept the history in the client; the owner pointed out the service should.)
 
 ## Sources
 

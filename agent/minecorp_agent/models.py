@@ -35,6 +35,7 @@ class Result:
     steps: list[Step] = field(default_factory=list)
     usage: dict = field(default_factory=dict)
     error: str | None = None
+    context_turns: int = 0            # earlier exchanges of the conversation that were sent to the model with the question
 
     @property
     def sources(self) -> list:

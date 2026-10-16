@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, timezone
 
@@ -17,6 +18,7 @@ from openai import OpenAI
 from .budget import classify, fit, without_private
 from .config import Settings
 from .graph import Graph
+from .history import Exchange
 from .models import Question, Result, Step
 from .prompt import SYSTEM_PROMPT
 from .sources import sources_for
@@ -39,15 +41,20 @@ class Agent:
 
     # ------------------------------------------------------------------ public
 
-    def run(self, q: Question, request_id: str) -> Result:
-        """Answer a question. Never raises: failures become a friendly answer and a trace entry."""
+    def run(self, q: Question, request_id: str, context: Sequence[Exchange] = ()) -> Result:
+        """Answer a question. Never raises: failures become a friendly answer and a trace entry.
+
+        `context` is the earlier part of this player's conversation, oldest first: each exchange is sent as a question and its answer, so the
+        model can tell what "it" or "those" means. Only the text is replayed, not the tool results.
+        """
         started = time.monotonic()
         steps: list[Step] = []
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "model_calls": 0}
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Player {q.player_name} asks: {q.text}"},
-        ]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for earlier in context:
+            messages.append({"role": "user", "content": f"Player {q.player_name} asks: {earlier.question}"})
+            messages.append({"role": "assistant", "content": "\n".join(earlier.lines)})
+        messages.append({"role": "user", "content": f"Player {q.player_name} asks: {q.text}"})
         answer, status, error = "", "ok", None
         try:
             for turn in range(1, self.settings.max_turns + 1):
@@ -84,7 +91,7 @@ class Agent:
             status, error = "error", f"{type(exc).__name__}: {exc}"
 
         result = Result(answer=self._tidy(answer) or FALLBACK, status=status, model=self.settings.openai_model,
-                        ms=int((time.monotonic() - started) * 1000), steps=steps, usage=usage, error=error)
+                        ms=int((time.monotonic() - started) * 1000), steps=steps, usage=usage, error=error, context_turns=len(context))
         self._write_trace(q, request_id, result)
         return result
 
@@ -135,7 +142,7 @@ class Agent:
                 "requestId": request_id, "at": datetime.now(timezone.utc).isoformat(),
                 "player": q.player_name, "sessionId": q.session_id, "question": q.text,
                 "answer": r.answer, "status": r.status, "model": r.model, "ms": r.ms,
-                "usage": r.usage, "error": r.error, "steps": [asdict(s) for s in r.steps],
+                "usage": r.usage, "error": r.error, "contextTurns": r.context_turns, "steps": [asdict(s) for s in r.steps],
             }
             with (self.settings.trace_dir / "traces.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")

@@ -478,5 +478,54 @@
       "trade",
       "farmer"
     ]
+  },
+  {
+    "id": "followup-count",
+    "history": [
+      {
+        "question": "how do I make an eye of ender?",
+        "answer": "- Crafting Table: 1 blaze powder + 1 ender pearl\n- That makes 1 eye of ender."
+      }
+    ],
+    "question": "and how many of each would I need for 12 of them?",
+    "expect_all": [
+      "12"
+    ],
+    "expect_any": [
+      "blaze powder",
+      "ender pearl"
+    ]
+  },
+  {
+    "id": "followup-other-item",
+    "history": [
+      {
+        "question": "how do I make an iron pickaxe?",
+        "answer": "- Crafting Table: 3 iron ingots across the top row\n- 2 sticks down the middle"
+      }
+    ],
+    "question": "what about the diamond one?",
+    "expect_tools": [
+      "get_recipes"
+    ],
+    "expect_all": [
+      "diamond"
+    ]
+  },
+  {
+    "id": "followup-stale",
+    "history": [
+      {
+        "question": "how do I make an eye of ender?",
+        "answer": "- Crafting Table: 1 blaze powder + 1 ender pearl\n- That makes 1 eye of ender."
+      }
+    ],
+    "question": "What does a creeper drop?",
+    "expect_any": [
+      "gunpowder"
+    ],
+    "expect_none": [
+      "ender"
+    ]
   }
 ]

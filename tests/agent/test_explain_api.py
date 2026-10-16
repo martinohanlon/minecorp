@@ -24,7 +24,7 @@ class FakeAgent:
     def __init__(self):
         self.sources, self.status, self.raises = [], "ok", None
 
-    def run(self, q, request_id):
+    def run(self, q, request_id, context=()):
         if self.raises:
             raise self.raises
         steps = [Step(turn=1, tool="get_recipes", args={}, ms=1, result_chars=1, sources=list(self.sources))]
