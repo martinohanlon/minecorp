@@ -62,8 +62,8 @@ class PluginDescriptorTest {
     }
 
     @Test
-    void theDeclaredCommandsAreAgentAndAgentExplain() throws Exception {
-        assertEquals(java.util.Set.of("agent", "agent-explain"), load("plugin.yml").getConfigurationSection("commands").getKeys(false));
+    void theDeclaredCommandsAreAgentAgentExplainAndAgentClear() throws Exception {
+        assertEquals(java.util.Set.of("agent", "agent-explain", "agent-clear"), load("plugin.yml").getConfigurationSection("commands").getKeys(false));
     }
 
     @Test
@@ -72,6 +72,14 @@ class PluginDescriptorTest {
         assertEquals("minecorp.explain", yml.getString("commands.agent-explain.permission"));
         assertEquals("/agent-explain", yml.getString("commands.agent-explain.usage"));
         assertEquals("true", String.valueOf(yml.get("permissions.minecorp.explain.default")));
+    }
+
+    @Test
+    void theClearCommandHasItsOwnPermissionGrantedToEveryone() throws Exception {
+        YamlConfiguration yml = load("plugin.yml");
+        assertEquals("minecorp.clear", yml.getString("commands.agent-clear.permission"));
+        assertEquals("/agent-clear", yml.getString("commands.agent-clear.usage"));
+        assertEquals("true", String.valueOf(yml.get("permissions.minecorp.clear.default")));
     }
 
     @Test

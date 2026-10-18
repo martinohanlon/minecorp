@@ -6,6 +6,7 @@ import os
 import re
 import threading
 import time
+from dataclasses import replace
 
 from . import conversation, memory as agent_memory
 from .agent import Agent
@@ -14,12 +15,14 @@ from .config import get_settings, load_dotenv
 from .graph import Graph
 from .history import Exchange, History
 from .models import Question
+from .sessions import Sessions
 
 log = logging.getLogger("minecorp.agent")
 
 _agent: Agent | None = None
 _lock = threading.Lock()
 history = History()                       # what each player asked recently, for the explain book (the in-process cache)
+sessions = Sessions()                     # each player's current conversation (the id memory files their questions under)
 _memory: agent_memory.AgentMemory | None = None
 _memory_ready = False                     # decided once: either `_memory` is set, or memory is off or could not be built
 _conversation: conversation.ConversationOptions | None = None     # decided once, like the memory
@@ -89,6 +92,16 @@ def get_conversation_options() -> conversation.ConversationOptions:
         return _conversation
 
 
+def _session(player_uuid: str) -> str:
+    """The id of the player's current conversation. After a restart (none known) it is their newest conversation in agent memory, so a
+    player in the middle of a chat carries on; otherwise a new one. A new conversation only shows in Neo4j with its first question."""
+    known = sessions.current(player_uuid)
+    if known is not None:
+        return known
+    memory = get_memory()
+    return sessions.adopt(player_uuid, memory.latest_session(player_uuid) if memory is not None else None)
+
+
 def _recent(player_uuid: str) -> list[Exchange]:
     """The player's last exchanges: from the in-process history, or when that has nothing for them (the service was restarted, or they were
     quiet long enough to be forgotten) from agent memory, which also refills the history."""
@@ -96,10 +109,17 @@ def _recent(player_uuid: str) -> list[Exchange]:
     if not exchanges:
         memory = get_memory()
         if memory is not None:
-            exchanges = memory.recent(player_uuid)
+            exchanges = memory.recent(_session(player_uuid))
             for e in exchanges:
                 history.add(player_uuid, e)
     return exchanges
+
+
+def clear(player_uuid: str) -> None:
+    """The player starts a new chat (they joined, or used /agent-clear): a new conversation, so what they asked before is no longer sent with
+    their questions or shown in their book. It stays in agent memory, as a conversation of its own."""
+    history.forget(player_uuid)
+    sessions.start(player_uuid)
 
 
 def _context_for(q: Question) -> list[Exchange]:
@@ -116,6 +136,7 @@ def _context_for(q: Question) -> list[Exchange]:
 
 def answer_with_sources(q: Question, request_id: str) -> tuple[str, list[dict]]:
     """Return the answer as chat-ready text, and the sources the player may ask to see. A good answer is remembered for the player."""
+    q = replace(q, session_id=_session(q.player_uuid))      # the service owns the conversation, not the client
     context = _context_for(q)                 # before this question is added to the history
     try:
         result = get_agent().run(q, request_id, context=context)

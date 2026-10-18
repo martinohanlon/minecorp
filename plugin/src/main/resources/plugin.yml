@@ -13,6 +13,10 @@ commands:
     description: Open a book with the sources behind the agent's last answers
     usage: /agent-explain
     permission: minecorp.explain
+  agent-clear:
+    description: Start a new chat with the agent (it forgets your earlier questions)
+    usage: /agent-clear
+    permission: minecorp.clear
 
 permissions:
   minecorp.agent:
@@ -20,4 +24,7 @@ permissions:
     default: true
   minecorp.explain:
     description: Allows opening the book of sources behind the agent's last answers
+    default: true
+  minecorp.clear:
+    description: Allows starting a new chat with the MineCorp agent
     default: true

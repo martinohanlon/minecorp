@@ -23,13 +23,17 @@ def mock_client(handler):
 
 
 def ok_handler(answer="Smelt it.", request_id="abc123"):
-    seen = []
+    """Answers questions; `seen` holds the questions asked, `clears` the new chats started (joining, or /clear)."""
+    seen, clears = [], []
 
     def handler(request):
+        if request.url.path == "/clear":
+            clears.append(request)
+            return httpx.Response(200, json={"cleared": True})
         seen.append(request)
         return httpx.Response(200, json={"requestId": request_id, "answer": answer})
 
-    handler.seen = seen
+    handler.seen, handler.clears = seen, clears
     return handler
 
 
@@ -341,6 +345,18 @@ class TestRepl:
         assert [json.loads(r.content)["question"] for r in handler.seen] == ["first", "second"]
         assert screen.text.count("MineCorp agent: thinking...") == 2
 
+    def test_starting_the_chat_is_joining_so_it_starts_a_new_chat_first(self):
+        handler = ok_handler()
+        self.run(make_chat(handler), ["first"])
+        assert len(handler.clears) == 1 and json.loads(handler.clears[0].content) == {"playerUuid": chat.player_uuid("Steve")}
+
+    def test_a_service_that_cannot_start_a_new_chat_does_not_stop_the_chat(self):
+        def refused(request):
+            raise httpx.ConnectError("refused")
+
+        screen = self.run(make_chat(refused), [])
+        assert "Steve is in the MineCorp stub chat" in screen.text and chat.UNAVAILABLE not in screen.text
+
     def test_the_end_of_input_leaves_quietly(self):
         assert "Steve is in the MineCorp stub chat" in self.run(make_chat(ok_handler()), []).text
 
@@ -375,6 +391,8 @@ class TestRepl:
         calls = []
 
         def flaky(request):
+            if request.url.path == "/clear":
+                return httpx.Response(200, json={"cleared": True})
             calls.append(1)
             return httpx.Response(500) if len(calls) == 1 else httpx.Response(200, json={"requestId": "x", "answer": "Back."})
 

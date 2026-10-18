@@ -8,6 +8,7 @@ import pytest
 from minecorp_agent import core, memory as mem
 from minecorp_agent.history import Exchange, History
 from minecorp_agent.models import Question, Result, Step
+from minecorp_agent.sessions import Sessions
 
 
 class FakeAgent:
@@ -20,8 +21,14 @@ class FakeAgent:
 
 
 class FakeMemory:
+    """Conversations are stored by session id; a player's stored conversation has the player's uuid as its id (as one made before
+    conversations had ids of their own does)."""
+
     def __init__(self, stored=None, fail_on_record=False):
         self.recorded, self.reads, self.stored, self.fail_on_record = [], [], stored or {}, fail_on_record
+
+    def latest_session(self, player):
+        return player if player in self.stored else None
 
     def record(self, q, exchange, result):
         if self.fail_on_record:
@@ -39,6 +46,7 @@ def wired(monkeypatch):
     memory = FakeMemory()
     monkeypatch.setattr(core, "get_agent", lambda: FakeAgent())
     monkeypatch.setattr(core, "history", History())
+    monkeypatch.setattr(core, "sessions", Sessions())
     monkeypatch.setattr(core, "_memory", memory)
     monkeypatch.setattr(core, "_memory_ready", True)
     return memory
@@ -118,7 +126,8 @@ class TestRecording:
     def test_a_good_answer_is_recorded_with_its_exchange(self, wired):
         core.answer_with_sources(Q, "r1")
         ((q, exchange, result),) = wired.recorded
-        assert q is Q and result.status == "ok"
+        assert q.text == Q.text and q.player_uuid == Q.player_uuid and result.status == "ok"
+        assert q.session_id.startswith("u-1:")                    # the service gives the conversation its own id
         assert exchange == Exchange(Q.text, ("how do I smelt iron? (answered)", "second line"), ({"kind": "game data", "label": "Recipes for X"},))
 
     def test_the_cache_is_still_filled_so_the_book_needs_no_database(self, wired):
@@ -155,10 +164,10 @@ class TestTheBook:
 
     def test_the_cache_is_used_when_it_has_the_player(self, wired):
         core.answer_with_sources(Q, "r1")           # a player's first question looks in memory once (for the conversation so far)
-        assert wired.reads == ["u-1"]
+        assert len(wired.reads) == 1
         core.explain("u-1")
         core.answer_with_sources(Q, "r2")           # from here the cache has them
-        assert wired.reads == ["u-1"]
+        assert len(wired.reads) == 1
 
     def test_after_a_restart_the_book_is_rebuilt_from_memory(self, wired):
         wired.stored["u-2"] = self.STORED
@@ -174,7 +183,7 @@ class TestTheBook:
         assert wired.reads == ["u-2"] and core.history.recent("u-2") == self.STORED
 
     def test_a_player_memory_has_never_seen_has_no_book(self, wired):
-        assert core.explain("nobody") is None and wired.reads == ["nobody"]
+        assert core.explain("nobody") is None and len(wired.reads) == 1
 
     def test_new_answers_go_after_what_was_recalled(self, wired):
         wired.stored["u-1"] = self.STORED
@@ -185,3 +194,52 @@ class TestTheBook:
     def test_without_memory_a_restart_means_an_empty_book(self, monkeypatch):
         monkeypatch.setattr(core, "history", History())
         assert core.explain("u-2") is None
+
+
+class TestConversations:
+    """A conversation belongs to a session: a new one starts on /clear (and when a player joins), and the player has many over time."""
+    STORED = [Exchange("older question", ("older answer",), (), at=100.0)]
+
+    def recorded_sessions(self, wired):
+        return [q.session_id for q, _exchange, _result in wired.recorded]
+
+    def test_every_question_of_a_conversation_is_filed_under_one_session(self, wired):
+        core.answer_with_sources(Q, "r1")
+        core.answer_with_sources(Q, "r2")
+        first, second = self.recorded_sessions(wired)
+        assert first == second and first.startswith("u-1:")
+
+    def test_the_session_the_client_sends_is_not_used(self, wired):
+        core.answer_with_sources(Question("u-1", "Steve", "client-made-this-up", "hi"), "r1")
+        assert self.recorded_sessions(wired)[0] != "client-made-this-up"
+
+    def test_clearing_starts_a_new_conversation_with_nothing_carried_over(self, wired):
+        core.answer_with_sources(Q, "r1")
+        core.clear("u-1")
+        assert core.explain("u-1") is None and core.history.recent("u-1") == []
+        core.answer_with_sources(Q, "r2")
+        first, second = self.recorded_sessions(wired)
+        assert first != second and second.startswith("u-1:")
+
+    def test_clearing_one_player_leaves_another_in_their_conversation(self, wired):
+        core.answer_with_sources(Q, "r1")
+        core.answer_with_sources(Question("u-2", "Alex", "s", "hi"), "r2")
+        core.clear("u-1")
+        assert core.sessions.current("u-2") == self.recorded_sessions(wired)[1]
+
+    def test_after_a_restart_a_player_carries_on_in_their_newest_stored_conversation(self, wired):
+        wired.stored["u-2"] = self.STORED
+        core.answer_with_sources(Question("u-2", "Alex", "s", "and now?"), "r1")
+        assert self.recorded_sessions(wired) == ["u-2"]
+        assert [e.question for e in core.history.recent("u-2")] == ["older question", "and now?"]
+
+    def test_a_clear_after_a_restart_does_not_bring_the_stored_conversation_back(self, wired):
+        wired.stored["u-2"] = self.STORED
+        core.clear("u-2")
+        assert core.explain("u-2") is None and "u-2" not in wired.reads          # the stored conversation is not read
+        core.answer_with_sources(Question("u-2", "Alex", "s", "hi"), "r1")
+        assert self.recorded_sessions(wired)[0].startswith("u-2:")
+
+    def test_a_player_memory_has_never_seen_starts_a_new_conversation(self, wired):
+        core.answer_with_sources(Question("new", "Pat", "s", "hi"), "r1")
+        assert self.recorded_sessions(wired)[0].startswith("new:")

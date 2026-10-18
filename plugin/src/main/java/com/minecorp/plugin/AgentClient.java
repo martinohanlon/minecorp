@@ -21,6 +21,7 @@ final class AgentClient {
             .build();
     private final URI askUri;
     private final URI explainUri;
+    private final URI clearUri;
     private final String sharedSecret;
     private final Duration timeout;
 
@@ -28,6 +29,7 @@ final class AgentClient {
         String base = baseUrl.replaceAll("/+$", "");
         this.askUri = URI.create(base + "/ask");
         this.explainUri = URI.create(base + "/explain");
+        this.clearUri = URI.create(base + "/clear");
         this.sharedSecret = sharedSecret;
         this.timeout = timeout;
     }
@@ -59,6 +61,13 @@ final class AgentClient {
         JsonObject body = new JsonObject();
         body.addProperty("playerUuid", playerUuid);
         return ExplainBook.parse(post(explainUri, body));
+    }
+
+    /** Starts a new chat for this player (POST /clear): the service forgets what they asked. Same failures as {@link #ask}. */
+    void clear(String playerUuid) throws IOException, InterruptedException {
+        JsonObject body = new JsonObject();
+        body.addProperty("playerUuid", playerUuid);
+        post(clearUri, body);
     }
 
     private JsonObject post(URI uri, JsonObject body) throws IOException, InterruptedException {

@@ -13,7 +13,7 @@ from types import SimpleNamespace as NS
 import pytest
 
 from minecorp_agent import agent as agent_mod
-from minecorp_agent.agent import FALLBACK, MAX_ANSWER_CHARS, Agent
+from minecorp_agent.agent import ERROR_ANSWER, FALLBACK, MAX_ANSWER_CHARS, Agent
 from minecorp_agent.config import Settings
 from minecorp_agent.models import Question
 from minecorp_agent.prompt import SYSTEM_PROMPT
@@ -234,7 +234,8 @@ class TestTurnLimit:
 class TestFailures:
     def test_a_model_error_becomes_a_friendly_answer_and_an_error_status(self, tmp_path):
         result, _ = run(FakeClient(RuntimeError("rate limited")), tmp_path)
-        assert result.status == "error" and result.answer == FALLBACK
+        assert result.status == "error" and result.answer == ERROR_ANSWER
+        assert result.answer != FALLBACK                                    # a failure must not read like a question it could not answer
         assert result.error == "RuntimeError: rate limited"
 
     def test_a_model_error_after_a_tool_round_keeps_the_steps(self, tmp_path):

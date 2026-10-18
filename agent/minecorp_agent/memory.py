@@ -140,6 +140,29 @@ LIMIT $limit
 """
 
 
+# A player's conversations are the ones filed under their uuid as the user. One made before conversations had ids of their own was filed
+# under the bare uuid as its session id, so those are found too.
+LATEST_SESSION = """
+MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message)
+WHERE c.user_identifier = $player OR c.session_id = $player
+RETURN c.session_id AS session_id
+ORDER BY m.timestamp DESC, m.id DESC
+LIMIT 1
+"""
+
+
+# The library's `User` (made from the player's uuid, and the only label it will use) is tied to the domain graph's `Player`, matched on uuid.
+# A relationship, not a shared node: the library owns `User` and its properties, and the model loader recreates `Player` nodes. A player
+# who is not in model/players.yaml gets a `Player` here (the name is only set when it is new, so an authored one is not changed).
+LINK_PLAYER = """
+MERGE (p:Player {uuid: $uuid})
+ON CREATE SET p.name = $name
+WITH p
+MATCH (u:User {identifier: $uuid})
+MERGE (u)-[:IS_PLAYER]->(p)
+"""
+
+
 def _epoch(stamp) -> float:
     """Seconds since the epoch for a time the library stored (a Neo4j DateTime, or a datetime); 0 when there is none. A time with no zone is UTC."""
     if stamp is None:
@@ -282,17 +305,25 @@ class AgentMemory:
             if exchange is not None:
                 for role, content, metadata in messages_for(q, exchange, result):
                     message = await client.short_term.add_message(
-                        q.player_uuid, role, content, extract_entities=o.extract, extract_relations=o.extract,
-                        generate_embedding=o.embed, metadata=metadata)
+                        q.session_id, role, content, extract_entities=o.extract, extract_relations=o.extract,
+                        generate_embedding=o.embed, user_identifier=q.player_uuid, metadata=metadata)
                     user_message = message if role == "user" else user_message
             if o.traces:
                 await self._trace(client, q, result, user_message)
+            await self._link_player(client, q)
+
+    async def _link_player(self, client, q: Question) -> None:
+        """(:User)-[:IS_PLAYER]->(:Player), once the library has made the User (by the message or the trace above). Never fails a write."""
+        try:
+            await client._client.execute_write(LINK_PLAYER, {"uuid": q.player_uuid, "name": q.player_name})
+        except Exception as exc:
+            log.warning("agent memory could not link %s to their Player: %s: %s", q.player_uuid, type(exc).__name__, exc)
 
     async def _trace(self, client, q: Question, result: Result, user_message) -> None:
         from neo4j_agent_memory import ToolCallStatus
         reasoning, embed = client.reasoning, self.options.embed
         trace = await reasoning.start_trace(
-            q.player_uuid, q.text, generate_embedding=embed, user_identifier=q.player_uuid,
+            q.session_id, q.text, generate_embedding=embed, user_identifier=q.player_uuid,
             triggered_by_message_id=user_message.id if user_message is not None else None,
             metadata={"player": q.player_name, "model": result.model, "ms": result.ms, "status": result.status,
                       "context_turns": result.context_turns})
@@ -304,20 +335,33 @@ class AgentMemory:
         await reasoning.complete_trace(trace.id, outcome=result.status, success=result.status == "ok")
 
     # ---- reading
-    def recent(self, player: str, limit: int = MAX_EXCHANGES) -> list[Exchange]:
-        """The player's last exchanges from memory, oldest first. Empty when there are none, or memory cannot be reached (logged)."""
+    def recent(self, session_id: str, limit: int = MAX_EXCHANGES) -> list[Exchange]:
+        """The last exchanges of a conversation from memory, oldest first. Empty when there are none, or memory cannot be reached (logged)."""
         try:
-            return asyncio.run_coroutine_threadsafe(self._read(player, limit), self._event_loop()).result(READ_TIMEOUT)
+            return asyncio.run_coroutine_threadsafe(self._read(session_id, limit), self._event_loop()).result(READ_TIMEOUT)
         except Exception as exc:
             log.warning("agent memory read failed: %s: %s", type(exc).__name__, exc)
             return []
 
-    async def _read(self, player: str, limit: int) -> list[Exchange]:
+    def latest_session(self, player: str) -> str | None:
+        """The id of the player's newest conversation (the one with the latest message), or None when there is none or memory cannot be reached."""
+        try:
+            return asyncio.run_coroutine_threadsafe(self._latest_session(player), self._event_loop()).result(READ_TIMEOUT)
+        except Exception as exc:
+            log.warning("agent memory read failed: %s: %s", type(exc).__name__, exc)
+            return None
+
+    async def _latest_session(self, player: str) -> str | None:
+        client = await self._connect()
+        rows = await client._client.execute_read(LATEST_SESSION, {"player": player})
+        return rows[0]["session_id"] if rows else None
+
+    async def _read(self, session_id: str, limit: int) -> list[Exchange]:
         # The library's get_conversation(limit=n) gives the OLDEST n messages (and at most 1000), and the book needs the latest, so this
         # is one query of our own through the library's connection. It relies on the library's storage (a Conversation with
         # HAS_MESSAGE to Message nodes with role, content, metadata and timestamp); test_memory_graph.py fails if that changes.
         client = await self._connect()
-        rows = await client._client.execute_read(LATEST_MESSAGES, {"session_id": player, "limit": limit * 2 + 2})
+        rows = await client._client.execute_read(LATEST_MESSAGES, {"session_id": session_id, "limit": limit * 2 + 2})
         messages = []
         for row in reversed(rows):                                   # newest first from the query, oldest first for reading
             node = dict(row["m"])

@@ -24,13 +24,23 @@ user:      Player Steve asks: and how many of each for 12 of them?        <- the
 - **Visible:** the trace (`agent/logs/traces.jsonl`, `contextTurns`) and the memory trace (`context_turns`) say how many earlier exchanges each run was sent. Cost: roughly 300 tokens an exchange.
 - **How it is tested:** unit tests for the rules (`tests/agent/test_conversation.py`), and three evals with a canned conversation (`followup-count`, `followup-other-item`, `followup-stale`; `"history"` in `agent/evals/questions.json`). Without the context the first two fail ("I need to know what 'them' refers to") and with it they pass; the third checks that an unrelated question is not bent by an old one.
 
+## Conversations: one per session
+
+A conversation belongs to a **session**, not to a player (neo4j-agent-memory's `session_id` is a conversation; `user_identifier` links it to the `User`). A player therefore has many conversations over time:
+
+- **A new conversation starts** when the player joins (the plugin calls `POST /clear` on `PlayerJoinEvent`) and when they use `/agent-clear`. The service (`agent/minecorp_agent/sessions.py`) gives it an id, `<player uuid>:<random>`, and uses it as the `session_id` of every message and trace until the next one. It first shows in Neo4j with the player's first question. The `sessionId` the plugin sends with a question is ignored: the service owns the conversation.
+- **A conversation does not end by itself** in the graph when the player goes quiet. The 15-minute idle rule (below) only decides what the model is sent as context.
+- **After a service restart** the service has forgotten the current id, so a player carries on in their newest stored conversation (the one with the latest message, found through `user_identifier`) until they join again or clear. If they clear and the service restarts before their next question, that older conversation is picked up again.
+- **Conversations written before this change** were filed under the bare uuid as the session id; the newest-conversation lookup finds those too.
+- The book and the conversation context are both read from the current conversation, so after a clear both are empty.
+
 ## What it gives us, and what it holds
 
 neo4j-agent-memory has three kinds of memory. MineCorp uses two now and has a switch for the third.
 
 | Memory | Used for | Stored as | Setting |
 |---|---|---|---|
-| **Short-term** | each player's questions and answers; the explain book is rebuilt from it | `(:Conversation {session_id: <player uuid>})-[:HAS_MESSAGE]->(:Message {role, content, metadata})`, chained with `NEXT_MESSAGE`. The answer's **sources are in its metadata as JSON** | always, when memory is on |
+| **Short-term** | each conversation's questions and answers; the explain book is rebuilt from the current one | `(:Conversation {session_id: <player uuid>:<random>, user_identifier: <player uuid>})-[:HAS_MESSAGE]->(:Message {role, content, metadata})`, chained with `NEXT_MESSAGE`. The answer's **sources are in its metadata as JSON** | always, when memory is on |
 | **Reasoning** | the decision trace the knowledge-layer design asks for: what was asked, which tools ran, whether it worked | `(:User)-[:HAS_TRACE]->(:ReasoningTrace {task, success, outcome})-[:HAS_STEP]->(:ReasoningStep)-[:USES_TOOL]->(:ToolCall)-[:INSTANCE_OF]->(:Tool)`, and `(:ReasoningTrace)-[:INITIATED_BY]->(:Message)` | `AGENT_MEMORY_TRACES` (on) |
 | **Long-term** | entities and preferences an LLM finds in what players say | entities, linked to the messages they came from | `AGENT_MEMORY_EXTRACT` (off) |
 
@@ -79,7 +89,7 @@ The library's `get_conversation(limit=n)` returns the **oldest** n messages (and
 
 ## Not built yet
 
-- **Matching the memory `User` node with the model's `Player` node** (owner's todo, 2026-10-16). The library creates a `(:User)` for each player, identified by the player's uuid, and the company model has `(:Player {uuid, name})`, which `CONFIRMED_BY` points at. They should be the same identity or linked on uuid, so a player's conversations, traces and confirmed processes can be followed together. Open: the properties the library puts on `User`, and players who are not in `model/players.yaml`.
+- **The memory `User` and the model's `Player` are linked** (built 2026-10-18): `(:User {identifier: <uuid>})-[:IS_PLAYER]->(:Player {uuid})`, written at the end of every memory write. The library hardcodes the `User` label and `identifier` property (no setting renames them), so it is a relationship and not a shared node: the library owns `User`, and `load_model` recreates `Player` nodes. A `Player` that is not in `model/players.yaml` is created (name set only when new). The library links a `User` to its conversations itself, `(:User)-[:HAS_CONVERSATION]->(:Conversation)`, but only when a write passes `user_identifier`; conversations written before 2026-10-18 have no such link.
 
 - **A `recall` tool, and long-term memory in answers** (agreed to wait, 2026-10-16). Conversation context covers the current conversation. Looking further back ("what did I ask about shelters last week?") would be a read-only `recall(query)` tool that searches the player's own messages and traces by meaning (needs `AGENT_MEMORY_EMBED`); it must take the player from the request, never from an argument the model supplies. Preferences and entities from `AGENT_MEMORY_EXTRACT` would come in through the library's `get_context(...)`.
 - **Linking long-term entities to the game graph** (`(:Entity)-[:SAME_AS]->(:Item)`): a job like `link_wiki.py`, once extraction has produced entities worth linking.

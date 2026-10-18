@@ -211,6 +211,27 @@ class AgentClientTest {
     }
 
     @Test
+    void clearPostsThePlayerUuidToClearWithTheSharedSecret() throws Exception {
+        reply = "{\"cleared\":true}";
+        client(baseUrl(), Duration.ofSeconds(5)).clear("11111111-2222-3333-4444-555555555555");
+        assertEquals("POST", method.get());
+        assertEquals("/clear", path.get());
+        assertEquals("secret-123", key.get());
+        JsonObject sent = new Gson().fromJson(body.get(), JsonObject.class);
+        assertEquals("11111111-2222-3333-4444-555555555555", sent.get("playerUuid").getAsString());
+        assertEquals(1, sent.size());
+    }
+
+    @Test
+    void clearFailsLikeAskDoes() {
+        status = 401;
+        assertThrows(IOException.class, () -> client(baseUrl(), Duration.ofSeconds(5)).clear("u"));
+        status = 200;
+        reply = "<html>oops</html>";
+        assertThrows(IOException.class, () -> client(baseUrl(), Duration.ofSeconds(5)).clear("u"));
+    }
+
+    @Test
     void anAgentThatIsNotRunningIsAnIoError() {
         int closedPort = server.getAddress().getPort();
         server.stop(0);

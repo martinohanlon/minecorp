@@ -11,7 +11,8 @@ Every script has a PowerShell version (`.ps1`, Windows) and a bash version (`.sh
 | `chat-with-agent` | A terminal stand-in for the plugin, to try the agent without Minecraft: `-Direct` / `--direct` runs the agent in this process, `-Trace` / `--trace` shows what it did, `--explain` shows the notes book. The program is [chat.py](chat.py) (`--help`). |
 | `run-tests` | The Python tests and the plugin's JUnit tests. `-Integration`, `-E2E`, `-All`, `-PythonOnly` (`--integration`, `--e2e`, `--all`, `--python-only` in bash). See [../tests/README.md](../tests/README.md). |
 | `install-java` | Installs Temurin JDK 25 (winget on Windows; Homebrew or the Adoptium apt repository on macOS and Linux). |
+| `install-maven` | Installs Apache Maven, which `build-plugin` and the plugin tests need. On Windows it downloads Maven from Apache (winget has no official package), checks the SHA-512, unpacks it to `%LOCALAPPDATA%\Programs` and adds it to your user PATH (no administrator rights); `-Version` picks the release. On macOS and Linux it uses Homebrew or apt, or a download into `~/.local`. Open a new terminal afterwards. |
 
-A new machine, in order: `install-java`, `start-server` (with the EULA flag, then stop it), `build-graph`, `build-plugin`, `start-agent`, then start the server again. The Neo4j database itself is `docker compose up -d` (see [../loader/README.md](../loader/README.md)).
+A new machine, in order: `install-java`, `install-maven`, `start-server` (with the EULA flag, then stop it), `build-graph`, `build-plugin`, `start-agent`, then start the server again. The Neo4j database itself is `docker compose up -d` (see [../loader/README.md](../loader/README.md)).
 
 The bash versions were written on Windows and have been syntax-checked there (`bash -n`) and run for `build-graph --list`; the rest have not been run on Linux or macOS yet.

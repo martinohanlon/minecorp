@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from .config import get_settings
 from .book import AUTHOR, TITLE
-from .core import answer_with_sources, close_memory, explain as explain_book, get_memory
+from .core import answer_with_sources, clear as clear_chat, close_memory, explain as explain_book, get_memory
 from .models import Question
 
 log = logging.getLogger("minecorp.agent")
@@ -102,3 +102,11 @@ def explain(body: ExplainRequest) -> Book:
     log.info("explain player=%s", body.playerUuid)
     book = explain_book(body.playerUuid)
     return Book(**book) if book else Book(title=TITLE, author=AUTHOR, pages=[])
+
+
+@app.post("/clear", dependencies=[Depends(require_key)])
+def clear(body: ExplainRequest) -> dict:
+    """Start a new chat for a player: their earlier questions are no longer used as context or shown in the book. Requires the shared secret."""
+    log.info("clear player=%s", body.playerUuid)
+    clear_chat(body.playerUuid)
+    return {"cleared": True}

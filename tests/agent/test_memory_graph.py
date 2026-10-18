@@ -11,6 +11,7 @@ import pytest
 
 from graphdb import empty_test_database
 from minecorp_agent import core, memory as mem
+from minecorp_agent.sessions import Sessions
 from minecorp_agent.history import Exchange, History
 from minecorp_agent.models import Question, Result, Step
 
@@ -28,8 +29,8 @@ def options(database, **kw):
     return mem.MemoryOptions(backend="neo4j", database=DB, uri=database["uri"], user=database["user"], password=database["password"], **kw)
 
 
-def question(player="p1", text="how do I make an eye of ender?"):
-    return Question(player, "Steve", "s", text)
+def question(player="p1", text="how do I make an eye of ender?", session=None):
+    return Question(player, "Steve", session or f"{player}:c1", text)
 
 
 def run(status="ok"):
@@ -63,30 +64,86 @@ def memory(database):
 
 
 def test_the_last_five_come_back_oldest_first_exactly_as_they_were_written(memory):
-    assert memory.recent("p1") == [exchange(n) for n in range(2, 7)]
+    assert memory.recent("p1:c1") == [exchange(n) for n in range(2, 7)]
 
 
 def test_each_player_has_their_own_conversation(memory):
-    assert memory.recent("p2") == [exchange(99)]
-    assert memory.recent("nobody") == []
+    assert memory.recent("p2:c1") == [exchange(99)]
+    assert memory.recent("nobody:c1") == []
+
+
+def test_each_user_has_their_conversation_and_their_traces_and_is_the_domain_graphs_player(memory, database):
+    db = database["db"]
+    assert db.one("MATCH (:User {identifier: 'p1'})-[:HAS_CONVERSATION]->(c:Conversation) RETURN c.session_id") == "p1:c1"
+    assert db.one("MATCH (:User {identifier: 'p1'})-[:HAS_TRACE]->(t:ReasoningTrace) RETURN count(t)") == 8
+    assert db.one("MATCH (:User {identifier: 'p1'})-[:IS_PLAYER]->(p:Player) RETURN p.uuid") == "p1"
+    assert db.one("MATCH (:User {identifier: 'p1'})-[:IS_PLAYER]->(p:Player) RETURN p.name") == "Steve"
+
+
+def test_an_authored_player_keeps_their_name_and_is_not_duplicated(database):
+    db = database["db"]
+    db.q("MERGE (:Player {uuid: 'p5', name: 'martinohanlon'})")
+    m = mem.AgentMemory(options(database))
+    try:
+        for n in (1, 2):
+            m.record(question("p5", f"q{n}"), exchange(n), run())
+        settle(m)
+        assert db.q("MATCH (p:Player {uuid: 'p5'}) RETURN p.name AS n") == [{"n": "martinohanlon"}]
+        assert db.one("MATCH (:User {identifier: 'p5'})-[r:IS_PLAYER]->(:Player {uuid: 'p5'}) RETURN count(r)") == 1
+    finally:
+        m.close()
+
+
+def test_the_newest_conversation_of_a_player_is_found(memory):
+    assert memory.latest_session("p1") == "p1:c1"
+    assert memory.latest_session("p2") == "p2:c1"
+    assert memory.latest_session("nobody") is None
+
+
+def test_a_player_has_many_conversations_and_each_is_read_on_its_own(database):
+    m = mem.AgentMemory(options(database))
+    try:
+        m.record(question("p3", "first chat", session="p3:a"), exchange(1), run())
+        m.record(question("p3", "second chat", session="p3:b"), exchange(2), run())
+        settle(m)
+        assert m.recent("p3:a") == [exchange(1)] and m.recent("p3:b") == [exchange(2)]
+        assert m.latest_session("p3") == "p3:b"
+        m.record(question("p3", "third chat", session="p3:c"), exchange(3), run())
+        settle(m)
+        assert m.latest_session("p3") == "p3:c"
+        users = database["db"].q("MATCH (c:Conversation) WHERE c.session_id STARTS WITH 'p3:' RETURN c.user_identifier AS u")
+        assert [r["u"] for r in users] == ["p3"] * 3                      # the conversations belong to the player
+    finally:
+        m.close()
+
+
+def test_a_conversation_filed_under_the_bare_uuid_is_still_found(database):
+    m = mem.AgentMemory(options(database))
+    try:
+        m.record(question("p4", "old style", session="p4"), exchange(1), run())
+        settle(m)
+        assert m.latest_session("p4") == "p4"
+    finally:
+        m.close()
 
 
 def test_a_run_with_no_good_answer_added_no_messages(memory, database):
-    assert database["db"].one("MATCH (:Conversation)-[:HAS_MESSAGE]->(m:Message) RETURN count(m)") == 16        # 8 exchanges, two messages each
+    assert database["db"].one("MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message) WHERE c.session_id IN ['p1:c1', 'p2:c1'] RETURN count(m)") == 16        # 8 exchanges, two messages each
 
 
 def test_a_restart_loses_nothing(memory, database):
     fresh = mem.AgentMemory(options(database))
     try:
-        assert fresh.recent("p1") == memory.recent("p1")
+        assert fresh.recent("p1:c1") == memory.recent("p1:c1")
     finally:
         fresh.close()
 
 
 def test_every_run_left_a_trace_with_its_tool_calls(memory, database):
     db = database["db"]
-    assert db.one("MATCH (t:ReasoningTrace) RETURN count(t)") == 9
-    assert db.one("MATCH (t:ReasoningTrace) WHERE t.success = false RETURN count(t)") == 1
+    mine = "t.session_id IN ['p1:c1', 'p2:c1']"                          # the fixture's conversations (other tests add their own)
+    assert db.one(f"MATCH (t:ReasoningTrace) WHERE {mine} RETURN count(t)") == 9
+    assert db.one(f"MATCH (t:ReasoningTrace) WHERE {mine} AND t.success = false RETURN count(t)") == 1
     failed = db.one("MATCH (t:ReasoningTrace {success: false}) RETURN t.task")
     assert failed == "one that failed"
     tools = db.q("MATCH (:ReasoningTrace {task: 'question 3'})-[:HAS_STEP]->(:ReasoningStep)-[:USES_TOOL]->(:ToolCall)-[:INSTANCE_OF]->(t:Tool) "
@@ -108,6 +165,7 @@ def test_the_memory_lives_only_in_its_own_database(memory, database):
 
 def test_the_book_is_rebuilt_from_memory_after_a_restart_of_the_service(memory, database, monkeypatch):
     monkeypatch.setattr(core, "history", History())                     # the service has just started: nothing cached
+    monkeypatch.setattr(core, "sessions", Sessions())
     monkeypatch.setattr(core, "_memory", mem.AgentMemory(options(database)))
     monkeypatch.setattr(core, "_memory_ready", True)
     try:
@@ -131,7 +189,7 @@ def test_memory_in_the_game_graphs_own_database_sits_beside_it_and_can_be_joined
         asked = Exchange("how do I make an Ender Eye?", ("- Crafting Table: 1 Blaze Powder + 1 Ender Pearl",), ({"kind": "game data", "label": "Recipes for Ender Eye"},))
         memory.record(question("shared-1", asked.question), asked, run())
         settle(memory)
-        assert memory.recent("shared-1") == [asked]
+        assert memory.recent("shared-1:c1") == [asked]
         assert db.q(game) == before                                           # nothing of the game graph was touched
         joined = db.q("MATCH (m:Message {role: 'user'}), (i:Item) WHERE m.content CONTAINS i.name AND i.name = 'Ender Eye' RETURN i.name AS item, m.content AS said")
         assert joined == [{"item": "Ender Eye", "said": "how do I make an Ender Eye?"}]
@@ -151,7 +209,7 @@ def test_the_database_is_created_when_it_is_missing(database):
             m = mem.AgentMemory(o)
             m.record(question(), exchange(1), run())
             settle(m)
-            assert m.recent("p1") == [exchange(1)]
+            assert m.recent("p1:c1") == [exchange(1)]
             m.close()
         finally:
             driver.execute_query(f"DROP DATABASE {other} IF EXISTS WAIT", database_="system")

@@ -10,6 +10,7 @@ import pytest
 from minecorp_agent import config, core
 from minecorp_agent.history import History
 from minecorp_agent.models import Result, Step
+from minecorp_agent.sessions import Sessions
 
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 
@@ -40,6 +41,7 @@ def api(monkeypatch):
     agent = FakeAgent()
     monkeypatch.setattr(core, "get_agent", lambda: agent)
     monkeypatch.setattr(core, "history", History())
+    monkeypatch.setattr(core, "sessions", Sessions())
     return fastapi_testclient.TestClient(app_mod.app), agent
 
 
@@ -145,3 +147,52 @@ def test_the_core_gives_the_same_book_without_the_service(monkeypatch):
     core.answer_with_sources(Question("u-9", "Steve", "s", "hello"), "r1")
     book = core.explain("u-9")
     assert book["pages"][0]["lines"][3]["text"] == "1. hello" and core.explain("u-1") is None
+
+
+class TestClear:
+    def clear(self, client, player="u-1", key=SECRET):
+        headers = {} if key is None else {"X-MineCorp-Key": key}
+        return client.post("/clear", json={"playerUuid": player}, headers=headers)
+
+    @pytest.mark.parametrize("key", [None, "", "wrong"])
+    def test_anything_but_the_secret_is_unauthorised(self, api, key):
+        client, _ = api
+        assert self.clear(client, key=key).status_code == 401
+
+    def test_a_bad_body_is_rejected(self, api):
+        client, _ = api
+        assert self.clear(client, player="").status_code == 422
+
+    def test_clearing_empties_the_players_book_and_the_context(self, api):
+        client, agent = api
+        ask(client)
+        assert explain(client).json()["pages"]
+        r = self.clear(client)
+        assert r.status_code == 200 and r.json() == {"cleared": True}
+        assert explain(client).json()["pages"] == []
+
+    def test_the_next_question_starts_a_new_book(self, api):
+        client, _ = api
+        ask(client, "first")
+        self.clear(client)
+        ask(client, "second")
+        contents = [l["text"] for l in explain(client).json()["pages"][0]["lines"]]
+        assert contents[2:] == ["Last 1 question(s):", "1. second"]
+
+    def test_the_agent_gets_no_context_after_a_clear(self, api, monkeypatch):
+        client, agent = api
+        seen = []
+        run = agent.run
+        monkeypatch.setattr(agent, "run", lambda q, rid, context=(): seen.append(len(context)) or run(q, rid, context))
+        ask(client, "first")
+        ask(client, "second")
+        self.clear(client)
+        ask(client, "third")
+        assert seen == [0, 1, 0]
+
+    def test_it_only_clears_the_player_who_asked(self, api):
+        client, _ = api
+        ask(client, "alex asks", player="alex")
+        ask(client, "sam asks", player="sam")
+        self.clear(client, player="alex")
+        assert explain(client, "alex").json()["pages"] == [] and explain(client, "sam").json()["pages"]

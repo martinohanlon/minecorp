@@ -12,7 +12,8 @@ is a developer's tool it adds what a player never sees, in grey: the reason a re
 answer follows the chat style (at most 6 lines, about 90 characters each, plain text; it only flags real overruns), and with --trace the tools the
 agent called, read from agent/logs/traces.jsonl.
 
-In the chat: /explain asks the service for the book the plugin's /agent-explain opens (the last five questions, answers and sources,
+Starting the chat is joining the game, so it starts a new chat (a new conversation in agent memory); /clear (or /agent-clear) starts another:
+what this player asked before is no longer used to understand follow-up questions or shown in the book. /explain asks the service for the book the plugin's /agent-explain opens (the last five questions, answers and sources,
 kept by the service: see docs/explain-book.md) and shows its pages, /trace turns the developer trace on or off, /name Alex changes the player, /help lists these, /quit leaves.
 A leading "/agent " is accepted, as in the game.
 """
@@ -129,10 +130,11 @@ class Chat:
     """One player's conversation with the agent: over HTTP like the plugin, or directly in this process."""
 
     def __init__(self, name: str = "Steve", url: str = DEFAULT_URL, secret: str = "", client=None, direct=None, direct_explain=None,
-                 timeout: float = DEFAULT_TIMEOUT):
+                 timeout: float = DEFAULT_TIMEOUT, direct_clear=None):
         self.name, self.url, self.secret, self.timeout = name, url.rstrip("/"), secret, timeout
         self.client, self.direct = client, direct          # direct: a function (Question, request_id) -> answer text, or (text, sources)
         self.direct_explain = direct_explain               # a function (player uuid) -> book or None, when running the agent here
+        self.direct_clear = direct_clear                   # a function (player uuid) -> None, when running the agent here
 
     @property
     def configured(self) -> bool:
@@ -182,6 +184,21 @@ class Chat:
             return None, f"{type(exc).__name__}: {exc}"
         book = clean_book(raw)
         return (book, None) if book is not None else (None, "the reply is not a book")
+
+    def clear(self) -> str | None:
+        """Start a new chat, as the plugin's /agent-clear does (POST /clear): None when done, else why not."""
+        pid = player_uuid(self.name)
+        try:
+            if self.direct_clear is not None:
+                self.direct_clear(pid)
+            else:
+                client = self.client or httpx.Client(timeout=self.timeout)
+                response = client.post(f"{self.url}/clear", json={"playerUuid": pid}, headers={"X-MineCorp-Key": self.secret})
+                if response.status_code != 200:
+                    return f"HTTP {response.status_code}: {response.text[:160]}"
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
+        return None
 
     def healthy(self) -> str | None:
         """None when the service answers /health, else the reason it does not (HTTP mode only)."""
@@ -266,7 +283,8 @@ def respond(chat: Chat, question: str, term: Terminal, trace: bool) -> bool:
 
 
 NOTHING_TO_EXPLAIN = "Nothing to explain yet: ask a question first."
-HELP = "Type a question. /explain shows the notes the book would hold, /trace shows what the agent did, /name <player> changes the player, /quit leaves."
+CLEARED = "Chat cleared. Your next question starts a new chat."          # the plugin's message for /agent-clear
+HELP = "Type a question. /clear starts a new chat, /explain shows the notes the book would hold, /trace shows what the agent did, /name <player> changes the player, /quit leaves."
 
 
 def explain(chat: Chat, term: Terminal) -> None:
@@ -288,9 +306,20 @@ def explain(chat: Chat, term: Terminal) -> None:
                 term.say("    link: " + line["url"], "grey")
 
 
+def clear(chat: Chat, term: Terminal) -> None:
+    """What /agent-clear does in the game: the service forgets this player's chat."""
+    error = chat.clear()
+    if error:
+        term.say(UNAVAILABLE, "red")
+        term.say(f"(stub) {error}", "grey")
+    else:
+        term.say(CLEARED, "yellow")
+
+
 def repl(chat: Chat, term: Terminal, read=None, trace: bool = False) -> None:
     """The chat loop. `read` is where lines come from (the keyboard unless a test gives its own)."""
     read = read or input
+    chat.clear()                                         # joining the game starts a new chat (the plugin does this on PlayerJoinEvent); failure is quiet
     term.say(f"{chat.name} is in the MineCorp stub chat. {HELP}", "grey")
     while True:
         try:
@@ -306,6 +335,8 @@ def repl(chat: Chat, term: Terminal, read=None, trace: bool = False) -> None:
             term.say(HELP, "grey")
         elif command in ("/explain", "/agent-explain"):
             explain(chat, term)
+        elif command in ("/clear", "/agent-clear"):
+            clear(chat, term)
         elif command == "/trace":
             trace = not trace
             term.say(f"(stub) trace {'on' if trace else 'off'}", "grey")
@@ -338,8 +369,8 @@ def main(argv: list[str] | None = None) -> int:
     term = Terminal(colour)
 
     if args.direct:
-        from minecorp_agent.core import answer_with_sources, explain as explain_book
-        chat = Chat(args.name, direct=answer_with_sources, direct_explain=explain_book, timeout=args.timeout)
+        from minecorp_agent.core import answer_with_sources, clear as clear_chat, explain as explain_book
+        chat = Chat(args.name, direct=answer_with_sources, direct_explain=explain_book, direct_clear=clear_chat, timeout=args.timeout)
     else:
         chat = Chat(args.name, args.url or os.environ.get("AGENT_URL", DEFAULT_URL), os.environ.get("AGENT_SHARED_SECRET", ""), timeout=args.timeout)
         problem = chat.healthy() if chat.configured else None

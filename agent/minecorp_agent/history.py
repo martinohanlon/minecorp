@@ -49,3 +49,4 @@ class History:
     def forget(self, player: str) -> None:
         with self._lock:
             self._players.pop(player, None)
+

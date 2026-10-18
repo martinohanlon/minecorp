@@ -12,7 +12,7 @@ A thin [Paper](https://papermc.io) plugin that connects Minecraft to the MineCor
 ## Prerequisites
 
 - A JDK 25 on `PATH` (`javac -version`). Install one with `./scripts/install-java.ps1`.
-- Maven 3.9+ on `PATH` (`mvn -version`). Maven uses `JAVA_HOME` if it is set, otherwise the `java` on `PATH`; `mvn -version` should report Java 25.
+- Maven 3.9+ on `PATH` (`mvn -version`). Install it with `./scripts/install-maven.ps1`. Maven uses `JAVA_HOME` if it is set, otherwise the `java` on `PATH`; `mvn -version` should report Java 25.
 - The server set up as described in the project root: `./scripts/start-server.ps1 -AcceptEula` downloads Paper into `server/` on first run.
 
 ## Build
@@ -89,8 +89,13 @@ Behaviours to expect:
 | `shared-secret` empty | "The agent is not configured yet. Ask an admin." |
 | `/agent-explain` before any question | "Nothing to show yet. Ask something with /agent <question> first." |
 | `/agent-explain` from the server console | "Only a player can open the notes book." |
+| `/agent-clear` from the server console | "Only a player has a chat to clear." |
 
 The permission `minecorp.agent` controls who may use the command (everyone by default).
+
+### `/agent-clear`
+
+Starts a new chat: the agent opens a new conversation for the player, so what they asked before is no longer used to understand their follow-up questions or shown in their book (it stays in agent memory as a conversation of its own). The plugin only posts the player's uuid to `POST /clear` and says "Chat cleared. Your next question starts a new chat." A player who **joins** starts a new chat the same way (`PlayerJoinEvent`; quiet if the agent is down). Console: "Only a player has a chat to clear." Permission `minecorp.clear` (everyone by default).
 
 ### `/agent-explain`
 
@@ -106,10 +111,10 @@ plugin/
   src/main/resources/plugin.yml                Plugin descriptor: name, main class, api-version, command, permission
   src/main/resources/config.yml                Default config (copied to the server on first start)
   src/main/java/com/minecorp/plugin/
-    MineCorpPlugin.java                        Entry point and the /agent and /agent-explain commands; connects the pieces below to Bukkit
+    MineCorpPlugin.java                        Entry point, the /agent, /agent-explain and /agent-clear commands and the join listener; connects the pieces below to Bukkit
     AskGuard.java                              The rules for accepting a question (usage, length, configured, one at a time)
     Replies.java                               Splits an answer into chat lines
-    AgentClient.java                           HTTP client for the agent service (POST /ask, POST /explain)
+    AgentClient.java                           HTTP client for the agent service (POST /ask, POST /explain, POST /clear)
     ExplainBook.java                           The book from /explain as plain data; keeps only http(s) links and jumps to real pages
     BookRender.java                            Turns that into an Adventure book with the click events
   src/test/java/com/minecorp/plugin/           JUnit tests (see ../tests/README.md)

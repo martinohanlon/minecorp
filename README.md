@@ -1,6 +1,6 @@
 # MineCorp
 
-MineCorp is a fictitious company in the world of Minecraft that turns raw materials into higher-value products. It is also a **demonstration of how Neo4j can hold a complex domain** and let an AI agent use it: a player types a question in Minecraft chat and an agent answers from a knowledge graph of the game's own data, plus the Minecraft Wiki.
+MineCorp is a fictitious company in the world of Minecraft that turns raw materials into higher-value products. Minecorp is a **demonstration of how to model and use a complex domain in Neo4j** to give access to AI agents: a player types a question in Minecraft chat and an agent answers from a knowledge graph of the game's own data, the Minecraft Wiki, and defined processes.
 
 ```
 /agent how do I make an eye of ender?
@@ -17,7 +17,7 @@ MineCorp agent: thinking...
 
 - Show how **Neo4j, context graphs, GraphRAG, Neo4j Agent Memory and a knowledge layer** can store complex processes and world state.
 - Provide an **agent that helps players** find their way around the game: recipes, where things are, how to reach a goal such as the Nether.
-- Be a **fun** way to explain what a knowledge layer is. The agent is read-only: it answers, it does not act in the world.
+- Be a **fun** way to explain what a knowledge layer is.
 
 What is in the graph (all in one Neo4j database; see [docs/ontology.md](docs/ontology.md)):
 
@@ -51,7 +51,7 @@ The scripts come in two flavours, `./scripts/<name>.ps1` (Windows PowerShell) an
    (on Linux and macOS: `.venv/bin/pip`)
 2. **Settings.** Copy `.env.example` to `.env` (it is git-ignored) and set at least `NEO4J_PASSWORD`, `NEO4J_ACCEPT_LICENSE_AGREEMENT` (Neo4j Enterprise needs you to accept its licence: `yes` or `eval`), `OPENAI_API_KEY` and `AGENT_SHARED_SECRET` (16 or more characters; the plugin sends it to the agent).
 3. **Neo4j:** `docker compose up -d` (Browser on <http://localhost:7474>, Bolt on 7687; ports are configurable in `.env`, which lets you run a second development server).
-4. **Java:** `./scripts/install-java.ps1` if you have no JDK 25.
+4. **Java and Maven:** `./scripts/install-java.ps1` if you have no JDK 25, and `./scripts/install-maven.ps1` if you have no Maven (open a new terminal afterwards).
 5. **The Paper server:** `./scripts/start-server.ps1 -AcceptEula` downloads and starts it in `server/` (read the [Minecraft EULA](https://aka.ms/MinecraftEULA) first). Stop it with `stop` once it is up.
 
 ## Build
@@ -63,13 +63,13 @@ The scripts come in two flavours, `./scripts/<name>.ps1` (Windows PowerShell) an
 
 1. Start the agent: `./scripts/start-agent.ps1` (listens on 127.0.0.1:8080).
 2. Start the server: `./scripts/start-server.ps1`, and join it with a Minecraft 26.2 Java client.
-3. In chat: `/agent <question>`, for example `/agent where do I find diamonds?` or `/agent how do I get to the Nether?`. Then `/agent-explain` opens a book with your last five questions, answers and sources (wiki sources are links).
+3. In chat: `/agent <question>`, for example `/agent where do I find diamonds?` or `/agent how do I get to the Nether?`. Then `/agent-explain` opens a book with your last five questions, answers and sources (wiki sources are links). `/agent-clear` starts a new chat (joining the game does too).
 
 Follow-up questions work ("and how many of those do I need?"): the agent is sent your last three exchanges, for as long as you keep asking within 15 minutes of each other.
 
 **Agent memory (optional).** Set `AGENT_MEMORY=neo4j` in `.env` before starting the agent to keep each player's questions and answers, and a trace of the tools every run used, in Neo4j with neo4j-agent-memory; `/agent-explain` then works after a restart too. It is off by default. Memory is written into the game graph's database, so `build-graph` wipes it along with the graph unless you give it a database of its own. Settings and design: [docs/agent-memory.md](docs/agent-memory.md).
 
-**Without Minecraft:** `./scripts/chat-with-agent.ps1` is a terminal stand-in for the plugin (`-Trace` shows the tools the agent called, `-Direct` runs the agent in the same process; type `/explain` for the book). Details in [agent/README.md](agent/README.md).
+**Without Minecraft:** `./scripts/chat-with-agent.ps1` is a terminal stand-in for the plugin (`-Trace` shows the tools the agent called, `-Direct` runs the agent in the same process; type `/explain` for the book, `/clear` for a new chat). Details in [agent/README.md](agent/README.md).
 
 ## Tests
 

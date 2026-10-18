@@ -66,13 +66,18 @@ class FakeClient:
         self.calls, self.stored, self.delay, self.connect_error = [], {}, delay, connect_error
         self.connected = self.closed = 0
         self.short_term, self.reasoning = FakeShort(self), FakeReasoning(self)
-        self._client = SimpleNamespace(execute_read=self._execute_read)          # the library's own query runner
+        self._client = SimpleNamespace(execute_read=self._execute_read, execute_write=self._execute_write)          # the library's own query runner
 
     async def _execute_read(self, query, params):
         """Gives what the real query does: the newest messages first, at most `limit`, metadata as a JSON string."""
         self.calls.append(("read", query, params))
         stored = self.stored.get(params["session_id"], [])
         return [{"m": {"role": m.role, "content": m.content, "metadata": json.dumps(m.metadata)}} for m in reversed(stored)][: params["limit"]]
+
+    async def _execute_write(self, query, params):
+        self.calls.append(("link", query, params))
+        if getattr(self, "link_error", None):
+            raise self.link_error
 
     async def pause(self):
         if self.delay:
@@ -230,7 +235,8 @@ class TestWriting:
         memory.record(Q, EX, result())
         settle(memory)
         messages = [c for c in client.calls if c[0] == "message"]
-        assert [(m[1], m[2], m[3]) for m in messages] == [("uuid-1", "user", Q.text), ("uuid-1", "assistant", "\n".join(EX.lines))]
+        assert [(m[1], m[2], m[3]) for m in messages] == [("s1", "user", Q.text), ("s1", "assistant", "\n".join(EX.lines))]
+        assert all(m[4]["user_identifier"] == "uuid-1" for m in messages)          # the User is the player; the session is the conversation
 
     def test_embedding_and_extraction_are_off_unless_asked_for(self, started):
         memory, client = started()
@@ -251,9 +257,9 @@ class TestWriting:
         memory, client = started()
         memory.record(Q, EX, result())
         settle(memory)
-        assert client.kinds() == ["message", "message", "trace", "step", "tool", "step", "tool", "complete"]
+        assert client.kinds() == ["message", "message", "trace", "step", "tool", "step", "tool", "complete", "link"]
         trace = next(c for c in client.calls if c[0] == "trace")
-        assert trace[1:3] == ("uuid-1", Q.text) and trace[3]["triggered_by_message_id"] == "m1"
+        assert trace[1:3] == ("s1", Q.text) and trace[3]["user_identifier"] == "uuid-1" and trace[3]["triggered_by_message_id"] == "m1"
         assert trace[3]["metadata"] == {"player": "Steve", "model": "m1", "ms": 321, "status": "ok", "context_turns": 0}
         tools = [c for c in client.calls if c[0] == "tool"]
         assert [(t[1], t[2]) for t in tools] == [("get_recipes", {"name": "eye of ender"}), ("find", {"query": "x"})]
@@ -265,7 +271,30 @@ class TestWriting:
         memory, client = started(traces=False)
         memory.record(Q, EX, result())
         settle(memory)
-        assert client.kinds() == ["message", "message"]
+        assert client.kinds() == ["message", "message", "link"]
+
+    def test_the_user_is_linked_to_the_domain_graphs_player_by_uuid(self, started):
+        memory, client = started()
+        memory.record(Q, EX, result())
+        settle(memory)
+        (link,) = [c for c in client.calls if c[0] == "link"]
+        assert link[2] == {"uuid": "uuid-1", "name": "Steve"}
+        assert "(u)-[:IS_PLAYER]->(p)" in link[1] and "MERGE (p:Player {uuid: $uuid})" in link[1]
+        assert "ON CREATE SET p.name" in link[1]                          # an authored player's name is not overwritten
+
+    def test_the_link_is_made_after_what_creates_the_user(self, started):
+        memory, client = started()
+        memory.record(Q, EX, result())
+        settle(memory)
+        assert client.kinds().index("link") > client.kinds().index("message")
+
+    def test_a_link_that_fails_is_logged_and_costs_nothing(self, started, caplog):
+        memory, client = started()
+        client.link_error = RuntimeError("no player")
+        memory.record(Q, EX, result())
+        settle(memory)
+        assert "could not link uuid-1 to their Player: RuntimeError: no player" in caplog.text
+        assert client.kinds().count("message") == 2 and "complete" in client.kinds()
 
     def test_a_run_with_no_good_answer_leaves_a_failed_trace_and_no_messages(self, started):
         memory, client = started()
@@ -310,7 +339,7 @@ class TestWriting:
         client.short_term.add_message = working
         memory.record(Q, EX, result())
         settle(memory)
-        assert client.kinds() == ["message", "message"]
+        assert client.kinds() == ["message", "message", "link"]
 
     def test_too_many_waiting_writes_are_dropped_and_logged(self, started, monkeypatch, caplog):
         monkeypatch.setattr(mem, "MAX_PENDING", 2)
@@ -362,7 +391,7 @@ class TestWhenNeo4jIsDown:
 
 
 class TestReading:
-    def test_a_players_exchanges_come_back_from_their_session(self, started):
+    def test_a_conversations_exchanges_come_back_from_its_session(self, started):
         memory, client = started()
         client.stored["uuid-1"] = [SimpleNamespace(role=r, content=c, metadata=m) for r, c, m in mem.messages_for(Q, EX, result())]
         assert memory.recent("uuid-1") == [EX]
@@ -401,7 +430,7 @@ class TestClosing:
         memory, client = make(FakeClient(delay=0.2), traces=False)
         memory.record(Q, EX, result())
         memory.close()
-        assert client.kinds() == ["message", "message"] and client.closed == 1
+        assert client.kinds() == ["message", "message", "link"] and client.closed == 1
 
     def test_close_is_safe_when_never_used_and_when_repeated(self):
         memory, _ = make()

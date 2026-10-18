@@ -303,6 +303,14 @@ def test_the_explain_command_is_for_players_and_the_console_is_told_so_without_a
     assert len(stub.requests) == before
 
 
+def test_the_clear_command_is_for_players_and_the_console_is_told_so_without_asking(console, stub):
+    before = len(stub.requests)
+    since = console.send("agent-clear")
+    console.wait_for("Only a player has a chat to clear.", since)
+    time.sleep(0.5)
+    assert len(stub.requests) == before
+
+
 def test_an_unreachable_agent_is_reported_and_does_not_hang_the_server(console, stub):
     stub.stop()
     since = console.send("agent anyone there")

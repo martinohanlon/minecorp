@@ -28,6 +28,7 @@ log = logging.getLogger("minecorp.agent")
 
 MAX_ANSWER_CHARS = 1200   # chat is not the place for essays
 FALLBACK = "Sorry, I could not work out an answer to that. Try asking in a different way."
+ERROR_ANSWER = "Sorry, something went wrong on my side and I could not get an answer. Please try again in a moment."   # a failure, not a bad question
 
 
 class Agent:
@@ -90,7 +91,7 @@ class Agent:
             log.exception("agent failed for request %s", request_id)
             status, error = "error", f"{type(exc).__name__}: {exc}"
 
-        result = Result(answer=self._tidy(answer) or FALLBACK, status=status, model=self.settings.openai_model,
+        result = Result(answer=ERROR_ANSWER if status == "error" else self._tidy(answer) or FALLBACK, status=status, model=self.settings.openai_model,
                         ms=int((time.monotonic() - started) * 1000), steps=steps, usage=usage, error=error, context_turns=len(context))
         self._write_trace(q, request_id, result)
         return result

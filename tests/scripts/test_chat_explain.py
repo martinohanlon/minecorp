@@ -210,3 +210,44 @@ class TestCommandLine:
         monkeypatch.setattr(core, "answer_with_sources", lambda q, rid: ("Mine it.", []))
         monkeypatch.setattr(core, "explain", lambda uuid: pytest.fail("not asked for"))
         assert chat.main(["--direct", "how", "do", "I", "get", "iron?"]) == 0
+
+
+class TestClearing:
+    def test_it_posts_the_players_uuid_with_the_secret_to_clear(self):
+        client, seen = service()
+        assert chat_for(client).clear() is None
+        request = seen[0]
+        assert request.method == "POST" and request.url.path == "/clear"
+        assert request.headers["x-minecorp-key"] == SECRET
+        assert json.loads(request.content) == {"playerUuid": chat.player_uuid("Alex")}
+
+    def test_a_refusal_is_returned_as_the_reason(self):
+        client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(401, json={"detail": "unauthorized"})))
+        assert chat_for(client).clear().startswith("HTTP 401")
+
+    def test_a_service_that_is_down_is_returned_as_the_reason(self):
+        def refuse(request):
+            raise httpx.ConnectError("refused")
+        assert "ConnectError" in chat_for(httpx.Client(transport=httpx.MockTransport(refuse))).clear()
+
+    def test_direct_mode_clears_in_this_process(self):
+        asked = []
+        c = chat.Chat("Alex", direct=lambda q, rid: "hi", direct_clear=asked.append)
+        assert c.clear() is None and asked == [chat.player_uuid("Alex")]
+
+    @pytest.mark.parametrize("command", ["/clear", "/agent-clear", "/CLEAR"])
+    def test_the_chat_command_works_under_both_names_and_says_so(self, command):
+        screen = Screen()
+        client, seen = service()
+        inputs = iter([command, "/quit"])
+        chat.repl(chat_for(client), screen.term, read=lambda prompt: next(inputs))
+        assert chat.CLEARED in screen.lines and [r.url.path for r in seen] == ["/clear", "/clear"]          # joining, then the command
+
+    def test_a_failure_is_shown_as_the_player_would_see_it(self):
+        screen = Screen()
+        client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500, text="boom")))
+        chat.clear(chat_for(client), screen.term)
+        assert screen.lines[0] == chat.UNAVAILABLE and screen.lines[1].startswith("(stub) HTTP 500")
+
+    def test_help_mentions_it(self):
+        assert "/clear" in chat.HELP

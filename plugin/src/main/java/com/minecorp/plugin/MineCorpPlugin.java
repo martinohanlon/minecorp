@@ -6,6 +6,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
@@ -18,7 +21,7 @@ import java.util.UUID;
  * The HTTP call runs off the main server thread, so a slow agent never stalls the game.
  * The rules live in {@link AskGuard} and {@link Replies}; this class only connects them to Bukkit.
  */
-public final class MineCorpPlugin extends JavaPlugin {
+public final class MineCorpPlugin extends JavaPlugin implements Listener {
 
     /** Stands in for the server console, which has no UUID. */
     private static final UUID CONSOLE_ID = new UUID(0L, 0L);
@@ -39,7 +42,29 @@ public final class MineCorpPlugin extends JavaPlugin {
                 getConfig().getString("agent-url", "http://127.0.0.1:8080"),
                 secret,
                 Duration.ofSeconds(getConfig().getLong("timeout-seconds", 30)));
+        getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("MineCorp plugin enabled (agent: " + getConfig().getString("agent-url") + ")");
+    }
+
+    /**
+     * A player who joins starts a new chat: the agent opens a new conversation for them, so questions from an earlier visit are not
+     * used to understand this one. Quiet on failure: the player did nothing, and the next question works either way.
+     */
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        if (!configured) {
+            return;
+        }
+        UUID id = event.getPlayer().getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            try {
+                agent.clear(id.toString());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                getLogger().fine("Could not start a new chat for " + id + ": " + e);
+            }
+        });
     }
 
     @Override
@@ -52,6 +77,9 @@ public final class MineCorpPlugin extends JavaPlugin {
                              @NotNull String label, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("agent-explain")) {
             return explain(sender);
+        }
+        if (command.getName().equalsIgnoreCase("agent-clear")) {
+            return clear(sender);
         }
         if (!command.getName().equalsIgnoreCase("agent")) {
             return false;
@@ -149,6 +177,43 @@ public final class MineCorpPlugin extends JavaPlugin {
                     target.sendMessage(Component.text("Nothing to show yet. Ask something with /agent <question> first.", NamedTextColor.YELLOW));
                 } else {
                     target.openBook(BookRender.book(result));
+                }
+            });
+        });
+        return true;
+    }
+
+    /**
+     * /agent-clear: starts a new chat. The service forgets what the player asked, so it is no longer used to understand their
+     * follow-up questions or shown in their book.
+     */
+    private boolean clear(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(Component.text("Only a player has a chat to clear.", NamedTextColor.RED));
+            return true;
+        }
+        if (!configured) {
+            sender.sendMessage(Component.text("The agent is not configured yet. Ask an admin.", NamedTextColor.RED));
+            return true;
+        }
+        UUID id = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+            Component message;
+            try {
+                agent.clear(id.toString());
+                message = Component.text("Chat cleared. Your next question starts a new chat.", NamedTextColor.YELLOW);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                message = Component.text("The agent request was interrupted.", NamedTextColor.RED);
+            } catch (Exception e) {
+                getLogger().warning("Agent clear request failed: " + e);
+                message = Component.text("The agent is not available right now. Try again later.", NamedTextColor.RED);
+            }
+            Component text = message;
+            Bukkit.getScheduler().runTask(this, () -> {
+                Player target = Bukkit.getPlayer(id);
+                if (target != null) {
+                    target.sendMessage(text);
                 }
             });
         });

@@ -12,6 +12,7 @@ from minecorp_agent import conversation as conv, core, memory as mem
 from minecorp_agent.agent import Agent
 from minecorp_agent.config import Settings
 from minecorp_agent.history import Exchange, History
+from minecorp_agent.sessions import Sessions
 from minecorp_agent.models import Question, Result
 
 NOW = 1_000_000.0
@@ -169,6 +170,9 @@ class StoredMemory:
     def record(self, q, exchange, result):
         pass
 
+    def latest_session(self, player):
+        return None if self.fail else (player if player in self.stored else None)
+
     def recent(self, player, limit=5):
         self.reads += 1
         if self.fail:
@@ -181,6 +185,7 @@ def wired(monkeypatch):
     agent = RecordingAgent()
     monkeypatch.setattr(core, "get_agent", lambda: agent)
     monkeypatch.setattr(core, "history", History())
+    monkeypatch.setattr(core, "sessions", Sessions())
     return agent
 
 
