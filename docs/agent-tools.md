@@ -77,3 +77,11 @@ Measured on the real graph and on the 290 questions the agent has answered since
 1. One `describe` for every kind, or a tool per kind (`get_mob`, `get_biome`, ...)? One tool keeps the request small and returns every candidate of an ambiguous name; separate tools are easier to describe to the model.
 2. Are the company tools next after the world ones, or after more of the game?
 3. Should `where_to_find` answer for a single place only ("the best y-level") or give the full picture and let the model choose? I propose the full picture, short.
+
+## Wiki fallback (built 2026-10-21)
+
+When the game-data tools find nothing for a how, why or what-is question about a concept or mechanic, the agent tries `search_wiki` once before saying it could not find the answer. It does not do this when no tool exists for the question, for recipes, drops, spawns and places (the game data is the authority), or for a name `find` cannot match.
+
+`search_wiki` returns the nearest chunks however far away they are, so it now drops passages whose score is under `MIN_SCORE` (0.65, `agent/minecorp_agent/wiki.py`) and returns no hits, with a note to say it could not find it, when none are left. Measured on the loaded wiki (text-embedding-3-small, 20 queries): relevant questions scored 0.675 to 0.884 and unrelated ones 0.569 to 0.708. The ranges overlap, so the floor only removes the clearly unrelated; the model still decides from the passage text whether it answers the question. Raising the floor would start to lose real answers (the wiki-chickens question scores 0.675). Re-measure after loading more pages.
+
+Evals: `wiki-fallback-*` in `agent/evals/questions.json`.

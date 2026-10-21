@@ -21,6 +21,7 @@ VECTOR_INDEX = "chunk_embedding"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 MAX_HIT_CHARS = 1200        # one search hit, so five fit in a tool result
 MAX_SECTION_CHARS = 6000    # one whole section
+MIN_SCORE = 0.65            # a passage scoring below this is not about the question (measured: see docs/agent-tools.md, "Wiki fallback")
 MAX_MENTIONS = 8            # game nodes listed per passage
 MIN_OVERLAP = 8             # characters; shorter shared endings are not treated as the overlap between chunks
 SOURCE_NOTE = ("Minecraft Wiki: community-written advice, not the game data. "
@@ -184,6 +185,10 @@ def tool_search_wiki(graph: Graph, args: dict) -> dict:
         if found:
             hit["mentions"] = found
         hits.append(hit)
+    hits = [h for h in hits if h["score"] >= MIN_SCORE]
+    if not hits:                                              # the vector search always returns the nearest chunks, however far away
+        return {"question": question, "source": SOURCE_NOTE, "hits": [],
+                "note": "Nothing in the wiki is about this. Say you could not find it."}
     hits.sort(key=lambda h: -h["score"])
     return {"question": question, "source": SOURCE_NOTE, "hits": hits[:limit],
             "note": "A passage may be cut short or be part of a longer section: call read_section with its sectionUrl to read more. "

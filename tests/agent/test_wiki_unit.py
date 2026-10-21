@@ -143,8 +143,20 @@ class TestSearchWiki:
         assert result["hits"][0]["section"] == "Guide"
 
     def test_hits_come_back_best_first(self):
-        result, _ = search([hit(1, "a", section="s1", score=0.5), hit(9, "b", section="s2", score=0.9), hit(5, "c", section="s3", score=0.7)])
+        result, _ = search([hit(1, "a", section="s1", score=0.66), hit(9, "b", section="s2", score=0.9), hit(5, "c", section="s3", score=0.7)])
         assert [h["sectionUrl"] for h in result["hits"]] == ["s2", "s3", "s1"]
+
+    def test_a_passage_that_is_not_about_the_question_is_left_out(self):
+        result, _ = search([hit(1, "near", section="s1", score=0.8), hit(9, "far", section="s2", score=0.6)])
+        assert [h["sectionUrl"] for h in result["hits"]] == ["s1"]
+
+    def test_the_floor_is_inclusive(self):
+        result, _ = search([hit(1, "edge", score=wiki.MIN_SCORE)])
+        assert len(result["hits"]) == 1
+
+    def test_when_nothing_is_near_enough_there_are_no_hits_and_the_model_is_told_to_say_so(self):
+        result, _ = search([hit(1, "far", section="s1", score=0.55), hit(9, "farther", section="s2", score=0.4)])
+        assert result["hits"] == [] and "could not find" in result["note"] and "error" not in result
 
     def test_chunks_of_one_section_are_merged_into_one_passage_with_the_best_score(self):
         result, _ = search([hit(4, "Walls keep mobs out. Roofs stop spiders.", score=0.6),

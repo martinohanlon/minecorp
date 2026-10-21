@@ -650,5 +650,90 @@
     "expect_any": [
       "creeper"
     ]
+  },
+  {
+    "id": "wiki-fallback-saturation",
+    "question": "What is saturation in Minecraft?",
+    "expect_tools": [
+      "search_wiki"
+    ]
+  },
+  {
+    "id": "wiki-fallback-hunger",
+    "question": "How does the hunger bar work?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_all": [
+      "hunger"
+    ]
+  },
+  {
+    "id": "wiki-fallback-nothing-relevant",
+    "question": "How does a redstone comparator work?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "can't find",
+      "cannot find",
+      "not find",
+      "doesn't say",
+      "does not say",
+      "no information"
+    ]
+  },
+  {
+    "id": "wiki-fallback-not-for-recipes",
+    "question": "How do I craft a flux capacitor?",
+    "expect_not_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "can't find",
+      "cannot find",
+      "not find",
+      "doesn't say",
+      "does not say",
+      "no information"
+    ]
+  },
+  {
+    "id": "wiki-fallback-not-for-drops",
+    "question": "What does a unicorn drop?",
+    "expect_not_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "can't find",
+      "cannot find",
+      "not find",
+      "doesn't say",
+      "does not say",
+      "no information"
+    ]
+  },
+  {
+    "id": "wiki-fallback-not-for-places",
+    "question": "Where do I find a flux capacitor?",
+    "expect_not_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "can't find",
+      "cannot find",
+      "not find",
+      "doesn't say",
+      "does not say",
+      "no information"
+    ]
   }
 ]
