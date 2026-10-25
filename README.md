@@ -23,9 +23,11 @@ What is in the graph (all in one Neo4j database; see [docs/ontology.md](docs/ont
 
 | Graph | Built from | Holds |
 |---|---|---|
-| **Domain** | the Paper server jar (authoritative), and `model/*.yaml` | items, recipes, mining, drops, mobs, biomes, structures, ore, villager trades, and the company: the player and processes (shelter, emeralds, Nether, dragon, mob farm) drafted as candidates for a person to confirm |
+| **Domain** | the Paper server jar (authoritative), and `model/*.yaml` | items, recipes (and whether a crafting table is needed or the 2x2 inventory grid will do), mining, drops, mobs, biomes, structures, ore, villager trades, enchantments, and the company: the player and processes (shelter, emeralds, Nether, dragon, mob farm) drafted as candidates for a person to confirm |
 | **Lexical** | pages of the Minecraft Wiki (community text) | sections and embedded chunks for vector search |
 | **Bridge** | derived | links from wiki pages and passages to the items, mobs and blocks they are about |
+
+The same model is written down as data in [model/ontology.yaml](model/ontology.yaml) (a Neo4j Ontology Graph Specification), and a test checks it against the graph the loaders build, so the two cannot drift apart.
 
 ## How it fits together
 
@@ -56,7 +58,7 @@ The scripts come in two flavours, `./scripts/<name>.ps1` (Windows PowerShell) an
 
 ## Build
 
-1. **The graph:** `./scripts/build-graph.ps1` rebuilds everything from source (about 30 seconds for the game graph, plus the wiki step): recipes, actions, world, trades, the company model, route properties, then the wiki pages and their links. It **wipes the Neo4j database in `.env`** after asking. `--list` shows the steps, `--no-wiki` skips the wiki (no OpenAI use, no network), `--from <step>` carries on after a failure. The wiki step embeds text with OpenAI; the result is cached in `loader/cache/`, so repeat builds are free.
+1. **The graph:** `./scripts/build-graph.ps1` rebuilds everything from source (about 30 seconds for the game graph, plus the wiki step): recipes, actions, world, enchantments, trades, the company model, route properties, then the wiki pages and their links. It **wipes the Neo4j database in `.env`** after asking. `--list` shows the steps, `--no-wiki` skips the wiki (no OpenAI use, no network), `--from <step>` carries on after a failure. The wiki step embeds text with OpenAI; the result is cached in `loader/cache/`, so repeat builds are free.
 2. **The plugin:** `./scripts/build-plugin.ps1` builds it, copies the jar into `server/plugins` and writes its config (the secret from `.env`) once.
 
 ## Use

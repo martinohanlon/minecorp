@@ -85,3 +85,11 @@ When the game-data tools find nothing for a how, why or what-is question about a
 `search_wiki` returns the nearest chunks however far away they are, so it now drops passages whose score is under `MIN_SCORE` (0.65, `agent/minecorp_agent/wiki.py`) and returns no hits, with a note to say it could not find it, when none are left. Measured on the loaded wiki (text-embedding-3-small, 20 queries): relevant questions scored 0.675 to 0.884 and unrelated ones 0.569 to 0.708. The ranges overlap, so the floor only removes the clearly unrelated; the model still decides from the passage text whether it answers the question. Raising the floor would start to lose real answers (the wiki-chickens question scores 0.675). Re-measure after loading more pages.
 
 Evals: `wiki-fallback-*` in `agent/evals/questions.json`.
+
+## Tools since the wool and enchantment work (2026-10-22 to 2026-10-25)
+
+- **Enchantments:** no new tool. `describe` knows an enchantment (maximum level, what it goes on, what it cannot be combined with, where it comes from, the enchanting power each level needs) and an item says which enchantments it can take (`canBeEnchantedWith`); `where_to_find` gives the ways to get one and the villagers that offer it; `list`, `find` and `members` know enchantments and their classes (treasure, curse, exclusive sets). What an enchantment does is the wiki's. Code: `agent/minecorp_agent/enchantments.py`.
+- **A category can be crafted:** `how_to_get` on a category (Wool) reports `craftableMembers` ("16 of 16") and puts how the simplest member is crafted into the result (`craftedLike`), because the model followed a "call another tool" tip in only about half the runs.
+- **A step named instead of a plan:** `get_process` tries a name that matches no plan as a step of any plan ("wool" finds "Get wool" in the shelter plan); several matches are listed, none keeps the old error.
+- **Hand crafting:** a recipe that fits the 2x2 inventory grid is marked `stationOptional`; route steps say "(or in your 2x2 inventory grid)" and the route's list of stations leaves out one every step can do without.
+- **Not built (backlog):** an `about_model` tool that explains the model from `model/ontology.yaml` (see AGENTS.md).

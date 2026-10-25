@@ -4,7 +4,7 @@ Every script has a PowerShell version (`.ps1`, Windows) and a bash version (`.sh
 
 | Script | What it does |
 |---|---|
-| `build-graph` | Builds the **whole** graph from source: recipes (wipes the database), actions, world, trades, model, routes, then the wiki pages and their links. Asks before wiping. `--list` shows the steps, `--no-wiki` builds only the game graph (no OpenAI, no network), `--from <step>` carries on after a failure, `--yes` does not ask. It loads `.env` for the loaders (they do not read it themselves). The logic is in [build_graph.py](build_graph.py), so it is the same on every system. |
+| `build-graph` | Builds the **whole** graph from source: recipes (wipes the database), actions, world, enchantments, trades, model, routes, then the wiki pages and their links. Asks before wiping. `--list` shows the steps, `--no-wiki` builds only the game graph (no OpenAI, no network), `--from <step>` carries on after a failure, `--yes` does not ask. It loads `.env` for the loaders (they do not read it themselves). The logic is in [build_graph.py](build_graph.py), so it is the same on every system. |
 | `start-server` | Downloads (if needed) and starts the Paper server in `server/`. First run needs `-AcceptEula` (`--accept-eula` in bash) after you have read the Minecraft EULA. `-Update` / `--update` looks for a newer stable version. The version is pinned in [paper-version.txt](paper-version.txt). |
 | `build-plugin` | Builds the plugin with Maven, copies the jar into `server/plugins` and, once, writes the plugin config with the shared secret from `.env`. Restart the server to load it. |
 | `start-agent` | Starts the agent service (HTTP) with the project's `.venv`; settings come from `.env`. |
