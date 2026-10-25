@@ -775,7 +775,7 @@ TOOLS: list[Tool] = [
          "drops, spawns or where things are: use get_recipes, describe or where_to_find for those. For the steps to reach a goal "
          "(shelter, emeralds, the Nether, the ender dragon, a mob farm) use get_process first. Also try it once, as a fallback, when the "
          "game-data tools found nothing for a how, why or what-is question about a concept or mechanic. It returns no hits when the wiki has "
-         "nothing about the topic: then say you could not find it.",
+         "nothing about the topic: then say you could not find it. A passage marked weak may not answer the question: use it only if it does.",
          {"type": "object", "properties": {
              "question": {"type": "string", "description": "the question or topic, in the player's words"},
              "limit": {"type": "integer", "description": "how many passages (default 5, max 8)"}},

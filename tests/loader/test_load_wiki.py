@@ -1143,13 +1143,13 @@ class TestMain:
 
     def test_the_shipped_list_is_tier_one_trading_the_dragon_and_farm_and_the_enchantment_pages(self):
         titles = lw.read_page_list(lw.PAGES_PATH)
-        assert len(titles) == 27 and titles[0] == "Tutorial:Beginner's guide" and all(t.startswith("Tutorial:") for t in titles[:23])
-        assert len(set(titles)) == 27 and "Tutorial:Mining" in titles and "Tutorial:Shelters" in titles
+        assert len(titles) == 28 and titles[0] == "Tutorial:Beginner's guide" and all(t.startswith("Tutorial:") for t in titles[:23])
+        assert len(set(titles)) == 28 and "Tutorial:Mining" in titles and "Tutorial:Shelters" in titles
         assert titles[17] == "Tutorial:Trading", "added once villager trades were modelled"
         assert titles[18:23] == ["Tutorial:Defeating the ender dragon", "Tutorial:Exploring a Nether fortress", "Tutorial:Enderman farming",
                                "Tutorial:End survival", "Tutorial:Mob farm"]
         assert titles[23:] == ["Enchanting table mechanics", "Anvil mechanics", "Tutorial:Best enchantments guide",
-                               "Tutorial:Durability management"], "added once enchantments were modelled; the two mechanics pages are not Tutorial: pages"
+                               "Tutorial:Durability management", "Enchantment"], "added once enchantments were modelled; the two mechanics pages and the Enchantment page are not Tutorial: pages"
         assert "Tutorial:Nether survival" not in titles, "held until a process needs it"
 
     def test_a_full_run_embeds_through_the_cache_and_then_writes(self, cli, monkeypatch, capsys):

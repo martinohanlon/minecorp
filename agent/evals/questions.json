@@ -878,5 +878,48 @@
     "expect_none": [
       "2x2"
     ]
+  },
+  {
+    "id": "wiki-short-question-sharpness",
+    "question": "What does Sharpness do?",
+    "expect_tools": [
+      "search_wiki"
+    ],
+    "expect_any": [
+      "damage",
+      "stronger",
+      "hit",
+      "attack"
+    ],
+    "expect_none": [
+      "could not find what it does"
+    ]
+  },
+  {
+    "id": "wiki-short-question-fortune",
+    "question": "what does fortune do",
+    "expect_any_tools": [
+      "search_wiki",
+      "read_section"
+    ],
+    "expect_any": [
+      "drop",
+      "more",
+      "extra",
+      "ore",
+      "loot"
+    ]
+  },
+  {
+    "id": "wiki-weak-nothing",
+    "question": "how do I install shaders",
+    "expect_any": [
+      "could not find",
+      "couldn't find",
+      "can't find",
+      "cannot find",
+      "not find",
+      "only help"
+    ]
   }
 ]

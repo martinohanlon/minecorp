@@ -82,7 +82,21 @@ Measured on the real graph and on the 290 questions the agent has answered since
 
 When the game-data tools find nothing for a how, why or what-is question about a concept or mechanic, the agent tries `search_wiki` once before saying it could not find the answer. It does not do this when no tool exists for the question, for recipes, drops, spawns and places (the game data is the authority), or for a name `find` cannot match.
 
-`search_wiki` returns the nearest chunks however far away they are, so it now drops passages whose score is under `MIN_SCORE` (0.65, `agent/minecorp_agent/wiki.py`) and returns no hits, with a note to say it could not find it, when none are left. Measured on the loaded wiki (text-embedding-3-small, 20 queries): relevant questions scored 0.675 to 0.884 and unrelated ones 0.569 to 0.708. The ranges overlap, so the floor only removes the clearly unrelated; the model still decides from the passage text whether it answers the question. Raising the floor would start to lose real answers (the wiki-chickens question scores 0.675). Re-measure after loading more pages.
+`search_wiki` returns the nearest chunks however far away they are, so it filters by score in two tiers (`agent/minecorp_agent/wiki.py`):
+
+- **`HARD_FLOOR` 0.60:** a passage scoring below this is dropped. When none are left the result has no hits and a note saying to say it could not find it.
+- **`WEAK_BELOW` 0.70:** a passage from the floor up to this is returned but marked `weak: true`; when every shown passage is weak the note says so, and tells the model to use one only if it really answers the question.
+
+**Why two tiers (2026-10-25).** The first version was a single floor of 0.65, measured on 20 queries and 17 pages. With 27 pages loaded, "What does Sharpness do?" scored 0.648, 0.644 and 0.644 against passages that do mention Sharpness, so the floor dropped them all and the agent said "I could not find what it does". Re-measured on 31 questions the wiki covers (conversational, short, one named thing) and 15 it does not (14 off-topic, plus "what is mending", which the loaded pages do not explain):
+
+| | n | lowest | 10th percentile | median | highest |
+|---|---|---|---|---|---|
+| top score, wiki covers the question | 31 | 0.648 | 0.679 | 0.813 | 0.882 |
+| top score, wiki does not cover it | 15 | 0.566 | | 0.600 | 0.719 |
+
+The two overlap between 0.645 and 0.72, so no single line separates them: a covered short question can score lower than an off-topic one. The tiers give the model the call: nothing below 0.60 (8 of the 15 are below it, none of the covered ones), a warning between 0.60 and 0.70 (5 of the 31 covered ones and 7 of the 15 others fall here), and the passage text decides. Short questions about one named thing score lowest, so re-measure after loading more pages (the table's inputs are in AGENTS.md).
+
+**A better source beats a lower floor.** Adding the wiki's `Enchantment` page (45 chunks; the table of every enchantment and what it does) made "what does Sharpness do?" find "Enchantment > List of enchantments > Descriptions" first (still 0.66, so still weak): the short-question evals went from 4 of 7 to 10 of 10. Retrieval has limits a floor cannot fix ("what is mending" still ranks a mining section above the Enchantment page); hybrid search or adding the resolved entity's kind to the query are the next things to try.
 
 Evals: `wiki-fallback-*` in `agent/evals/questions.json`.
 

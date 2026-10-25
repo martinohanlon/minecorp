@@ -147,12 +147,34 @@ class TestSearchWiki:
         assert [h["sectionUrl"] for h in result["hits"]] == ["s2", "s3", "s1"]
 
     def test_a_passage_that_is_not_about_the_question_is_left_out(self):
-        result, _ = search([hit(1, "near", section="s1", score=0.8), hit(9, "far", section="s2", score=0.6)])
+        result, _ = search([hit(1, "near", section="s1", score=0.8), hit(9, "far", section="s2", score=0.55)])
         assert [h["sectionUrl"] for h in result["hits"]] == ["s1"]
 
     def test_the_floor_is_inclusive(self):
-        result, _ = search([hit(1, "edge", score=wiki.MIN_SCORE)])
+        result, _ = search([hit(1, "edge", score=wiki.HARD_FLOOR)])
         assert len(result["hits"]) == 1
+
+    def test_a_short_question_that_scores_just_under_the_old_floor_still_finds_the_page(self):
+        """"What does Sharpness do?" scored 0.648, 0.644, 0.644: dropped by a floor of 0.65, which said the wiki had nothing."""
+        result, _ = search([hit(1, "Sharpness adds damage.", section="s1", score=0.648), hit(5, "More.", section="s2", score=0.644)])
+        assert len(result["hits"]) == 2
+
+    def test_a_passage_between_the_floor_and_the_weak_line_is_marked_weak(self):
+        result, _ = search([hit(1, "a", section="s1", score=0.65), hit(5, "b", section="s2", score=0.85)])
+        by = {h["sectionUrl"]: h for h in result["hits"]}
+        assert by["s1"]["weak"] is True and "weak" not in by["s2"]
+
+    def test_the_weak_line_is_exclusive(self):
+        result, _ = search([hit(1, "a", score=wiki.WEAK_BELOW)])
+        assert "weak" not in result["hits"][0]
+
+    def test_when_every_passage_is_weak_the_note_says_to_check_before_using_one(self):
+        result, _ = search([hit(1, "a", section="s1", score=0.62), hit(5, "b", section="s2", score=0.66)])
+        assert result["note"].startswith("Every passage is a WEAK match") and "could not find" in result["note"]
+
+    def test_one_good_passage_means_no_weak_warning_on_the_note(self):
+        result, _ = search([hit(1, "a", section="s1", score=0.62), hit(5, "b", section="s2", score=0.85)])
+        assert "WEAK" not in result["note"]
 
     def test_when_nothing_is_near_enough_there_are_no_hits_and_the_model_is_told_to_say_so(self):
         result, _ = search([hit(1, "far", section="s1", score=0.55), hit(9, "farther", section="s2", score=0.4)])

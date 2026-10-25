@@ -41,6 +41,7 @@ pages:
   - "Anvil mechanics"                            # likewise
   - "Tutorial:Best enchantments guide"
   - "Tutorial:Durability management"
+  - "Enchantment"                                # what each enchantment does (the table of all 43); not a Tutorial: page (added 2026-10-25)
 
   # Tier 2, held until what they explain is modelled, or until tier 1 has been judged (see docs/wiki-pages.md):
   # - "Tutorial:Advancement guide/Minecraft tab" # advancements (Java only)
