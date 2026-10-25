@@ -4,6 +4,8 @@ Living document. Each version records what changed and why. **Status (2026-10-05
 
 ## The model: two graphs and the bridge between them
 
+> **Machine-readable form (2026-10-22):** [model/ontology.yaml](../model/ontology.yaml) is this model as a Neo4j Ontology Graph Specification (nodes, relationships, typed properties, uniqueness, cardinality), and `tests/loader/test_ontology_spec.py` checks it against the graph the loaders build, so the two cannot drift apart. This document explains; the spec states. The agent memory graph is the library's and is not in the spec.
+
 MineCorp holds two kinds of knowledge and keeps them apart. The **domain graph** is what the game and the company *are*: authoritative, read from the Paper jar and from the YAML in `model/`, rebuilt from source. The **lexical graph** is what has been *written* about it: community text from the Minecraft Wiki, cut into chunks with embeddings. A thin **bridge** of derived, reviewable relationships joins them, so a passage can lead to the facts it is about and a fact can lead to the passages that discuss it. Round brackets are nodes, `A | B` means either label, `:Ore` and `:Station` are marker labels.
 
 ### The domain graph
@@ -15,7 +17,7 @@ It has three regions that share nodes. `Block` and `Mob` are where the game data
 ```
 (ItemClass)-[:INCLUDES]->(Item | ItemClass)           categories (planks, beds); ItemClass and Station are marker labels on Item
 (Recipe)-[:REQUIRES {role, count, slot, excludes}]->(Item)       all together; an ItemClass means any one member
-(Recipe)-[:CREATES {count}]->(Item)                  (Recipe)-[:USES_STATION]->(Item:Station)
+(Recipe)-[:CREATES {count}]->(Item)                  (Recipe)-[:USES_STATION {optional}]->(Item:Station)
 (Action:Craft | Smelt | Smith | Cut)-[:CREATES]->(Item)          thin; the recipes meet them at the Item
 (Action:Mine)-[:REQUIRES {role: 'target'}]->(Block)               (Action:Kill | Shear)-[:REQUIRES {role: 'target'}]->(Mob)
 (Action:Mine | Kill | Shear)-[:REQUIRES {role: 'tool', orBetter}]->(Item)
@@ -77,7 +79,7 @@ Derived by `link_wiki.py` by following paths (`Chunk-LINKS_TO->Page-ABOUT->node`
 - **Domain, company:** authored in `model/*.yaml`, loaded by `load_model.py`.
 - **Lexical:** the 17 pages of `model/wiki_pages.yaml` (549 sections, 720 chunks), with 1,133 stub pages for the pages they link to. Built by `load_wiki.py --pages` (MediaWiki API; OpenAI embeddings, cached).
 - **Bridge:** `link_wiki.py`, reviewed through `model/wiki_links.yaml`.
-- **Rebuild order:** `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
+- **Rebuild order:** `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_enchantments.py`, `load_trades.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
 
 ### What it holds today (real database, 2026-10-05)
 
@@ -91,7 +93,7 @@ Domain: `Item` 1,628 (of which 234 `ItemClass`, 7 `Station`), `Recipe` 1,585, `A
 
 ### Not yet modelled
 
-- **Domain:** chest loot, fishing and bartering (they fit `Action`, as trades now do), enchantments, advancements, the other 222 placed features (trees, vegetation, lakes), structure sets, mob and block statistics, brewing.
+- **Domain:** chest loot, fishing and bartering (they fit `Action`, as trades now do), enchantments (built in v0.13), advancements, the other 222 placed features (trees, vegetation, lakes), structure sets, mob and block statistics, brewing.
 - **Lexical:** the 40 tutorial pages held back in [wiki-pages.md](wiki-pages.md). A full-text index on `Chunk.text`. A quality or edition note on a page (the wiki marks pages as stubs, needing cleanup, or Bedrock-only).
 - **Bridge:** links to `Recipe`, and an LLM extractor for implied mentions, to be measured against the deterministic baseline.
 
@@ -220,7 +222,7 @@ These are **derived data**, not vanilla facts: they depend on the route-choice r
 | `INCLUDES` | `Item:ItemClass` -> `Item` | | Category membership. A member may itself be a `:ItemClass` (nesting allowed). |
 | `CREATES` | `Recipe` -> `Item` | `count` | The result. |
 | `REQUIRES` | `Recipe` -> `Item` (concrete or `:ItemClass`) | `role` (`ingredient`, `template`, `base`, `addition`, `material`, `input`), `count`, `slot` (shaped key char), `excludes` (item ids of the class that may not be used, usually empty), `excludesNames` (same, readable) | Inputs. `count` is how many are needed (shapeless repeats and shaped key usage summed). |
-| `USES_STATION` | `Recipe` -> `Item:Station` | | Where it is made. |
+| `USES_STATION` | `Recipe` -> `Item:Station` | `optional` (boolean, always set) | Where it is made. `optional` is true when the recipe also fits the 2x2 grid in the player's inventory, so no crafting table is needed (a button, a stick, a crafting table; 470 of the 1,585). The rule is the game's: a shaped recipe at most 2 wide and 2 high, a shapeless recipe of at most 4 ingredients, or a transmute recipe. The special recipe types (banners, fireworks, armor dyeing, map extending, tipped arrows, decorated pots) have no pattern in the data, so they are not claimed to fit; smelting, smithing and stonecutting always need their station. |
 | `HAS_ACTION` | `Task` -> `Action` | `order`, `quantity` | (v0.7; replaced `CRAFTED`, the old Task-to-Recipe link.) The actions a task performs. |
 | `COMPLETED` | `Player` -> `Task` | `at` (datetime), `count` | A player has completed a task (history of work). |
 
@@ -761,6 +763,36 @@ Villager and wandering trader trades from the Paper jar, which holds them as dat
 
 Measured on the 26.2 jar: 388 trades (every one is in a set), 68 trade sets, 13 professions, 320 items traded, 394 set-to-trade links, 4 trades with a variable price, 21 for an enchanted item, 27 limited to some village types, 10 maps. Every trade involves emeralds (87 give them, the rest cost them), and no trade gives a diamond. The Trading tutorial of the wiki is in the lexical graph from v0.12.
 
+## v0.13: enchantments (built 2026-10-21)
+
+**What the jar holds** (Paper 26.2, `data/minecraft/`): 43 `enchantment/*.json`; 15 enchantment tags (`tags/enchantment/`: `in_enchanting_table`, `non_treasure` 36, `treasure` 7, `tradeable` 5, `on_random_loot` 5, `curse` 2, and a few for game mechanics) and 7 exclusive sets (`tags/enchantment/exclusive_set/`: armor, boots, bow, crossbow, damage, mining, riptide); 21 item tags `tags/item/enchantable/*` (sharp_weapon, mining, durability, armor, trident...) saying what each can go on; `enchantment_provider/` (what mobs, raids and trades equip). One enchantment file holds: `max_level`, `weight` (how often the table picks it), `min_cost` and `max_cost` (`base` and `per_level_above_first`: the enchanting-table power for each level), `anvil_cost`, `slots`, `supported_items` (an item tag: what it can be applied to by anvil or command), optional `primary_items` (an item tag: what the enchanting table may offer it for; 5 of 43), optional `exclusive_set`, and `effects` (what it does: 30 effect-component types such as `damage`, `attributes`, `post_attack`; numbers are formulas).
+
+**The model** (`loader/load_enchantments.py`; structure only, as decided), in the same style as the world graph (tags become flat classes, see v0.10):
+
+```
+(Enchantment {id, name, maxLevel, weight, anvilCost, minCostBase, minCostPerLevel, maxCostBase, maxCostPerLevel, slots, effectTypes})
+(EnchantmentClass {id, name})-[:INCLUDES]->(Enchantment)        tags: treasure, curse, tradeable, non_treasure, on_random_loot, in_enchanting_table, exclusive sets
+(Enchantment)-[:APPLIES_TO {primary}]->(ItemClass)              supported_items; primary: true when it is also primary_items
+(ItemClass)-[:INCLUDES]->(Item | ItemClass)                     the enchantable/* item tags (new ItemClass nodes; most items already exist)
+(Action:Trade)-[:OFFERS_ENCHANTMENT]->(EnchantmentClass)        written by load_trades.py: a librarian's book draws from `#minecraft:tradeable`, enchanted gear from `#minecraft:on_traded_equipment` (a trade names a tag, not one enchantment)
+```
+
+- **Exclusive** is a shared exclusive set, not pairwise edges: "what conflicts with Sharpness?" is the other members of its `exclusive_set` class (Smite, Bane of Arthropods, Impaling, Density, Breach). One class, seven of them, flat.
+- **How to get one** is derived from class membership, not stored as a verb: in the enchanting table (`in_enchanting_table` and `non_treasure`), random chest loot and fishing treasure (`on_random_loot`, `treasure`), villager trades (`tradeable`, plus the existing enchanted trades), or only from loot (`treasure`: Mending, Frost Walker, Soul Speed, Swift Sneak, Wind Burst and the two curses). Mending is not offered by the table; the data says so.
+- **Cost** is data: the level needed for level N is `base + per_level_above_first * (N - 1)`; the agent can compute it.
+- **What it does** (`effects`) is not modelled as numbers: 30 effect types with formulas and conditions do not make useful chat answers. Keep `effectTypes` (names only) and let the wiki, linked by `MENTIONS`, say what an enchantment does. The game data answers the structural questions: which items, how high, what conflicts, where to get it, how much it costs.
+- **Not in the data:** what each enchantment does in words, the enchanting table's randomness, anvil combining and repair rules (game code). The wiki covers them.
+
+**Agent tools** (built; no new tool): `find` and `list` know kind `enchantment` (names index gains the label); `describe` an enchantment (max level, applies to, conflicts, how to get it, cost); `describe` an item lists the enchantments that can go on it; `where_to_find` an enchantment gives its sources; `members` opens an enchantment class (treasure, curse, an exclusive set).
+
+**Rebuild order:** recipes, actions, world, **enchantments**, trades, model, routes, wiki, links (trades link to enchantment classes, so enchantments come first; `build-graph` has the step). The loader deletes and recreates `Enchantment` and `EnchantmentClass` and merges the `ItemClass` nodes for the `enchantable/*` tags (existing ones, such as `#minecraft:axes`, keep their name). The `names` index now covers `Enchantment` and `EnchantmentClass`. `load_trades.py` run before it simply makes no `OFFERS_ENCHANTMENT` links.
+
+**Measured on the 26.2 jar:** 43 enchantments, 15 enchantment classes (8 kinds and 7 exclusive sets), 78 class memberships, 48 `APPLIES_TO` edges, 32 item classes holding 143 members; 36 enchantments are offered by the enchanting table (`non_treasure`), 7 are treasure, 2 are curses; every enchantment goes on something. Trades: 4 book trades draw from `tradeable` and 17 gear trades from `on_traded_equipment`.
+
+**Decisions (owner, 2026-10-21):** structure only (no effect numbers); classes only, no flags on the node; the four tier 2 wiki pages (Enchanting table mechanics, Anvil mechanics, Best enchantments guide, Durability management) are added to `model/wiki_pages.yaml` for what enchantments do.
+
+**Not done:** the wiki link job does not name enchantments yet (a name such as "Power", "Lure" or "Flame" would link far too many chunks; measure on the loaded pages first, see `model/wiki_links.yaml`); `describe` of an enchantment therefore has no `wiki` sections and the agent uses `search_wiki` for what one does.
+
 ## v0.11: the player's processes (built 2026-10-07)
 
 ### Why
@@ -838,6 +870,7 @@ Decided (v0.2): `Task` is separate from `Recipe`. That keeps vanilla data (autho
 ## Change log
 
 - **v0.8 agent tools** (2026-10-04): `search_wiki` and `read_section` added to the agent (9 tools); 59 unit and 30 graph tests; 8 new eval questions, 27/27 passing. First real searches on the loaded Beginner's guide: "how do I skip the night" finds Skipping the night (0.84) and "what should I do on my first night" finds The first night (scores for unrelated questions are still around 0.7, so the score is not a relevance cutoff).
+- **v0.13 built** (2026-10-21): enchantments (`Enchantment`, `EnchantmentClass`, `APPLIES_TO`, `OFFERS_ENCHANTMENT`; `loader/load_enchantments.py`; agent `describe`, `where_to_find`, `list`, `members` and `find` know them). See "v0.13".
 - **v0.12 built** (2026-10-08): villager and wandering trader trades (`Trade` actions, `TradeSet`, `Profession`; `loader/load_trades.py`), and the Trading tutorial in the lexical graph. See "v0.12".
 - **v0.11 built** (2026-10-07): one role, the player. `OrgUnit`, `Role` and their relationships removed; a process is a goal a player works towards, made of stages and steps, holding what the game data does not; `model/org.yaml` became `model/players.yaml`; the Iron tool line was deleted; `CONFIRMED_BY` points at a `Player`. See "v0.11".
 - **v0.10 built** (2026-10-05): `loader/load_world.py`: `Mob` completed to 90, `MobClass`, `Biome`, `BiomeClass`, `Structure`, `Dimension`, `Feature`, `PlacedFeature:Ore`, `SPAWNS`, `GENERATES_IN`, `HAS_BIOME`, `GENERATES`, `PLACES`, `IN_DIMENSION`; ore heights resolved to block heights. The link job now also names Biome and Structure. 75 unit, 52 real-jar and 28 graph tests; every fault injected into the loader was caught. Found while building: Neo4j does not allow constraints and data in one transaction (constraints first); the shared tag walk is order-dependent on cyclic tags (none in the data); `the_void` is in no dimension.

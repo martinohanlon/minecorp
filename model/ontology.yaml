@@ -1,0 +1,440 @@
+# The MineCorp domain graph as a Neo4j Ontology Graph Specification (https://neo4j.com/docs/ontology-graph-spec/).
+#
+# This is the machine-readable twin of docs/ontology.md: the labels, relationships, properties, constraints and endpoint cardinality of the
+# graph the loaders build. The loaders (loader/*.py) build the graph, docs/ontology.md explains it, and this file is checked against both:
+#   - validate it:       uv run .claude/skills/neo4j-ontology-skill/scripts/validate.py model/ontology.yaml
+#   - the drift test (tests/loader/test_ontology_spec.py) compares it with the graph built in the throwaway database, so a label,
+#     relationship, property, constraint or cardinality that the loaders add or drop without this file (or the other way round) fails a test.
+#
+# Covered: the domain graph (game data, world, trades, enchantments, the company model) and the lexical graph with its bridge.
+# Not covered: the agent memory graph (Conversation, Message, ReasoningTrace, User...): the neo4j-agent-memory library owns those labels
+# (docs/agent-memory.md); the only link from here is (User)-[:IS_PLAYER]->(Player), written by the agent.
+#
+# Reading it: ids under `nodes` and `relationships` are local ids (a relationship id names its endpoint pair, because one type such as INCLUDES
+# or REQUIRES joins several pairs); `labels.implied` is the other labels a node always has; every id property is unique and must exist,
+# as the loaders create it (a uniqueness constraint, not a node key).
+
+schema: "https://neo4j.com/docs/ontology-graph-spec/1.0.0/schema.json"
+id: minecorp
+version: "0.13"
+name: MineCorp domain graph
+description: >-
+  Vanilla Minecraft (Paper 26.2) game data, the world, villager trades and enchantments, the player's processes, and the wiki text linked
+  to them. Built from the Paper jar, model/*.yaml and the Minecraft Wiki. See docs/ontology.md.
+
+nodes:
+  # ------------------------------------------------------------------ game data
+  item:
+    label: Item
+    description: Anything that can be held. Item categories and stations are Items too (see item_class and station).
+    properties:
+      id: &id { type: STRING, unique: true, must_exist: true, description: "'minecraft:iron_ingot'; a category keeps the '#' of its tag ('#minecraft:planks')" }
+      name: &name { type: STRING, must_exist: true }
+      routeSteps: &routeSteps { type: INTEGER, description: "Computed by compute_routes.py for craftable items: steps to make it from base materials" }
+      routeTruncated: &routeTruncated { type: BOOLEAN }
+      routeBaseMaterials: &routeBaseMaterials { type: INTEGER }
+      routeLevels: &routeLevels { type: INTEGER }
+      routeStations: &routeStations { type: LIST<STRING> }
+  item_class:
+    labels: { identifier: ItemClass, implied: [Item] }
+    description: A Minecraft item tag as a category ('Planks'), flat, with INCLUDES to its items and nested tags. Not a taxonomy.
+    properties:
+      id: *id
+      name: *name
+      inline: { type: BOOLEAN, must_exist: true, description: "True for a list written inline in a recipe, not a real tag" }
+      size: { type: INTEGER, must_exist: true }
+  station:
+    labels: { identifier: Station, implied: [Item] }
+    description: An item a recipe is made at (crafting table, furnace). A marker on Item.
+    properties:
+      id: *id
+      name: *name
+      routeSteps: *routeSteps
+      routeTruncated: *routeTruncated
+      routeBaseMaterials: *routeBaseMaterials
+      routeLevels: *routeLevels
+      routeStations: *routeStations
+  block:
+    label: Block
+    description: A block with a loot table. The same id string as the matching Item, a different node.
+    properties: { id: *id, name: *name }
+  recipe:
+    label: Recipe
+    description: A vanilla recipe (crafting, smelting, smithing, stonecutting...).
+    properties:
+      id: *id
+      name: *name
+      type: { type: STRING, must_exist: true, description: "crafting_shaped, smelting, smithing_transform..." }
+      special: { type: BOOLEAN, must_exist: true }
+      group: { type: STRING }
+      category: { type: STRING }
+      pattern: { type: ANY, description: "A crafting grid: a list of rows, or a single string for some types" }
+      key: { type: STRING, description: "The grid key as JSON" }
+      experience: { type: FLOAT }
+      cookingTime: { type: INTEGER }
+
+  # ------------------------------------------------------------------ actions: things a player can do, one verb label each
+  mine:
+    labels: { identifier: Mine, implied: [Action] }
+    description: Break a block to get items (with the minimum tool).
+    properties: { id: *id, name: *name, tool: { type: STRING }, minTier: { type: STRING }, toolRequired: &toolRequired { type: BOOLEAN, must_exist: true } }
+  kill:
+    labels: { identifier: Kill, implied: [Action] }
+    description: Kill a mob to get its drops.
+    properties: { id: *id, name: *name, toolRequired: *toolRequired }
+  shear:
+    labels: { identifier: Shear, implied: [Action] }
+    description: Shear a mob (a sheep) to get items.
+    properties: { id: *id, name: *name, tool: { type: STRING }, toolRequired: *toolRequired }
+  craft:
+    labels: { identifier: Craft, implied: [Action] }
+    description: Make an item at a crafting station. One per item; it meets its Recipe nodes at the Item.
+    properties: { id: *id, name: *name }
+  smelt:
+    labels: { identifier: Smelt, implied: [Action] }
+    properties: { id: *id, name: *name }
+  smith:
+    labels: { identifier: Smith, implied: [Action] }
+    properties: { id: *id, name: *name }
+  cut:
+    labels: { identifier: Cut, implied: [Action] }
+    description: Stonecutting.
+    properties: { id: *id, name: *name }
+  trade:
+    labels: { identifier: Trade, implied: [Action] }
+    description: A villager or wandering trader trade. The price is REQUIRES {role}, what you get is CREATES.
+    properties:
+      id: *id
+      name: *name
+      maxUses: { type: INTEGER }
+      xp: { type: INTEGER }
+      reputationDiscount: { type: FLOAT, must_exist: true }
+      variablePrice: { type: BOOLEAN, must_exist: true, description: "The price depends on what you buy (a librarian's book); the price has no count" }
+      enchanted: { type: BOOLEAN, must_exist: true }
+      enchantLevels: { type: STRING, description: "'5 to 19' for enchanted gear" }
+      villagerTypes: { type: LIST<STRING>, must_exist: true, description: "Village types that offer it; empty when every villager does" }
+
+  # ------------------------------------------------------------------ the world
+  mob:
+    label: Mob
+    description: Every creature in the game (90), whether or not it drops anything.
+    properties: { id: *id, name: *name }
+  mob_class:
+    label: MobClass
+    description: An entity-type tag as a class of mobs ('Undead'), flat.
+    properties: { id: *id, name: *name }
+  biome:
+    label: Biome
+    properties:
+      id: *id
+      name: *name
+      temperature: { type: FLOAT, must_exist: true }
+      downfall: { type: FLOAT, must_exist: true }
+      hasPrecipitation: { type: BOOLEAN, must_exist: true }
+      temperatureModifier: { type: STRING }
+      spawnProbability: { type: FLOAT }
+  biome_class:
+    label: BiomeClass
+    description: A biome tag as a class ('Is Forest'), flat; a biome is in 8.8 of them on average.
+    properties: { id: *id, name: *name }
+  structure:
+    label: Structure
+    properties:
+      id: *id
+      name: *name
+      type: { type: STRING, must_exist: true }
+      step: { type: STRING, must_exist: true }
+      terrainAdaptation: { type: STRING }
+      suppressedSpawns: { type: LIST<STRING>, must_exist: true }
+  dimension:
+    label: Dimension
+    properties:
+      id: *id
+      name: *name
+      minY: { type: INTEGER, must_exist: true }
+      height: { type: INTEGER, must_exist: true }
+      logicalHeight: { type: INTEGER, must_exist: true }
+      hasCeiling: { type: BOOLEAN, must_exist: true }
+      hasSkylight: { type: BOOLEAN, must_exist: true }
+  feature:
+    label: Feature
+    description: What is generated (an ore vein of a kind), shared by its placements.
+    properties:
+      id: *id
+      name: *name
+      type: { type: STRING, must_exist: true }
+      size: { type: INTEGER, must_exist: true }
+      discardChance: { type: FLOAT, must_exist: true }
+  placed_ore:
+    labels: { identifier: PlacedFeature, optional: [Ore] }
+    description: Where and how often a feature is placed (only ore placements are loaded). Heights are real block heights.
+    properties:
+      id: *id
+      name: *name
+      minY: { type: INTEGER, must_exist: true }
+      maxY: { type: INTEGER, must_exist: true }
+      peakY: { type: INTEGER }
+      shape: { type: STRING, must_exist: true, description: "uniform or trapezoid" }
+      minAnchor: { type: STRING, must_exist: true }
+      maxAnchor: { type: STRING, must_exist: true }
+      countMin: { type: INTEGER, must_exist: true }
+      countMax: { type: INTEGER, must_exist: true }
+      rarityChance: { type: INTEGER }
+      biomes: { type: INTEGER, must_exist: true }
+
+  # ------------------------------------------------------------------ trading
+  profession:
+    label: Profession
+    properties: { id: *id, name: *name }
+  trade_set:
+    label: TradeSet
+    description: The pool a villager draws from at one level (the game picks `amount` trades from it).
+    properties: { id: *id, name: *name, amount: { type: INTEGER, must_exist: true } }
+
+  # ------------------------------------------------------------------ enchantments
+  enchantment:
+    label: Enchantment
+    description: "Structure only: what an enchantment does (its effects) is not modelled; the wiki says that."
+    properties:
+      id: *id
+      name: *name
+      maxLevel: { type: INTEGER, must_exist: true }
+      weight: { type: INTEGER, must_exist: true, description: "How often the enchanting table picks it among those possible" }
+      anvilCost: { type: INTEGER, must_exist: true }
+      minCostBase: { type: INTEGER, must_exist: true, description: "Enchanting power for level N is base + perLevel * (N - 1)" }
+      minCostPerLevel: { type: INTEGER, must_exist: true }
+      maxCostBase: { type: INTEGER, must_exist: true }
+      maxCostPerLevel: { type: INTEGER, must_exist: true }
+      slots: { type: LIST<STRING>, must_exist: true }
+      effectTypes: { type: LIST<STRING>, must_exist: true, description: "Names of the effect components; the numbers are not modelled" }
+  enchantment_class:
+    label: EnchantmentClass
+    description: "An enchantment tag as a class (Treasure, Curse, Tradeable, Enchanting Table, 'Exclusive: Damage'), flat."
+    properties: { id: *id, name: *name }
+
+  # ------------------------------------------------------------------ the company: one role, the player, and processes to follow
+  player:
+    label: Player
+    description: The one role in MineCorp. Authored in model/players.yaml; a player the agent has met but nobody authored is created by the agent.
+    properties:
+      uuid: { type: STRING, unique: true, must_exist: true }
+      name: { type: STRING, must_exist: true }
+  process:
+    label: Process
+    description: A goal a player works towards (shelter, emeralds, the Nether, the dragon, a mob farm). Authored in model/processes/*.yaml.
+    properties: { id: *id, name: *name, description: { type: STRING, must_exist: true } }
+  activity:
+    label: Activity
+    description: A stage of a process.
+    properties: { id: *id, name: *name }
+  task:
+    label: Task
+    description: A step. A candidate (source, confidence) until a player confirms it.
+    properties:
+      id: *id
+      name: *name
+      description: { type: STRING, must_exist: true }
+      status: { type: STRING, must_exist: true, one_of: [candidate, confirmed] }
+      confidence: { type: FLOAT, must_exist: true }
+      source: { type: STRING, must_exist: true }
+      extractedAt: { type: STRING, must_exist: true }
+
+  # ------------------------------------------------------------------ the lexical graph: the Minecraft Wiki as text
+  wiki:
+    label: Wiki
+    properties: { url: &url { type: STRING, unique: true, must_exist: true }, name: *name }
+  page:
+    label: Page
+    description: One per URL; a page that is only linked to is a stub with no sections.
+    properties:
+      url: *url
+      title: { type: STRING }
+      revisionId: { type: INTEGER }
+      fetchedAt: { type: STRING }
+  section:
+    label: Section
+    properties:
+      url: *url
+      title: { type: STRING, must_exist: true }
+      level: { type: INTEGER, must_exist: true }
+      order: { type: INTEGER, must_exist: true }
+  chunk:
+    label: Chunk
+    description: 300 tokens with 50 overlap, within one section, with its embedding.
+    properties:
+      id: *id
+      index: { type: INTEGER, must_exist: true }
+      text: { type: STRING, must_exist: true }
+      tokens: { type: INTEGER, must_exist: true }
+      textHash: { type: STRING, must_exist: true }
+      embeddingModel: { type: STRING, must_exist: true }
+      embedding: { type: VECTOR<FLOAT32>, dimension: 1536, must_exist: true }
+
+relationships:
+  # ------------------------------------------------------------------ recipes and what they make
+  recipe_creates:
+    type: CREATES
+    from: { node: recipe }
+    to: { label: Item }
+    properties: { count: &count { type: INTEGER }, condition: { type: STRING }, replaces: { type: STRING } }
+  recipe_requires_item:
+    type: REQUIRES
+    from: { node: recipe }
+    to: { label: Item }
+    properties: &ingredient
+      role: { type: STRING, must_exist: true, one_of: [ingredient, input, base, addition, material, template] }
+      count: *count
+      slot: { type: STRING }
+  recipe_requires_class:
+    type: REQUIRES
+    description: The recipe asks for any one item of a category, except those excluded.
+    from: { node: recipe }
+    to: { node: item_class }
+    properties:
+      <<: *ingredient
+      excludes: { type: LIST<STRING> }
+      excludesNames: { type: LIST<STRING> }
+  recipe_uses_station:
+    type: USES_STATION
+    description: A recipe is made AT a station; the station is not an ingredient.
+    from: { node: recipe }
+    to: { node: station, count: 1 }
+    properties:
+      optional: { type: BOOLEAN, must_exist: true, description: "True when the recipe also fits the 2x2 grid in the player's inventory, so the station is not needed (a button, a stick, a crafting table)" }
+
+  # ------------------------------------------------------------------ actions
+  mine_creates: { type: CREATES, from: { node: mine }, to: { label: Item }, properties: { count: { type: FLOAT }, condition: { type: STRING, description: "default, silk_touch, shears..." } } }
+  kill_creates: { type: CREATES, from: { node: kill }, to: { label: Item }, properties: { count: { type: FLOAT }, condition: { type: STRING } } }
+  shear_creates: { type: CREATES, from: { node: shear }, to: { label: Item }, properties: { count: { type: FLOAT }, condition: { type: STRING } } }
+  craft_creates: { type: CREATES, from: { node: craft }, to: { label: Item }, properties: { count: *count, condition: { type: STRING } } }
+  smelt_creates: { type: CREATES, from: { node: smelt }, to: { label: Item }, properties: { count: *count, condition: { type: STRING } } }
+  smith_creates: { type: CREATES, from: { node: smith }, to: { label: Item }, properties: { count: *count, condition: { type: STRING } } }
+  cut_creates: { type: CREATES, from: { node: cut }, to: { label: Item }, properties: { count: *count, condition: { type: STRING } } }
+  trade_creates: { type: CREATES, from: { node: trade }, to: { label: Item }, properties: { count: *count, condition: { type: STRING } } }
+  mine_requires_block:
+    type: REQUIRES
+    from: { node: mine }
+    to: { node: block }
+    properties: { role: { type: STRING, must_exist: true, one_of: [target] } }
+  mine_requires_tool:
+    type: REQUIRES
+    description: The minimum tool; orBetter means a better tool of the same kind also works.
+    from: { node: mine }
+    to: { label: Item }
+    properties: { role: { type: STRING, must_exist: true, one_of: [tool] }, orBetter: { type: BOOLEAN } }
+  kill_requires_mob: { type: REQUIRES, from: { node: kill }, to: { node: mob }, properties: { role: { type: STRING, must_exist: true, one_of: [target] } } }
+  shear_requires_mob: { type: REQUIRES, from: { node: shear }, to: { node: mob }, properties: { role: { type: STRING, must_exist: true, one_of: [target] } } }
+  shear_requires_tool: { type: REQUIRES, from: { node: shear }, to: { label: Item }, properties: { role: { type: STRING, must_exist: true, one_of: [tool] }, orBetter: { type: BOOLEAN } } }
+  trade_requires_item:
+    type: REQUIRES
+    description: What the villager wants; a price that varies has no count.
+    from: { node: trade }
+    to: { label: Item }
+    properties: { role: { type: STRING, must_exist: true, one_of: [price, additional] }, count: *count }
+  trade_locates:
+    type: LOCATES
+    description: An exploration map and the structure it leads to.
+    from: { node: trade }
+    to: { node: structure }
+    properties: { radius: { type: INTEGER, must_exist: true }, decoration: { type: STRING } }
+  trade_offers_enchantment:
+    type: OFFERS_ENCHANTMENT
+    description: A librarian's book draws from '#minecraft:tradeable', enchanted gear from '#minecraft:on_traded_equipment'.
+    from: { node: trade }
+    to: { node: enchantment_class }
+
+  # ------------------------------------------------------------------ classes (flat tags)
+  item_class_includes_item: { type: INCLUDES, from: { node: item_class }, to: { label: Item } }
+  item_class_includes_class: { type: INCLUDES, from: { node: item_class }, to: { node: item_class } }
+  mob_class_includes_mob: { type: INCLUDES, from: { node: mob_class }, to: { node: mob } }
+  mob_class_includes_class: { type: INCLUDES, from: { node: mob_class }, to: { node: mob_class } }
+  biome_class_includes_biome: { type: INCLUDES, from: { node: biome_class }, to: { node: biome } }
+  biome_class_includes_class: { type: INCLUDES, from: { node: biome_class }, to: { node: biome_class } }
+  enchantment_class_includes_enchantment: { type: INCLUDES, from: { node: enchantment_class }, to: { node: enchantment } }
+  enchantment_class_includes_class: { type: INCLUDES, from: { node: enchantment_class }, to: { node: enchantment_class } }
+
+  # ------------------------------------------------------------------ the world
+  biome_spawns_mob:
+    type: SPAWNS
+    from: { node: biome }
+    to: { node: mob }
+    properties: &spawn
+      category: { type: STRING, must_exist: true }
+      min: { type: INTEGER, must_exist: true }
+      max: { type: INTEGER, must_exist: true }
+      weight: { type: INTEGER, must_exist: true }
+  structure_spawns_mob:
+    type: SPAWNS
+    description: A structure's own spawn override (a witch in a swamp hut).
+    from: { node: structure }
+    to: { node: mob }
+    properties: { <<: *spawn, boundingBox: { type: STRING } }
+  structure_generates_in: { type: GENERATES_IN, from: { node: structure }, to: { node: biome_class } }
+  dimension_has_biome_class: { type: HAS_BIOME, from: { node: dimension }, to: { node: biome_class } }
+  biome_generates_ore: { type: GENERATES, from: { node: biome }, to: { node: placed_ore }, properties: { step: { type: STRING, must_exist: true } } }
+  placed_ore_places_feature: { type: PLACES, from: { node: placed_ore }, to: { node: feature } }
+  placed_ore_in_dimension: { type: IN_DIMENSION, from: { node: placed_ore }, to: { node: dimension } }
+  feature_creates_block: { type: CREATES, from: { node: feature }, to: { node: block } }
+
+  # ------------------------------------------------------------------ trading
+  mob_has_profession: { type: HAS_PROFESSION, from: { node: mob }, to: { node: profession } }
+  profession_offers_trade_set: { type: OFFERS, from: { node: profession }, to: { node: trade_set }, properties: { level: { type: INTEGER, must_exist: true } } }
+  mob_offers_trade_set:
+    type: OFFERS
+    description: The wandering trader offers pools, not levels.
+    from: { node: mob }
+    to: { node: trade_set }
+    properties: { pool: { type: STRING, must_exist: true } }
+  trade_set_includes_trade: { type: INCLUDES, from: { node: trade_set }, to: { node: trade } }
+
+  # ------------------------------------------------------------------ enchantments
+  enchantment_applies_to_class:
+    type: APPLIES_TO
+    description: "What it can go on. primary: the enchanting table may offer it for these too."
+    from: { node: enchantment }
+    to: { node: item_class, min_count: 1 }
+    properties: { primary: { type: BOOLEAN, must_exist: true } }
+  enchantment_applies_to_item:
+    type: APPLIES_TO
+    description: "The loader supports an enchantment that names items directly; no enchantment in the 26.2 data does."
+    from: { node: enchantment }
+    to: { node: item }
+    properties: { primary: { type: BOOLEAN, must_exist: true } }
+
+  # ------------------------------------------------------------------ the company
+  process_has_activity: { type: HAS_ACTIVITY, from: { node: process, count: 1 }, to: { node: activity }, properties: { seq: { type: INTEGER, must_exist: true } } }
+  activity_has_task: { type: HAS_TASK, from: { node: activity, count: 1 }, to: { node: task }, properties: { seq: { type: INTEGER, must_exist: true } } }
+  task_next:
+    type: NEXT
+    description: "Routing is data: the default way on, and the alternatives with the condition that picks them."
+    from: { node: task }
+    to: { node: task }
+    properties: { condition: { type: STRING, must_exist: true }, isDefault: { type: BOOLEAN, must_exist: true }, outcome: { type: STRING } }
+  task_has_action:
+    type: HAS_ACTION
+    description: The game actions a step performs, in order; a manual step has none.
+    from: { node: task }
+    to: { label: Action }
+    properties: { order: { type: INTEGER, must_exist: true }, quantity: { type: INTEGER, must_exist: true } }
+  process_builds_on: { type: BUILDS_ON, from: { node: process }, to: { node: process } }
+  task_confirmed_by: { type: CONFIRMED_BY, from: { node: task }, to: { node: player }, properties: { at: { type: DATE } } }
+  player_completed_task: { type: COMPLETED, from: { node: player }, to: { node: task }, properties: { at: { type: "ZONED DATETIME" }, count: { type: INTEGER } } }
+
+  # ------------------------------------------------------------------ the lexical graph and the bridge to the domain graph
+  wiki_has_page: { type: HAS_PAGE, from: { node: wiki }, to: { node: page } }
+  page_has_section: { type: HAS_SECTION, from: { node: page }, to: { node: section } }
+  section_has_subsection: { type: HAS_SUBSECTION, from: { node: section }, to: { node: section } }
+  chunk_part_of_section: { type: PART_OF, from: { node: chunk }, to: { node: section, count: 1 } }
+  chunk_next: { type: NEXT, description: "Reading order across the whole page", from: { node: chunk }, to: { node: chunk } }
+  chunk_links_to_page: { type: LINKS_TO, from: { node: chunk }, to: { node: page }, properties: { count: { type: INTEGER }, texts: { type: LIST<STRING> } } }
+  page_redirects_to: { type: REDIRECTS_TO, from: { node: page }, to: { node: page } }
+  page_about_item: { type: ABOUT, from: { node: page }, to: { label: Item }, properties: &about { origin: { type: STRING }, method: { type: STRING }, match: { type: STRING }, ambiguous: { type: BOOLEAN }, candidates: { type: INTEGER }, status: { type: STRING } } }
+  page_about_mob: { type: ABOUT, from: { node: page }, to: { node: mob }, properties: *about }
+  page_about_block: { type: ABOUT, from: { node: page }, to: { node: block }, properties: *about }
+  page_about_biome: { type: ABOUT, from: { node: page }, to: { node: biome }, properties: *about }
+  page_about_structure: { type: ABOUT, from: { node: page }, to: { node: structure }, properties: *about }
+  chunk_mentions_item: { type: MENTIONS, from: { node: chunk }, to: { label: Item }, properties: &mentions { origin: { type: STRING }, method: { type: STRING }, count: { type: INTEGER }, linkCount: { type: INTEGER }, surfaces: { type: LIST<STRING> }, corroborated: { type: BOOLEAN }, ambiguous: { type: BOOLEAN }, candidates: { type: INTEGER }, status: { type: STRING } } }
+  chunk_mentions_mob: { type: MENTIONS, from: { node: chunk }, to: { node: mob }, properties: *mentions }
+  chunk_mentions_block: { type: MENTIONS, from: { node: chunk }, to: { node: block }, properties: *mentions }
+  chunk_mentions_biome: { type: MENTIONS, from: { node: chunk }, to: { node: biome }, properties: *mentions }
+  chunk_mentions_structure: { type: MENTIONS, from: { node: chunk }, to: { node: structure }, properties: *mentions }

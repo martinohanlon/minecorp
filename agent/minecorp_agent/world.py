@@ -11,6 +11,7 @@ kind. Biome lists are compressed ("every Overworld biome") so an answer stays sh
 """
 from __future__ import annotations
 
+from .enchantments import describe_enchantment, enchantments_for_item, where_enchantment
 from .graph import Graph
 from .names import KIND_NAMES, search_names
 
@@ -22,8 +23,9 @@ WIKI_SECTIONS = 3
 
 MAX_TRADES = 8            # trades listed for one item before "and n more"
 LABEL_OF = {"category": "ItemClass", "item": "Item", "mob": "Mob", "block": "Block", "biome": "Biome",
-            "structure": "Structure", "mob class": "MobClass", "biome class": "BiomeClass", "profession": "Profession"}
-WHERE_KINDS = ("item", "block", "mob", "biome", "structure")
+            "structure": "Structure", "mob class": "MobClass", "biome class": "BiomeClass", "profession": "Profession",
+            "enchantment": "Enchantment", "enchantment class": "EnchantmentClass"}
+WHERE_KINDS = ("item", "block", "mob", "biome", "structure", "enchantment")
 
 
 # --------------------------------------------------------------------------- resolving
@@ -282,7 +284,8 @@ def where_item(graph: Graph, item_id: str) -> dict:
     return out
 
 
-WHERE = {"item": where_item, "block": where_block, "mob": where_mob, "biome": where_biome, "structure": where_structure}
+WHERE = {"item": where_item, "block": where_block, "mob": where_mob, "biome": where_biome, "structure": where_structure,
+         "enchantment": where_enchantment}
 
 
 def tool_where_to_find(graph: Graph, args: dict) -> dict:
@@ -348,13 +351,16 @@ def describe_item(graph: Graph, item_id: str) -> dict:
     categories = classes_of(graph, "Item", "ItemClass", item_id)
     if categories:
         out["countsAs"] = categories
+    enchantments = enchantments_for_item(graph, item_id)
+    if enchantments:
+        out["canBeEnchantedWith"] = enchantments        # by anvil; the enchanting table offers some of them
     out["next"] = "get_recipes, what_do_i_need, how_to_get, where_to_find and get_uses give the detail."
     return out
 
 
 def describe_class(graph: Graph, label: str, node_id: str) -> dict:
     rows = graph.read(f"""
-        MATCH (c:{label} {{id: $id}})-[:INCLUDES*]->(m) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass
+        MATCH (c:{label} {{id: $id}})-[:INCLUDES*]->(m) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass AND NOT m:EnchantmentClass
         RETURN DISTINCT m.name AS name ORDER BY name""", id=node_id)
     names = [r["name"] for r in rows]
     return {"members": len(names), "examples": names[:MAX_NAMES], "next": "members lists them all."}
@@ -436,10 +442,11 @@ def describe_structure(graph: Graph, structure_id: str) -> dict:
 
 DESCRIBE = {"item": describe_item, "category": lambda g, i: describe_class(g, "ItemClass", i), "block": describe_block,
             "mob": describe_mob, "biome": describe_biome, "structure": describe_structure, "profession": describe_profession,
-            "mob class": lambda g, i: describe_class(g, "MobClass", i), "biome class": lambda g, i: describe_class(g, "BiomeClass", i)}
+            "mob class": lambda g, i: describe_class(g, "MobClass", i), "biome class": lambda g, i: describe_class(g, "BiomeClass", i),
+            "enchantment": describe_enchantment, "enchantment class": lambda g, i: describe_class(g, "EnchantmentClass", i)}
 
 
-MEMBER_KINDS = ("category", "mob class", "biome class")
+MEMBER_KINDS = ("category", "mob class", "biome class", "enchantment class")
 MAX_MEMBERS = 60
 
 
@@ -455,7 +462,7 @@ def tool_members(graph: Graph, args: dict) -> dict:
     for t in things:
         label = LABEL_OF[t["kind"]]
         rows = graph.read(f"""
-            MATCH (c:{label} {{id: $id}})-[:INCLUDES*]->(m) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass
+            MATCH (c:{label} {{id: $id}})-[:INCLUDES*]->(m) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass AND NOT m:EnchantmentClass
             RETURN DISTINCT m.name AS name ORDER BY name""", id=t["id"])
         names = [r["name"] for r in rows]
         entry = {"name": t["name"], "kind": t["kind"], "total": len(names), "members": names[:MAX_MEMBERS]}

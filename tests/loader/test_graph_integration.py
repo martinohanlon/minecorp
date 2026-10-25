@@ -50,6 +50,7 @@ class TestGraphShape:
     def test_uses_station_matches_the_recipes_that_have_one(self, built, db):
         expected = sum(1 for r in built["normalised"].values() if r["station"])
         assert db.one("MATCH ()-[u:USES_STATION]->() RETURN count(u)") == expected
+        assert db.one("MATCH ()-[u:USES_STATION]->() WHERE NOT u.optional IN [true, false] RETURN count(u)") == 0       # every one says
 
     def test_recipes_without_a_result_are_the_smithing_trims_and_special_ones(self, built, db):
         expected = sum(1 for r in built["normalised"].values() if not r["result"])

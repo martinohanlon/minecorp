@@ -151,7 +151,8 @@ def uses_patterns(output: dict) -> list[Pattern]:
 
 
 def members_patterns(result: dict) -> list[Pattern]:
-    labels = {"category": ("ItemClass", "Item"), "mob class": ("MobClass", "Mob"), "biome class": ("BiomeClass", "Biome")}
+    labels = {"category": ("ItemClass", "Item"), "mob class": ("MobClass", "Mob"), "biome class": ("BiomeClass", "Biome"),
+              "enchantment class": ("EnchantmentClass", "Enchantment")}
     cls = labels.get(result.get("kind"))
     return [path(named(cls[0], result["name"]), Rel("INCLUDES", length="*1.."), named(cls[1], m)) for m in result.get("members", [])[:2]] if cls else []
 
@@ -169,6 +170,8 @@ def list_patterns(result: dict) -> list[Pattern]:
         "biome class": path("BiomeClass", Rel("INCLUDES", length="*1.."), "Biome"),
         "mob class": path("MobClass", Rel("INCLUDES", length="*1.."), "Mob"),
         "category": path("ItemClass", Rel("INCLUDES", length="*1.."), "Item"),
+        "enchantment class": path("EnchantmentClass", Rel("INCLUDES", length="*1.."), "Enchantment"),
+        "enchantment": path("Enchantment", Rel("APPLIES_TO"), "ItemClass"),
         "mob": path("Biome", Rel("SPAWNS"), "Mob"),
         "structure": path("Structure", Rel("GENERATES_IN"), Node()),
         "profession": path(named("Mob", "Villager"), Rel("HAS_PROFESSION"), "Profession"),
@@ -215,6 +218,13 @@ def where_patterns(result: dict) -> list[Pattern]:
             pattern = source_of_item(name, result["canBeTradedFor"][0])
             if pattern:
                 out.append(pattern)
+    elif kind == "enchantment":
+        out.append(path(named("Enchantment", name), Rel("INCLUDES", IN, "*1.."), Node("EnchantmentClass")))
+        for key in ("enchantedBooksFrom", "enchantedGearFrom"):
+            if result.get(key):
+                out.append(path(named("Enchantment", name), Rel("INCLUDES", IN, "*0.."), Node("EnchantmentClass"), Rel("OFFERS_ENCHANTMENT", IN),
+                                Node("Trade"), Rel("INCLUDES", IN), Node("TradeSet"), Rel("OFFERS", IN), Node("Profession")))
+                break
     elif kind == "block" and result.get("where"):
         out.append(ore_biomes(name))
     elif kind == "mob":
@@ -246,10 +256,17 @@ def describe_patterns(result: dict) -> list[Pattern]:
             out.append(path(named("Item", name), Rel("CREATES", IN), Node("Recipe")))
         if result.get("waysFromWorld"):
             out.append(path(named("Item", name), Rel("CREATES", IN), Node("Action")))
-        if result.get("usedInRecipes"):
-            out.append(path(named("Item", name), Rel("REQUIRES", IN), Node("Recipe")))
+        if result.get("usedInRecipes"):                    # counted the same way: as an ingredient itself, or through a category it is in
+            out.append(path(named("Item", name), Rel("INCLUDES", IN, "*0.."), Node("Item"), Rel("REQUIRES", IN), Node("Recipe")))
         if result.get("tradesGivingIt"):
             out.append(path(named("Item", name), Rel("CREATES", IN), Node("Trade")))
+        if result.get("canBeEnchantedWith"):
+            out.append(path(Node("Enchantment"), Rel("APPLIES_TO"), Node("ItemClass"), Rel("INCLUDES", length="*1.."), named("Item", name)))
+    elif kind == "enchantment":
+        out.append(path(named("Enchantment", name), Rel("APPLIES_TO"), Node("ItemClass")))
+        if result.get("cannotBeCombinedWith"):
+            out.append(path(named("Enchantment", name), Rel("INCLUDES", IN), Node("EnchantmentClass"), Rel("INCLUDES"), named("Enchantment", result["cannotBeCombinedWith"][0])))
+        out.append(path(named("Enchantment", name), Rel("INCLUDES", IN, "*1.."), Node("EnchantmentClass")))
     elif kind == "block":
         for d in result.get("drops", [])[:2]:
             out.append(path(named("Block", name), Rel("REQUIRES", IN), Node("Mine"), Rel("CREATES"), named("Item", d["item"])))
@@ -271,7 +288,7 @@ def describe_patterns(result: dict) -> list[Pattern]:
             out.append(map_seller(name))
     elif kind == "profession":
         out.append(path(named("Profession", name), Rel("OFFERS"), Node("TradeSet"), Rel("INCLUDES"), Node("Trade")))
-    elif kind in ("category", "mob class", "biome class"):
+    elif kind in ("category", "mob class", "biome class", "enchantment class"):
         out += members_patterns({**result, "members": result.get("examples", [])})
     return out[:4]
 

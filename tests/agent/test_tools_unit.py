@@ -197,3 +197,14 @@ class TestRouteFormatting:
         a, b = tools.Route(None, 6, shared), tools.Route(None, 6, shared)
         assert a.recipes is b.recipes and a.reversal is b.reversal and a.mined is b.mined
         assert tools.Route(None, 6).recipes is not a.recipes
+
+
+class TestStationOptional:
+    def test_a_recipe_view_says_when_the_station_is_optional(self):
+        base = {"name": "Acacia Button", "type": "crafting_shapeless", "station": "Crafting Table", "yields": 1, "special": False, "reqs": [], "pattern": None}
+        assert tools._recipe_view({**base, "stationOptional": True})["stationOptional"] is True
+        assert "stationOptional" not in tools._recipe_view({**base, "stationOptional": False})
+        assert "stationOptional" not in tools._recipe_view(base)
+
+    def test_the_reading_note_explains_it(self):
+        assert "stationOptional" in tools.READING_NOTE and "2x2" in tools.READING_NOTE

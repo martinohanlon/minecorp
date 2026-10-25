@@ -153,3 +153,13 @@ class TestIntegration:
     def test_a_trade_step_is_looked_up_with_the_trade_tools(self, agent_graph):
         action = call(agent_graph, name="nether", step="buy flint")["gameActions"]
         assert action == ["Trade 10 Gravel and Emerald for 10 Flint"]
+
+
+class TestAStepNamedInsteadOfAPlan:
+    def test_getting_wool_finds_the_shelter_step(self, agent_graph):
+        out = call(agent_graph, name="wool")
+        assert out["process"] == "Build a first-night shelter" and out["step"] == "Get wool" and "not a plan" in out["matchedAs"]
+
+    def test_a_word_that_is_no_step_either_keeps_the_error_and_lists_the_plans(self, agent_graph):
+        out = call(agent_graph, name="zebra")
+        assert out["error"] == "No process matches 'zebra'." and REAL <= set(out["processes"])

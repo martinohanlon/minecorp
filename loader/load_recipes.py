@@ -97,6 +97,20 @@ def norm_ref(ref):
     return ("item", ref, None)
 
 
+def fits_inventory_grid(rtype: str, raw: dict) -> bool:
+    """Whether a crafting recipe can be made in the 2x2 grid of the player's inventory, so a crafting table is not needed.
+
+    The game's rule: a shaped recipe whose pattern is at most 2 wide and 2 high; a shapeless recipe with at most 4 ingredients; a transmute
+    recipe (one input and one material, such as dyeing a bundle). The special recipe types (banners, fireworks, map extending, armor dyeing...)
+    have no pattern in the data, so they are not claimed to fit."""
+    if rtype == "crafting_shaped":
+        rows = raw["pattern"]
+        return len(rows) <= 2 and max(len(row) for row in rows) <= 2
+    if rtype == "crafting_shapeless":
+        return len(raw["ingredients"]) <= 4
+    return rtype == "crafting_transmute"
+
+
 def normalise(recipe_id: str, raw: dict) -> dict:
     """Convert a raw recipe into the ontology's shape, whatever its recipe type.
 
@@ -138,6 +152,7 @@ def normalise(recipe_id: str, raw: dict) -> dict:
         "result": (result["id"], result.get("count", 1)) if isinstance(result, dict) else None,
         "inputs": inputs,
         "station": station,
+        "stationOptional": station == CRAFTING_TABLE and fits_inventory_grid(rtype, raw),
     }
 
 
@@ -321,7 +336,7 @@ def to_graph(chosen: dict, tags: dict, used_tags: set, seeds: list[str]):
             creates.append({"recipe": rid, "item": r["result"][0], "count": r["result"][1]})
         if r["station"]:
             stations[r["station"][0]] = {"id": r["station"][0], "name": r["station"][1]}
-            uses_station.append({"recipe": rid, "station": r["station"][0]})
+            uses_station.append({"recipe": rid, "station": r["station"][0], "optional": r["stationOptional"]})
         for role, ref, count, slot in r["inputs"]:
             target, excluded = resolve(ref)
             requires.append({"recipe": rid, "target": target, "role": role, "count": count,
@@ -361,9 +376,9 @@ def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str, 
     ItemClass and Station nodes are Item nodes with an extra label. `wipe` also removes the authored MineCorp
     model and the actions: reload them afterwards with load_actions.py and load_model.py.
     """
-    from neo4j import GraphDatabase
+    from quiet_driver import open_driver
 
-    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+    with open_driver(uri, user, password) as driver:
         driver.verify_connectivity()
         with driver.session(database=database) as s:
             if wipe:
@@ -399,7 +414,7 @@ def load_into_neo4j(g: dict, uri: str, user: str, password: str, database: str, 
             s.run("""UNWIND $rows AS r MATCH (a:Recipe {id: r.recipe}) MATCH (b:Item {id: r.item})
                      MERGE (a)-[p:CREATES]->(b) SET p.count = r.count""", rows=g["creates"])
             s.run("""UNWIND $rows AS r MATCH (a:Recipe {id: r.recipe}) MATCH (b:Station {id: r.station})
-                     MERGE (a)-[:USES_STATION]->(b)""", rows=g["uses_station"])
+                     MERGE (a)-[u:USES_STATION]->(b) SET u.optional = r.optional""", rows=g["uses_station"])
             s.run("""UNWIND $rows AS r MATCH (a:Recipe {id: r.recipe}) MATCH (b:Item {id: r.target})
                      MERGE (a)-[c:REQUIRES {role: r.role, slot: r.slot}]->(b)
                      SET c.count = r.count, c.excludes = r.excludes, c.excludesNames = r.excludesNames""",

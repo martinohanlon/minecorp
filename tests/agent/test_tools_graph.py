@@ -303,7 +303,7 @@ class TestHowToGet:
 
     def test_a_category_covers_all_its_members(self, agent_graph):
         r = call(agent_graph, "how_to_get", item="wool")
-        assert r["category"] is True and r["alsoCraftable"] is False
+        assert r["category"] is True and r["alsoCraftable"] is True          # its items are made from string or dye (see TestHowToGetACategory)
         assert {w["how"] for w in r["ways"]} == {"shear", "kill"}           # one self-dropping block per colour is left out
         assert all(1 <= len(w["gives"]) <= 6 for w in r["ways"])
 
@@ -340,7 +340,7 @@ class TestWhatDoINeed:
         r = call(agent_graph, "what_do_i_need", item="iron pickaxe")
         assert r["item"] == "Iron Pickaxe" and r["quantity"] == 1
         assert [s["do"] for s in r["steps"]] == [
-            "Craft: 2 Planks (any) -> 4 Stick at Crafting Table",
+            "Craft: 2 Planks (any) -> 4 Stick at Crafting Table (or in your 2x2 inventory grid)",
             "Smelt: 3 Raw Iron -> 3 Iron Ingot at Furnace (3 times)",
             "Craft: 2 Stick, 3 Iron Ingot -> 1 Iron Pickaxe at Crafting Table"]
         assert [s["step"] for s in r["steps"]] == [1, 2, 3]
@@ -375,16 +375,21 @@ class TestWhatDoINeed:
     def test_a_recipe_that_makes_several_is_rounded_up(self, agent_graph):
         # a stick recipe makes 4 from 2 planks, so 5 sticks needs two crafts
         step = call(agent_graph, "what_do_i_need", item="stick", quantity=5)["steps"][0]
-        assert step["do"] == "Craft: 4 Planks (any) -> 8 Stick at Crafting Table (2 times)"
+        assert step["do"] == "Craft: 4 Planks (any) -> 8 Stick at Crafting Table (or in your 2x2 inventory grid) (2 times)"
 
     @pytest.mark.parametrize("asked,used", [(1000, 64), (0, 1), (-5, 1)])
     def test_quantity_is_clamped(self, agent_graph, asked, used):
         assert call(agent_graph, "what_do_i_need", item="iron ingot", quantity=asked)["quantity"] == used
 
     def test_a_station_the_steps_use_says_how_to_make_it(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", item="chest")
+        assert r["stations"] == [{"station": "Crafting Table", "make": "Craft: 4 Planks (any, such as Acacia Planks, Bamboo Planks, Birch Planks) -> 1 Crafting Table",
+                                  "note": "this fits the 2x2 grid in your inventory: no crafting table is needed to make it"}]
+        assert r["overview"]["stations"] == ["Crafting Table"]
+
+    def test_a_torch_needs_no_station_because_it_is_made_by_hand(self, agent_graph):
         r = call(agent_graph, "what_do_i_need", item="torch")
-        assert r["stations"] == [{"station": "Crafting Table", "make": "Craft: 4 Planks (any, such as Acacia Planks, Bamboo Planks, Birch Planks) -> 1 Crafting Table"}]
-        assert r["overview"]["stations"] == ["Crafting Table"]            # the stored numbers are unchanged
+        assert "stations" not in r and r["overview"]["stations"] == []
 
     def test_every_station_on_the_route_is_listed_with_its_own_recipe(self, agent_graph):
         r = call(agent_graph, "what_do_i_need", item="iron pickaxe")
@@ -512,3 +517,56 @@ class TestStoredRoutesMatchTheTools:
             fresh = tools.route_overview(agent_graph, row["id"])
             assert (fresh["craftingSteps"], fresh["chainLength"], fresh["baseMaterials"], fresh["stations"]) == (
                 row["steps"], row["levels"], row["base"], row["stations"]), row["id"]
+
+
+class TestHowToGetACategory:
+    def test_wool_is_a_category_whose_items_can_all_be_crafted_and_the_tip_names_the_simplest(self, agent_graph):
+        r = call(agent_graph, "how_to_get", name="wool")
+        assert r["category"] is True and r["alsoCraftable"] is True and r["craftableMembers"] == "16 of 16"
+        assert "White Wool" in r["tip"] and "get_recipes" in r["tip"]
+        assert {w["how"] for w in r["ways"]} == {"kill", "shear"}              # the sheep ways are still there
+
+    def test_a_category_none_of_whose_items_is_crafted_says_so(self, agent_graph):
+        rows = agent_graph.read("""
+            MATCH (c:ItemClass)-[:INCLUDES*]->(m:Item) WHERE NOT m:ItemClass AND NOT c.name STARTS WITH 'Any of'
+            WITH c, collect(DISTINCT m) AS members WHERE size(members) >= 2 AND none(x IN members WHERE EXISTS { (x)<-[:CREATES]-(:Recipe) })
+              AND EXISTS { (c)-[:INCLUDES*]->(:Item)<-[:CREATES]-(:Action) WHERE (:Action)-[:CREATES]->() }
+            RETURN c.name AS name LIMIT 5""")
+        for row in rows:
+            r = call(agent_graph, "how_to_get", name=row["name"])
+            if "ways" in r and r["ways"]:
+                assert r["alsoCraftable"] is False and "craftableMembers" not in r and "tip" not in r
+                return
+        pytest.skip("every category with items to get has some item that is crafted")
+
+    def test_a_plain_item_still_gets_the_item_tip(self, agent_graph):
+        r = call(agent_graph, "how_to_get", item="raw iron")
+        assert "craftableMembers" not in r and "This item can also be crafted" in r["tip"]
+
+
+class TestHandCrafting:
+    """A recipe that fits the 2x2 inventory grid says so, and its route needs no crafting table."""
+
+    def test_a_button_is_made_by_hand(self, agent_graph):
+        r = call(agent_graph, "get_recipes", name="acacia button")
+        assert r["recipes"][0]["stationOptional"] is True and "2x2" in r["note"]
+
+    def test_the_route_of_something_made_only_by_hand_names_no_station(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", name="acacia button")
+        assert r["overview"]["stations"] == [] and "stations" not in r
+        assert "(or in your 2x2 inventory grid)" in r["steps"][-1]["do"]
+
+    def test_a_pickaxe_still_needs_a_crafting_table(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", name="iron pickaxe")
+        assert "Crafting Table" in r["overview"]["stations"]
+        assert "stationOptional" not in call(agent_graph, "get_recipes", name="iron pickaxe")["recipes"][0]
+
+    def test_a_mixed_route_lists_the_table_and_marks_the_hand_steps(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", name="iron pickaxe")
+        assert any("(or in your 2x2 inventory grid)" in s["do"] for s in r["steps"])         # the sticks, the planks
+        assert any(s["do"].endswith("at Crafting Table") or "at Crafting Table (" in s["do"] for s in r["steps"])
+
+    def test_the_crafting_table_itself_is_made_by_hand_so_its_recipe_has_no_at_clause(self, agent_graph):
+        r = call(agent_graph, "what_do_i_need", name="iron pickaxe")
+        table = next(s for s in r.get("stations", []) if s["station"] == "Crafting Table")
+        assert "at" not in table and "no crafting table is needed" in table["note"]

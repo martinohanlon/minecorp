@@ -14,8 +14,8 @@ from .graph import Graph
 INDEX = "names"
 
 # the label that says what a node is, most specific first
-KINDS = (("ItemClass", "category"), ("MobClass", "mob class"), ("BiomeClass", "biome class"), ("Profession", "profession"),
-         ("Item", "item"), ("Mob", "mob"), ("Block", "block"), ("Biome", "biome"), ("Structure", "structure"))
+KINDS = (("ItemClass", "category"), ("MobClass", "mob class"), ("BiomeClass", "biome class"), ("EnchantmentClass", "enchantment class"),
+         ("Profession", "profession"), ("Enchantment", "enchantment"), ("Item", "item"), ("Mob", "mob"), ("Block", "block"), ("Biome", "biome"), ("Structure", "structure"))
 KIND_NAMES = tuple(k for _, k in KINDS)
 
 _LUCENE_SPECIAL = re.compile(r'([+\-!(){}\[\]^"~*?:\\/&|])')

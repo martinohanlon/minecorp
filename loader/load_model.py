@@ -25,7 +25,9 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from minecorp_agent.config import get_settings  # noqa: E402
 from minecorp_agent.graph import Graph  # noqa: E402
@@ -179,7 +181,7 @@ def write(r: dict, uri: str, user: str, password: str, database: str) -> list[st
     """Rebuild the authored layer from the rows. Returns warnings about stale tasks."""
     notes: list[str] = []
     task_ids = [t["id"] for t in r["tasks"]]
-    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+    with open_driver(uri, user, password) as driver:
         with driver.session(database=database) as s:
             for label, key in (("Process", "id"), ("Activity", "id"), ("Task", "id"), ("Player", "uuid")):
                 s.run(f"CREATE CONSTRAINT {label.lower()}_{key} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{key} IS UNIQUE")

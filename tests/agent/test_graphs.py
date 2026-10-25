@@ -174,10 +174,10 @@ class TestDescribe:
     def test_an_item_shows_what_its_counts_walked(self):
         r = {"kind": "item", "name": "Emerald", "recipes": 5, "waysFromWorld": 4, "usedInRecipes": 19, "tradesGivingIt": 87}
         assert compact(g.describe_patterns(r)) == ["(Item {Emerald})<-[CREATES]-(Recipe)", "(Item {Emerald})<-[CREATES]-(Action)",
-                                                   "(Item {Emerald})<-[REQUIRES]-(Recipe)", "(Item {Emerald})<-[CREATES]-(Trade)"]
+                                                   "(Item {Emerald})<-[INCLUDES*0..]-(Item)<-[REQUIRES]-(Recipe)", "(Item {Emerald})<-[CREATES]-(Trade)"]
 
     def test_an_item_with_no_recipes_does_not_show_the_recipe_line(self):
-        assert compact(g.describe_patterns({"kind": "item", "name": "Gunpowder", "recipes": 0, "usedInRecipes": 3})) == ["(Item {Gunpowder})<-[REQUIRES]-(Recipe)"]
+        assert compact(g.describe_patterns({"kind": "item", "name": "Gunpowder", "recipes": 0, "usedInRecipes": 3})) == ["(Item {Gunpowder})<-[INCLUDES*0..]-(Item)<-[REQUIRES]-(Recipe)"]
 
     def test_a_mob_its_drops_and_where_it_spawns(self):
         r = {"kind": "mob", "name": "Creeper", "drops": [{"item": "Gunpowder"}], "spawnsInBiomes": 53}

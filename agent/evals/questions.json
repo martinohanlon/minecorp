@@ -735,5 +735,148 @@
       "does not say",
       "no information"
     ]
+  },
+  {
+    "id": "enchant-conflicts",
+    "question": "What can't I combine with Sharpness?",
+    "expect_any_tools": [
+      "describe",
+      "members"
+    ],
+    "expect_all": [
+      "smite"
+    ]
+  },
+  {
+    "id": "enchant-pickaxe",
+    "question": "What can I enchant a pickaxe with?",
+    "expect_all": [
+      "efficiency",
+      "fortune"
+    ],
+    "expect_none": [
+      "sharpness"
+    ]
+  },
+  {
+    "id": "enchant-mending-source",
+    "question": "How do I get Mending?",
+    "expect_any_tools": [
+      "where_to_find",
+      "describe"
+    ],
+    "expect_any": [
+      "villager",
+      "librarian",
+      "loot",
+      "treasure"
+    ],
+    "expect_none": [
+      "enchanting table offers"
+    ]
+  },
+  {
+    "id": "enchant-max-level",
+    "question": "What is the highest level of Sharpness?",
+    "expect_any_tools": [
+      "describe"
+    ],
+    "expect_any": [
+      "5",
+      "v"
+    ]
+  },
+  {
+    "id": "enchant-what-does-it-do",
+    "question": "What does Sharpness actually do?",
+    "expect_any_tools": [
+      "search_wiki",
+      "describe",
+      "read_section"
+    ]
+  },
+  {
+    "id": "enchant-list",
+    "question": "List the enchantments in the game.",
+    "expect_tools": [
+      "list"
+    ],
+    "expect_any": [
+      "43"
+    ]
+  },
+  {
+    "id": "wool-recipe",
+    "question": "what is the recipe for getting wool",
+    "expect_any_tools": [
+      "get_recipes",
+      "what_do_i_need",
+      "how_to_get"
+    ],
+    "expect_all": [
+      "string"
+    ]
+  },
+  {
+    "id": "wool-how-to-get",
+    "question": "How do I get wool?",
+    "expect_all": [
+      "string",
+      "sheep"
+    ]
+  },
+  {
+    "id": "followup-plan-step",
+    "question": "getting wool",
+    "history": [
+      {
+        "question": "what do i do?",
+        "answer": "- Start with a first-night shelter plan: gather logs, make a crafting table,\nwooden pickaxe, cobblestone, furnace, wool, bed, door, coal or charcoal, and torches.\n- If you want, I can give the full steps for one part, like getting wool or making the bed."
+      }
+    ],
+    "expect_all": [
+      "sheep"
+    ]
+  },
+  {
+    "id": "hand-planks",
+    "question": "Do I need a crafting table to make planks?",
+    "expect_any": [
+      "no",
+      "inventory",
+      "2x2",
+      "by hand",
+      "without"
+    ],
+    "expect_none": [
+      "you need a crafting table",
+      "requires a crafting table"
+    ]
+  },
+  {
+    "id": "hand-stick",
+    "question": "How do I make a stick?",
+    "expect_all": [
+      "plank"
+    ],
+    "expect_any": [
+      "inventory",
+      "2x2",
+      "no crafting table",
+      "without a crafting table",
+      "by hand"
+    ]
+  },
+  {
+    "id": "table-chest",
+    "question": "Do I need a crafting table to make a chest?",
+    "expect_any": [
+      "yes",
+      "need",
+      "crafting table"
+    ],
+    "expect_none": [
+      "2x2"
+    ]
   }
 ]

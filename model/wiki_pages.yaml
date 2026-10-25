@@ -36,9 +36,13 @@ pages:
   - "Tutorial:End survival"                      # held as tier 2 until the dragon was a goal
   - "Tutorial:Mob farm"                          # locations, designs, collecting drops (mixes Java and Bedrock designs)
 
+  # Added once enchantments were modelled (loader/load_enchantments.py, ontology v0.13): what they do, how the table and anvil work
+  - "Enchanting table mechanics"                 # not in the Tutorial: namespace (checked against the wiki API 2026-10-25)
+  - "Anvil mechanics"                            # likewise
+  - "Tutorial:Best enchantments guide"
+  - "Tutorial:Durability management"
+
   # Tier 2, held until what they explain is modelled, or until tier 1 has been judged (see docs/wiki-pages.md):
-  # - "Tutorial:Enchanting table mechanics"      # enchantments
-  # - "Tutorial:Anvil mechanics"                 # enchantments
   # - "Tutorial:Advancement guide/Minecraft tab" # advancements (Java only)
   # - "Tutorial:Combat"                          # mob statistics
   # - "Tutorial:Best biomes to play"             # after tier 1

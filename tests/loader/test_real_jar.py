@@ -182,6 +182,34 @@ class TestActions:
             assert t["item"] in craftable, t
 
 
+class TestInventoryCrafting:
+    """Which crafting recipes the player can make in the 2x2 inventory grid, with no crafting table."""
+
+    @pytest.mark.parametrize("recipe", ["acacia_button", "acacia_planks", "stick", "crafting_table", "torch", "white_wool_from_string", "bone_meal"])
+    def test_these_are_made_by_hand(self, normalised, recipe):
+        assert normalised[f"minecraft:{recipe}"]["stationOptional"] is True
+
+    @pytest.mark.parametrize("recipe", ["iron_pickaxe", "chest", "furnace", "white_bed", "bow", "acacia_door"])
+    def test_these_need_a_crafting_table(self, normalised, recipe):
+        r = normalised[f"minecraft:{recipe}"]
+        assert r["station"][0] == "minecraft:crafting_table" and r["stationOptional"] is False
+
+    def test_only_crafting_table_recipes_are_ever_optional(self, normalised):
+        assert {r["station"][0] for r in normalised.values() if r["stationOptional"]} == {"minecraft:crafting_table"}
+
+    def test_a_special_recipe_is_never_claimed_to_fit(self, normalised):
+        assert not [k for k, r in normalised.items() if r["special"] and r["stationOptional"]]
+        assert not [k for k, r in normalised.items() if r["type"].startswith("crafting_special") and r["stationOptional"]]
+
+    def test_the_number_of_hand_recipes_is_a_canary(self, normalised):
+        optional = sum(r["stationOptional"] for r in normalised.values())
+        assert 400 < optional < 600, "the share made by hand moved a lot: check the game before the code"
+        assert optional == 470, "470 in Paper 26.2 (144 shaped, 293 shapeless, 33 transmute)"
+
+    def test_every_station_row_in_the_graph_has_the_flag(self, graph):
+        assert graph["uses_station"] and all(isinstance(r["optional"], bool) for r in graph["uses_station"])
+
+
 class TestKnownVanillaFacts:
     """These describe Minecraft itself. If one fails after a version change, check the game first."""
 

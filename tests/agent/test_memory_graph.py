@@ -196,7 +196,7 @@ def test_memory_in_the_game_graphs_own_database_sits_beside_it_and_can_be_joined
         assert agent_graph.read("MATCH (i:Item {name: 'Ender Eye'}) RETURN count(i) AS n")[0]["n"] == 1      # the agent's own read still works
     finally:
         memory.close()
-        db.q("MATCH (n) WHERE n:Conversation OR n:Message OR n:ReasoningTrace OR n:ReasoningStep OR n:ToolCall OR n:Tool OR n:User DETACH DELETE n")
+        db.q("MATCH (n) WHERE n:Conversation OR n:Message OR n:ReasoningTrace OR n:ReasoningStep OR n:ToolCall OR n:Tool OR n:User OR (n:Player AND n.uuid = 'shared-1') DETACH DELETE n")        # the Player memory made is not the model's
 
 
 def test_the_database_is_created_when_it_is_missing(database):

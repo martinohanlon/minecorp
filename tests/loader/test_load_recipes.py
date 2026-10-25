@@ -39,6 +39,47 @@ class TestNormRef:
         assert lr.norm_ref(["minecraft:a"])[1] != lr.norm_ref(["minecraft:b"])[1]
 
 
+# --------------------------------------------------------------------------- the 2x2 inventory grid
+
+class TestInventoryGrid:
+    """A crafting recipe that fits the 2x2 grid of the player's inventory does not need a crafting table (the game's rule)."""
+
+    def shaped(self, pattern):
+        return {"type": "minecraft:crafting_shaped", "pattern": pattern, "key": {"#": "minecraft:stick"}, "result": {"id": "minecraft:x"}}
+
+    @pytest.mark.parametrize("pattern", [["#"], ["#", "#"], ["##"], ["##", "##"], ["# ", " #"]])
+    def test_a_shaped_recipe_of_at_most_2_by_2_fits(self, pattern):
+        assert lr.fits_inventory_grid("crafting_shaped", self.shaped(pattern)) is True
+
+    @pytest.mark.parametrize("pattern", [["###"], ["#", "#", "#"], ["##", "##", "##"], ["###", "###"], ["###", "# #", "###"]])
+    def test_a_shaped_recipe_wider_or_taller_than_2_does_not(self, pattern):
+        assert lr.fits_inventory_grid("crafting_shaped", self.shaped(pattern)) is False
+
+    def test_a_shapeless_recipe_of_four_ingredients_fits_and_five_does_not(self):
+        raw = lambda n: {"type": "minecraft:crafting_shapeless", "ingredients": ["minecraft:stick"] * n}      # noqa: E731
+        assert lr.fits_inventory_grid("crafting_shapeless", raw(1)) and lr.fits_inventory_grid("crafting_shapeless", raw(4))
+        assert not lr.fits_inventory_grid("crafting_shapeless", raw(5))
+
+    def test_a_transmute_recipe_fits(self):
+        assert lr.fits_inventory_grid("crafting_transmute", {"input": "#minecraft:bundles", "material": "minecraft:black_dye"}) is True
+
+    @pytest.mark.parametrize("rtype", ["crafting_special_firework_rocket", "crafting_dye", "crafting_decorated_pot", "smelting"])
+    def test_a_recipe_with_no_pattern_in_the_data_is_not_claimed_to_fit(self, rtype):
+        assert lr.fits_inventory_grid(rtype, {}) is False
+
+    def test_normalise_marks_only_crafting_table_recipes(self):
+        small = lr.normalise("minecraft:stick", self.shaped(["#", "#"]))
+        big = lr.normalise("minecraft:chest", self.shaped(["###", "# #", "###"]))
+        smelt = lr.normalise("minecraft:iron_ingot", {"type": "minecraft:smelting", "ingredient": "minecraft:raw_iron", "result": {"id": "minecraft:iron_ingot"}})
+        assert small["stationOptional"] is True and big["stationOptional"] is False and smelt["stationOptional"] is False
+
+    def test_the_graph_row_says_it(self):
+        chosen = {"minecraft:stick": lr.normalise("minecraft:stick", self.shaped(["#", "#"])),
+                  "minecraft:chest": lr.normalise("minecraft:chest", self.shaped(["###", "# #", "###"]))}
+        rows = lr.to_graph(chosen, {}, set(), [])["uses_station"]
+        assert {r["recipe"]: r["optional"] for r in rows} == {"minecraft:stick": True, "minecraft:chest": False}
+
+
 # --------------------------------------------------------------------------- normalise
 
 class TestNormalise:

@@ -43,7 +43,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from load_actions import tag_members  # noqa: E402
 from name_index import ensure_name_index  # noqa: E402
@@ -364,7 +366,7 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> None:
         run("UNWIND $rows AS r MATCH (b:Biome {id: r.biome}), (p:PlacedFeature {id: r.placed}) CREATE (b)-[:GENERATES {step: r.step}]->(p)",
             rows=g["generates"])
 
-    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+    with open_driver(uri, user, password) as driver:
         with driver.session(database=database) as session:
             for label in (*OWNED, "Mob"):                          # schema changes cannot share a transaction with the data
                 session.run(f"CREATE CONSTRAINT {label.lower()}_id IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE").consume()

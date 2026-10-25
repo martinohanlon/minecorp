@@ -25,7 +25,8 @@ from .processes import tool_get_process
 from .world import MAX_TRADES, tool_describe, tool_members, tool_where_to_find, trades_giving
 
 READING_NOTE = ("Every entry in 'requires' is needed together. An entry with 'anyOf' is a category: "
-                "use any ONE of its options (except those listed in 'except').")
+                "use any ONE of its options (except those listed in 'except'). 'stationOptional' means the recipe also fits the 2x2 grid in the "
+                "player's inventory, so the station is not needed: say so.")
 
 # Lower is preferred when choosing the main route in what_do_i_need.
 TYPE_PRIORITY = {
@@ -104,9 +105,9 @@ def fetch_recipes(graph: Graph, item_id: str) -> list[dict]:
     recipes = graph.read(
         """
         MATCH (i:Item {id: $id})<-[cr:CREATES]-(r:Recipe)
-        OPTIONAL MATCH (r)-[:USES_STATION]->(s:Station)
+        OPTIONAL MATCH (r)-[u:USES_STATION]->(s:Station)
         RETURN r.id AS id, r.name AS name, r.type AS type, cr.count AS yields, s.name AS station, s.id AS stationId,
-               r.pattern AS pattern, r.special AS special
+               coalesce(u.optional, false) AS stationOptional, r.pattern AS pattern, r.special AS special
         ORDER BY r.id
         """, id=item_id)
     if not recipes:
@@ -169,6 +170,8 @@ def _recipe_view(r: dict) -> dict:
     """One recipe as the model should see it, including the crafting grid when there is one."""
     out = {"recipe": r["name"], "type": r["type"], "station": r["station"], "makes": r["yields"],
            "requires": [_req_view(q) for q in r["reqs"]]}
+    if r.get("stationOptional"):
+        out["stationOptional"] = True
     if r["special"]:
         out["note"] = "Special recipe: inputs are not listed in the data."
     if r.get("pattern"):
@@ -400,7 +403,8 @@ class Route:
         if step is None:
             self.steps[item_id] = {
                 "makes": name, "amount": crafts * (recipe["yields"] or 1), "recipe": recipe["name"],
-                "type": recipe["type"], "station": recipe["station"], "stationId": recipe["stationId"], "times": crafts, "uses": uses,
+                "type": recipe["type"], "station": recipe["station"], "stationId": recipe["stationId"],
+                "stationOptional": bool(recipe.get("stationOptional")), "times": crafts, "uses": uses,
                 "otherWays": [f"{o['name']} ({o['type']})" for o in others[:4]],
             }
         else:  # the same item is needed in two places: do it once, in bulk
@@ -422,7 +426,7 @@ class Route:
                 for u in s["uses"].values())
             do = f"{verb}: {inputs} -> {s['amount']} {s['makes']}"
             if s["station"]:
-                do += f" at {s['station']}"
+                do += f" at {s['station']}" + (" (or in your 2x2 inventory grid)" if s.get("stationOptional") else "")
             if s["times"] > 1:
                 do += f" ({s['times']} times)"
             step = {"step": n, "do": do, "uses": list(s["uses"].values())}
@@ -454,7 +458,7 @@ class Route:
         station's own recipe is given: its inputs are ordinary items the player gathers."""
         used: dict[str, str] = {}
         for s in self.steps.values():
-            if s["stationId"]:
+            if s["stationId"] and not s.get("stationOptional"):        # a station the player can do without is not one they must make
                 used.setdefault(s["stationId"], s["station"])
         out = []
         for sid, name in sorted(used.items(), key=lambda kv: kv[1]):
@@ -465,8 +469,10 @@ class Route:
             inputs = ", ".join(f"{q['count'] or 1} {q['name']}" + (f" (any, such as {', '.join(q['examples'][:3])})" if q["isCategory"] and q["examples"] else " (any)" if q["isCategory"] else "")
                                for q in recipe["reqs"])
             entry = {"station": name, "make": f"Craft: {inputs} -> {recipe['yields'] or 1} {name}"}
-            if recipe["station"] and recipe["station"] != name:
+            if recipe["station"] and recipe["station"] != name and not recipe.get("stationOptional"):
                 entry["at"] = recipe["station"]
+            elif recipe.get("stationOptional"):
+                entry["note"] = "this fits the 2x2 grid in your inventory: no crafting table is needed to make it"
             out.append(entry)
         return out
 
@@ -474,7 +480,7 @@ class Route:
         """A small summary of how big the job is."""
         return {"craftingSteps": len(self.steps), "chainLength": self.levels,
                 "baseMaterials": len(self.totals),
-                "stations": sorted({s["station"] for s in self.steps.values() if s["station"]}),
+                "stations": sorted({s["station"] for s in self.steps.values() if s["station"] and not s.get("stationOptional")}),
                 "truncated": bool(self.not_expanded)}
 
 
@@ -552,6 +558,32 @@ def when_text(condition: str) -> str | None:
     return ", ".join(WHEN_WORDS.get(part, part) for part in condition.split("+"))
 
 
+def _craftable_members(graph: Graph, class_id: str) -> dict:
+    """How many items of a category have a recipe, and the simplest of them to make (fewest steps from base materials)."""
+    rows = graph.read("""
+        MATCH (:ItemClass {id: $id})-[:INCLUDES*]->(m:Item) WHERE NOT m:ItemClass
+        WITH DISTINCT m
+        RETURN m.name AS name, EXISTS { (m)<-[:CREATES]-(:Recipe) } AS made, coalesce(m.routeSteps, 99) AS steps""", id=class_id)
+    made = sorted((r for r in rows if r["made"]), key=lambda r: (r["steps"], r["name"]))
+    return {"total": len(rows), "made": len(made), "simplest": made[0]["name"] if made else None}
+
+
+def _ingredient_text(r: dict) -> str:
+    """One ingredient of a recipe as words: '4 String', '1 of any Wool except White Wool'."""
+    count = r.get("count", 1)
+    if "anyOf" in r:
+        skip = f" except {', '.join(r['except'])}" if r.get("except") else ""
+        return f"{count} of any {r['anyOf']}{skip}"
+    return f"{count} {r['item']}"
+
+
+def _crafted_like(graph: Graph, item_name: str) -> list[str]:
+    """How one item is crafted, short enough to put in another result: 'White Wool From String (Crafting Table): 4 String'."""
+    result = tool_get_recipes(graph, {"name": item_name})
+    return [f"{r['recipe']} ({r['station']}): " + " + ".join(_ingredient_text(i) for i in r["requires"])
+            for r in result.get("recipes", [])][:3]
+
+
 def tool_how_to_get(graph: Graph, args: dict) -> dict:
     """how_to_get: blocks to mine and mobs to kill or shear to get an item (or any item of a category)."""
     item, err = resolve_item(graph, name_arg(args))
@@ -576,9 +608,12 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         RETURN how, source, tool, orBetter, condition, count, gives, selfDropFlag = 1 AS selfDrop
         ORDER BY (condition <> 'default'), (how = 'mine'), source LIMIT 14
         """, id=item["id"])
-    crafted = False
+    crafted, craftable = False, None
     if not category:
         crafted = bool(graph.read("MATCH (:Recipe)-[:CREATES]->(:Item {id: $id}) RETURN 1 AS x LIMIT 1", id=item["id"]))
+    else:                             # a category is not made, its items are: craftable when some of them are
+        craftable = _craftable_members(graph, item["id"])
+        crafted = craftable["made"] > 0
     if category:  # a category has one self-dropping block per member: noise, unless nothing else gives it
         rows = [r for r in rows if not r["selfDrop"]] or rows
     ways = []
@@ -611,7 +646,13 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         out["alsoCraftable"] = crafted
         return out
     out["alsoCraftable"] = crafted
-    if crafted:                       # before howToRead: the model must see it, and it decides what to call next
+    if craftable is not None and crafted:
+        out["craftableMembers"] = f"{craftable['made']} of {craftable['total']}"
+        out["craftedLike"] = {"item": craftable["simplest"], "recipes": _crafted_like(graph, craftable["simplest"])}
+        out["tip"] = (f"Some of its items can also be crafted ({craftable['made']} of {craftable['total']}), and the usual way to get one is often not in "
+                      f"'ways'. 'craftedLike' shows how {craftable['simplest']} is crafted: say so in the answer next to the ways to get it from the world, "
+                      f"and call get_recipes with one specific item if the player wants more.")
+    elif crafted:                     # before howToRead: the model must see it, and it decides what to call next
         out["tip"] = ("This item can also be crafted, and the usual way to get it is often not in 'ways' (iron golems and rare drops "
                       "are not how players get iron). Call what_do_i_need now for the usual route, including where the raw "
                       "materials come from and the tool to mine them, and lead with it.")
@@ -625,7 +666,7 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
 
 TOOLS: list[Tool] = [
     Tool("find",
-         "Search for things in Minecraft by name: items, categories, mobs, blocks, biomes and structures. "
+         "Search for things in Minecraft by name: items, categories, mobs, blocks, biomes, structures, villager professions and enchantments. "
          "Typos and plurals are fine. Each match says what kind of thing it is. The other tools accept a name "
          "directly, so use this only when one of them says a name is unknown or ambiguous. To see ALL things of "
          "a kind (every biome, every mob) use list, not find.",
@@ -636,7 +677,7 @@ TOOLS: list[Tool] = [
          tool_find),
     Tool("list",
          "List everything of one kind: all the biomes (grouped by dimension), mobs, structures, villager professions, dimensions, "
-         "item categories, mob classes or biome classes, or items and blocks (a page of 100 at a time: narrow them with contains). "
+         "item categories, mob classes, biome classes, enchantments or enchantment classes (treasure, curse, the sets that cannot be combined), or items and blocks (a page of 100 at a time: narrow them with contains). "
          "Use for 'list the biomes', 'what mobs are there', 'what structures exist', 'what kinds of X are there', 'which swords are "
          "there' (kind item, contains sword), and when the player writes only a kind such as 'biomes' or 'mobs'. Classes are Minecraft's own tags with the number of things in each, not a tree of types; "
          "to see what is inside one class or category call members. For facts about one named thing use describe.",
@@ -648,10 +689,11 @@ TOOLS: list[Tool] = [
          tool_list),
     Tool("describe",
          "A short description of anything with a name: an item, category, mob, block, biome, structure or villager "
-         "profession. Says what it is, what it drops or gives, counts of related things, which wiki sections discuss "
-         "it, what a profession trades at each level, and who sells a map to a structure. A name that means several "
-         "things (an item and a block) describes each. Use for 'what is X', 'tell me about X' and 'what does a farmer "
-         "trade'.",
+         "profession or enchantment. Says what it is, what it drops or gives, counts of related things, which wiki sections discuss "
+         "it, what a profession trades at each level, who sells a map to a structure, and for an enchantment its maximum level, what it can go on, "
+         "what it cannot be combined with, where it comes from and the enchanting power each level needs; an item says which enchantments it can "
+         "take. A name that means several things (an item and a block) describes each. Use for 'what is X', 'tell me about X', 'what can I "
+         "enchant a pickaxe with' and 'what does a farmer trade'. What an enchantment does is not in the data: search_wiki.",
          {"type": "object", "properties": {"name": {"type": "string", "description": "name of the thing"}},
           "required": ["name"], "additionalProperties": False},
          tool_describe),
@@ -670,9 +712,10 @@ TOOLS: list[Tool] = [
     Tool("where_to_find",
          "Where something is in the world: the heights, vein sizes and biomes where an ore generates, the biomes "
          "and structures where a mob spawns, what a biome has, which biomes a structure is in and who sells a map to "
-         "it. For an item it covers each block to mine or mob to kill that gives it, and the villagers that trade it. "
-         "Use for 'where do I find X' and 'what spawns in X'.",
-         {"type": "object", "properties": {"name": {"type": "string", "description": "item, block, mob, biome or structure"}},
+         "it. For an item it covers each block to mine or mob to kill that gives it, and the villagers that trade it. For an enchantment it gives the "
+         "ways to get it (enchanting table, villager books, random loot) and the villagers that offer it. "
+         "Use for 'where do I find X', 'how do I get Mending' and 'what spawns in X'.",
+         {"type": "object", "properties": {"name": {"type": "string", "description": "item, block, mob, biome, structure or enchantment"}},
           "required": ["name"], "additionalProperties": False},
          tool_where_to_find),
     Tool("get_recipes",
@@ -719,14 +762,15 @@ TOOLS: list[Tool] = [
          tool_get_uses),
     Tool("members",
          "List what a category or class includes: the items that count as planks, beds or logs, the mobs in a class "
-         "such as undead, the biomes in a class such as forest. Use for 'what counts as X' and 'which X are there'.",
+         "such as undead, the biomes in a class such as forest, the enchantments in a class such as treasure or an exclusive set (the ones that "
+         "cannot be combined). Use for 'what counts as X' and 'which X are there'.",
          {"type": "object", "properties": {"name": {"type": "string", "description": "category or class name"}},
           "required": ["name"], "additionalProperties": False},
          tool_members),
     Tool("search_wiki",
          "Search the Minecraft Wiki (community-written guides and explanations) for advice, strategy and how-to "
          "questions that are not about a recipe or a drop: what to do on the first night, how to build a shelter, "
-         "how to get started, controls, mob behaviour. Returns the best passages with their page and section, and the "
+         "how to get started, controls, mob behaviour, what an enchantment does. Returns the best passages with their page and section, and the "
          "game items, mobs and blocks each passage is about (mentions). Do not use it for exact recipes, ingredients, "
          "drops, spawns or where things are: use get_recipes, describe or where_to_find for those. For the steps to reach a goal "
          "(shelter, emeralds, the Nether, the ender dragon, a mob farm) use get_process first. Also try it once, as a fallback, when the "

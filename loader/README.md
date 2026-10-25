@@ -50,9 +50,16 @@ Other options: `--seed <item id>` (repeatable), `--max-depth N`, `--out subset.j
 
 **To rebuild everything in one go, run `./scripts/build-graph.ps1` (or `.sh`)**: it runs the steps below in order, loads `.env` for you, asks before wiping, and tells you where to carry on (`--from <step>`) if one fails; see [../scripts/README.md](../scripts/README.md).
 
-The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py --pages` (free when the embedding cache is intact), then run `link_wiki.py`.
+The graph can be rebuilt from source at any time. Order for a full rebuild (about 30 seconds): `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_enchantments.py`, `load_trades.py`, `load_model.py`, then `compute_routes.py`. Note that `load_recipes.py --wipe` removes **every** node, including the wiki graph below; reload it last with `load_wiki.py --pages` (free when the embedding cache is intact), then run `link_wiki.py`.
 
 ## Trade loader: villager and wandering trader trades (v0.12)
+
+`load_enchantments.py` reads the 43 enchantments, the enchantment tags (where each comes from, what kind it is, the exclusive sets) and the `enchantable/*` item tags from the Paper jar (docs/ontology.md v0.13). An `Enchantment` has its maximum level, weight, enchanting-table cost formula and anvil cost; `EnchantmentClass` nodes are the tags (`INCLUDES`); `APPLIES_TO` links an enchantment to the `ItemClass` it can go on (`primary: true` when the enchanting table may also offer it for that class). Run it after `load_recipes.py` (it points at items) and before `load_trades.py` (a trade links to the class its enchantment is drawn from). Effects are not modelled.
+
+```
+.venv\Scripts\python loader\load_enchantments.py --dry-run   # parse and report, no database
+.venv\Scripts\python loader\load_enchantments.py             # load
+```
 
 `load_trades.py` reads the villager trades, the trade sets and their tags from the Paper jar (the optional trade rebalance datapack inside it is not read). A trade becomes an `Action` with the verb label `Trade`; a profession offers trade sets by level; a set includes the trades the game draws from. Run it after `load_world.py` (it links maps to structures and the villager to its professions) and before `load_model.py`. **`load_actions.py` deletes every `Action`, trades included, so run this again after it. Loading the trades again also drops the links from process tasks to trades (`HAS_ACTION`): run `load_model.py` after it.**
 
@@ -86,7 +93,7 @@ MATCH (:Item {id: 'minecraft:raw_iron'})<-[:CREATES]-(:Mine)-[:REQUIRES {role: '
 RETURN DISTINCT p.name, p.countMin, p.minY, p.maxY, p.peakY
 ```
 
-The model is described in [docs/ontology.md](../docs/ontology.md) (v0.10). Rebuild order for everything: `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
+The model is described in [docs/ontology.md](../docs/ontology.md) (v0.10). Rebuild order for everything: `load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_enchantments.py`, `load_trades.py`, `load_model.py`, `compute_routes.py`, `load_wiki.py`, `link_wiki.py`.
 
 ## Wiki loader: a lexical graph of minecraft.wiki (v0.8)
 

@@ -46,7 +46,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from load_recipes import DEFAULT_JAR, display_name, normalise  # noqa: E402
 from load_recipes import read_jar as read_recipe_jar  # noqa: E402
@@ -282,7 +284,7 @@ def build(jar: Path) -> dict:
 
 def write(g: dict, uri: str, user: str, password: str, database: str) -> set:
     """Write the rows to Neo4j; return the item ids that did not already exist (for the report)."""
-    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+    with open_driver(uri, user, password) as driver:
         with driver.session(database=database) as s:
             s.run("DROP CONSTRAINT harvest_id IF EXISTS")
             s.run("CREATE CONSTRAINT block_id IF NOT EXISTS FOR (n:Block) REQUIRE n.id IS UNIQUE")

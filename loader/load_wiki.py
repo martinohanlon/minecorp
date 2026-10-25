@@ -44,7 +44,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 
 import httpx  # noqa: E402
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from minecorp_agent.config import get_settings  # noqa: E402
 
@@ -628,7 +630,7 @@ def embed_chunks(chunks: list[dict], cache: EmbeddingCache, model: str, embedder
 def write(g: dict, model: str, uri: str, user: str, password: str, database: str, wipe: bool = False) -> None:
     """Write the page. Loading a page again replaces its sections and chunks; `wipe` first removes every wiki node."""
     chunks = g["chunks"]
-    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+    with open_driver(uri, user, password) as driver:
         with driver.session(database=database) as s:
             for label, prop in (("Wiki", "url"), ("Page", "url"), ("Section", "url"), ("Chunk", "id")):
                 s.run(f"CREATE CONSTRAINT {label.lower()}_{prop} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{prop} IS UNIQUE")

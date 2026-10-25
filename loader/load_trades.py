@@ -28,7 +28,8 @@ rebalance datapack that ships inside the jar is not.
 
 A price that depends on the enchantment of what you buy (a librarian's enchanted book) has no fixed count: the trade says
 `variablePrice` and has no `count` on its price. A trade for an enchanted item says `enchanted` (and `enchantLevels` for
-armour and tools); the enchantment model does not exist yet. A trade that only some villagers offer (a map to a swamp hut
+armour and tools) and `OFFERS_ENCHANTMENT` to the enchantment class its enchantment is drawn from (`#minecraft:tradeable` for a
+librarian's book, `#minecraft:on_traded_equipment` for gear), when `load_enchantments.py` has been run first. A trade that only some villagers offer (a map to a swamp hut
 is only sold by savanna, desert and swamp villagers) lists their village types in `villagerTypes`.
 """
 from __future__ import annotations
@@ -45,7 +46,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from load_actions import tag_members  # noqa: E402
 from load_recipes import DEFAULT_JAR, display_name  # noqa: E402
@@ -113,9 +116,17 @@ def parse_trade(key: str, t: dict, structure_tags: dict) -> dict:
         "maxUses": whole(t.get("max_uses")), "reputationDiscount": t.get("reputation_discount"), "xp": whole(t.get("xp")),
         "variablePrice": variable, "enchanted": bool(levels) or any(m.get("function") == f"{NS}enchant_randomly" for m in modifiers),
         "enchantLevels": f"{whole(levels['min'])} to {whole(levels['max'])}" if isinstance(levels, dict) and "min" in levels else None,
+        "enchantOptions": enchant_options(modifiers),
         "villagerTypes": villager_types(t.get("merchant_predicate")),
         "pay": pay, "gives": gives, "locates": locates,
     }
+
+
+def enchant_options(modifiers: list[dict]) -> list[str]:
+    """The enchantment classes an enchanting modifier draws from, as class ids ('#minecraft:tradeable': a librarian's book,
+    '#minecraft:on_traded_equipment': enchanted gear). The classes are made by load_enchantments.py."""
+    return sorted({m["options"] for m in modifiers
+                   if m.get("function") in (f"{NS}enchant_randomly", f"{NS}enchant_with_levels") and str(m.get("options", "")).startswith("#")})
 
 
 def trade_name(pay: list[dict], gives: dict) -> str:
@@ -186,6 +197,9 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> None:
         run("""UNWIND $rows AS r MATCH (t:Trade {id: r.trade}) MATCH (i:Item {id: r.item})
                CREATE (t)-[:CREATES {count: r.count, condition: 'default'}]->(i)""",
             rows=[{"trade": t["id"], **t["gives"]} for t in g["trades"]])
+        run("""UNWIND $rows AS r MATCH (t:Trade {id: r.trade}) MATCH (c:EnchantmentClass {id: r.cls})
+               CREATE (t)-[:OFFERS_ENCHANTMENT]->(c)""",
+            rows=[{"trade": t["id"], "cls": c} for t in g["trades"] for c in t["enchantOptions"]])
         run("""UNWIND $rows AS r MATCH (t:Trade {id: r.trade}) MATCH (s:Structure {id: r.structure})
                CREATE (t)-[:LOCATES {decoration: r.decoration, radius: r.radius}]->(s)""",
             rows=[{"trade": t["id"], **x} for t in g["trades"] for x in t["locates"]])
@@ -196,7 +210,7 @@ def write(g: dict, uri: str, user: str, password: str, database: str) -> None:
         run("UNWIND $rows AS r MATCH (s:TradeSet {id: r.set}) MATCH (t:Trade {id: r.trade}) CREATE (s)-[:INCLUDES]->(t)", rows=g["includes"])
         run("MATCH (m:Mob {id: $villager}) MATCH (p:Profession) CREATE (m)-[:HAS_PROFESSION]->(p)", villager=VILLAGER)
 
-    with GraphDatabase.driver(uri, auth=(user, password)) as driver:
+    with open_driver(uri, user, password) as driver:
         with driver.session(database=database) as session:
             for label in ("Profession", "TradeSet"):                  # schema changes cannot share a transaction with the data
                 session.run(f"CREATE CONSTRAINT {label.lower()}_id IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE").consume()

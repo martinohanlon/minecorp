@@ -85,6 +85,17 @@ class TestParseTrade:
         t = parse(given_item_modifiers=[{"function": "minecraft:enchant_randomly"}])
         assert t["enchanted"] is True and t["enchantLevels"] is None
 
+    def test_the_enchantment_class_a_book_or_gear_draws_from_is_kept(self):
+        book = parse(given_item_modifiers=[{"function": "minecraft:enchant_randomly", "options": "#minecraft:tradeable"}])
+        gear = parse(given_item_modifiers=[{"function": "minecraft:enchant_with_levels", "levels": {"min": 5.0, "max": 19.0},
+                                            "options": "#minecraft:on_traded_equipment"}])
+        assert book["enchantOptions"] == ["#minecraft:tradeable"] and gear["enchantOptions"] == ["#minecraft:on_traded_equipment"]
+
+    def test_no_options_or_a_single_enchantment_names_no_class(self):
+        assert parse(given_item_modifiers=[{"function": "minecraft:enchant_randomly"}])["enchantOptions"] == []
+        assert parse(given_item_modifiers=[{"function": "minecraft:enchant_randomly", "options": "minecraft:mending"}])["enchantOptions"] == []
+        assert parse()["enchantOptions"] == []
+
     def test_other_modifiers_do_not_make_it_enchanted(self):
         assert parse(given_item_modifiers=[{"function": "minecraft:set_name"}])["enchanted"] is False
 

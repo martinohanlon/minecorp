@@ -48,7 +48,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 
 import yaml  # noqa: E402
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from minecorp_agent.config import get_settings  # noqa: E402
 
@@ -381,7 +383,7 @@ def main() -> int:
     except (ValueError, yaml.YAMLError) as exc:
         sys.exit(f"{args.config}: {exc}")
     s = get_settings()
-    with GraphDatabase.driver(s.neo4j_uri, auth=(s.neo4j_user, s.neo4j_password)) as driver:
+    with open_driver(s.neo4j_uri, s.neo4j_user, s.neo4j_password) as driver:
         with driver.session(database=s.neo4j_database) as session:
             result = run(session, config, datetime.now(timezone.utc).isoformat(timespec="seconds"), args.dry_run)
     if result["problems"]:

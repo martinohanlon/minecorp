@@ -36,10 +36,10 @@ def ticker():
 
 class TestTheSteps:
     def test_the_order_is_the_rebuild_order_in_the_loader_readme(self):
-        assert [s.script for s in bg.STEPS] == ["load_recipes.py", "load_actions.py", "load_world.py", "load_trades.py",
-                                                "load_model.py", "compute_routes.py", "load_wiki.py", "link_wiki.py"]
+        assert [s.script for s in bg.STEPS] == ["load_recipes.py", "load_actions.py", "load_world.py", "load_enchantments.py",
+                                                "load_trades.py", "load_model.py", "compute_routes.py", "load_wiki.py", "link_wiki.py"]
         text = (ROOT / "loader" / "README.md").read_text(encoding="utf-8")
-        assert "`load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_trades.py`, `load_model.py`, then `compute_routes.py`" in text
+        assert "`load_recipes.py --all --wipe`, `load_actions.py`, `load_world.py`, `load_enchantments.py`, `load_trades.py`, `load_model.py`, then `compute_routes.py`" in text
 
     def test_every_step_runs_a_loader_that_exists(self):
         for s in bg.STEPS:
@@ -61,7 +61,7 @@ class TestPlan:
         assert [s.key for s in bg.plan()] == bg.KEYS
 
     def test_no_wiki_leaves_out_both_wiki_steps(self):
-        assert [s.key for s in bg.plan(only_game=True)] == ["recipes", "actions", "world", "trades", "model", "routes"]
+        assert [s.key for s in bg.plan(only_game=True)] == ["recipes", "actions", "world", "enchantments", "trades", "model", "routes"]
 
     def test_from_a_step_starts_there_and_has_no_wipe(self):
         steps = bg.plan("model")
@@ -142,7 +142,7 @@ class TestMain:
         monkeypatch.setattr(bg, "run", lambda *a, **k: pytest.fail("ran"))
         assert bg.main(["--list"]) == 0
         out = capsys.readouterr().out
-        assert "Target: bolt://localhost:7687 (database neo4j)" in out and "1. recipes" in out and "8. links" in out
+        assert "Target: bolt://localhost:7687 (database neo4j)" in out and "1. recipes" in out and "9. links" in out
 
     def test_the_target_comes_from_the_dotenv_file(self, quiet, capsys):
         (quiet / ".env").write_text("NEO4J_URI=bolt://localhost:7688\nNEO4J_DATABASE=dev\n", encoding="utf-8")

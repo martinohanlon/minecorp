@@ -170,3 +170,40 @@ def test_no_name_and_no_step_lists_the_processes(args):
         def read(self, *a, **k):
             return []
     assert pr.tool_get_process(Empty(), args) == {"processes": [], "note": "No plans are loaded."}
+
+
+class TestAStepNamedInsteadOfAPlan:
+    """"getting wool" asked in the middle of the shelter plan: the name is no plan, but it is a step of one."""
+
+    @pytest.fixture
+    def plans(self, monkeypatch):
+        shelter = {"id": "shelter", "name": "Build a shelter", "about": "A first-night shelter.", "buildsOn": [], "next": {},
+                   "tasks": [task("shelter/get-wool", "Get wool", description="Kill sheep for wool."),
+                             task("shelter/craft-bed", "Craft a bed", description="Three wool and three planks.")]}
+        farm = {"id": "farm", "name": "Build a farm", "about": "A mob farm.", "buildsOn": [], "next": {},
+                "tasks": [task("farm/dig", "Dig a pit"), task("farm/collect", "Collect wool drops")]}
+        monkeypatch.setattr(pr, "load_processes", lambda graph: {"shelter": shelter, "farm": farm})
+
+    def test_one_matching_step_is_returned_in_full_and_says_which_plan_it_belongs_to(self, plans):
+        out = pr.tool_get_process(None, {"name": "craft a bed"})
+        assert out["step"] == "Craft a bed" and out["process"] == "Build a shelter"
+        assert "not a plan" in out["matchedAs"] and "Build a shelter" in out["matchedAs"]
+
+    def test_a_word_in_the_steps_of_two_plans_is_listed_for_the_model_to_choose(self, plans):
+        out = pr.tool_get_process(None, {"name": "wool"})
+        assert "fits several steps" in out["error"] and sorted(out["candidates"]) == ["Build a farm: Collect wool drops", "Build a shelter: Get wool"]
+
+    def test_a_name_that_is_no_plan_and_no_step_keeps_the_original_error_listing_the_plans(self, plans):
+        out = pr.tool_get_process(None, {"name": "zebra"})
+        assert out["error"] == "No process matches 'zebra'." and out["processes"] == ["Build a shelter", "Build a farm"]
+
+    def test_a_step_that_is_asked_for_with_an_unknown_plan_is_still_an_error(self, plans):
+        out = pr.tool_get_process(None, {"name": "zebra", "step": "get wool"})
+        assert out["error"] == "No process matches 'zebra'." and "step" not in out
+
+    def test_a_name_that_is_a_plan_is_still_the_plan(self, plans):
+        assert "usualRoute" in pr.tool_get_process(None, {"name": "shelter"}) or "stages" in pr.tool_get_process(None, {"name": "shelter"})
+
+    def test_several_plans_that_fit_the_name_are_not_turned_into_a_step_search(self, plans):
+        out = pr.tool_get_process(None, {"name": "build"})
+        assert "fits several processes" in out["error"]

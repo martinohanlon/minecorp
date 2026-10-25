@@ -16,7 +16,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent"))
 
-from neo4j import GraphDatabase  # noqa: E402
+from neo4j import GraphDatabase  # noqa: E402,F401
+
+from quiet_driver import open_driver  # noqa: E402
 
 from minecorp_agent.config import get_settings  # noqa: E402
 from minecorp_agent.graph import Graph  # noqa: E402
@@ -63,7 +65,7 @@ def main() -> int:
     if args.dry_run:
         return 0
     # write with a separate, write-capable driver (Graph is read-only)
-    with GraphDatabase.driver(s.neo4j_uri, auth=(s.neo4j_user, s.neo4j_password)) as driver:
+    with open_driver(s.neo4j_uri, s.neo4j_user, s.neo4j_password) as driver:
         with driver.session(database=s.neo4j_database) as session:
             session.run("MATCH (i:Item) WHERE i.routeSteps IS NOT NULL "
                         "REMOVE i.routeSteps, i.routeLevels, i.routeBaseMaterials, i.routeStations, i.routeTruncated")

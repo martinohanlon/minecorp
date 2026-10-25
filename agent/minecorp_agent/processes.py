@@ -195,6 +195,17 @@ def step_view(process: dict, task: dict) -> dict:
     return out
 
 
+def step_named(processes: dict[str, dict], text: str, no_process: dict) -> dict:
+    """A name that is no plan, tried as a step of any plan. One step is returned in full, with the plan it belongs to; several are listed for
+    the model to choose from; none gives the original "no process matches" error."""
+    found, err = find_step([(p, t) for p in processes.values() for t in p["tasks"]], text)
+    if err:
+        return err if "candidates" in err else no_process
+    out = step_view(*found)
+    out["matchedAs"] = f"'{text}' is not a plan: it is a step of the plan '{found[0]['name']}', shown here."
+    return out
+
+
 def tool_get_process(graph: Graph, args: dict) -> dict:
     """get_process: plans for goals the game's data does not spell out; the usual route, alternatives and each step in full."""
     name = str(args.get("name") or "").strip()
@@ -210,7 +221,9 @@ def tool_get_process(graph: Graph, args: dict) -> dict:
     if name:
         process, err = find_process(processes, name)
         if err:
-            return err
+            if step or "candidates" in err:                     # a step was asked for too, or several plans fit the name
+                return err
+            return step_named(processes, name, err)             # "wool" is not a plan, but it is a step of one
         if not step:
             return outline(process)
         found, err = find_step([(process, t) for t in process["tasks"]], step)

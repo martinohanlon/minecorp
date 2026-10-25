@@ -13,7 +13,7 @@ graph can be rebuilt from source at any time, which is what this does (see loade
 cannot be rebuilt, do not exist yet. Settings come from the environment, and from .env for anything not already set there (the loaders
 do not read .env themselves). Nothing is printed from .env except the address and database name.
 
-The steps run in the order the graph needs (docs/ontology.md): recipes, actions, world, trades, model, routes, then the wiki and its links.
+The steps run in the order the graph needs (docs/ontology.md): recipes, actions, world, enchantments, trades, model, routes, then the wiki and its links.
 It stops at the first step that fails and tells you how to carry on from there."""
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ STEPS = [
     Step("recipes", "load_recipes.py", ("--all", "--wipe"), "wipe the database; items, item tags and recipes from the jar"),
     Step("actions", "load_actions.py", (), "Mine, Kill, Shear, Craft, Smelt, Smith and Cut actions from the jar"),
     Step("world", "load_world.py", (), "mobs, biomes, structures, dimensions and ore placement from the jar"),
+    Step("enchantments", "load_enchantments.py", (), "enchantments, what they go on, what conflicts and where they come from, from the jar"),
     Step("trades", "load_trades.py", (), "villager and wandering trader trades from the jar"),
     Step("model", "load_model.py", (), "the player and the processes, from model/*.yaml"),
     Step("routes", "compute_routes.py", (), "route properties on every craftable item (for rank_recipes)"),

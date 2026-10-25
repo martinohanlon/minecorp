@@ -24,18 +24,21 @@ GROUP_MIN = 3                                  # a biome-class group smaller tha
 DIMENSION_ORDER = ("Overworld", "The Nether", "The End")
 
 LABEL = {"item": "Item", "block": "Block", "mob": "Mob", "biome": "Biome", "structure": "Structure", "profession": "Profession",
-         "dimension": "Dimension", "category": "ItemClass", "mob class": "MobClass", "biome class": "BiomeClass"}
-LEAF = {"category": "Item", "mob class": "Mob", "biome class": "Biome"}      # what a class is a class of
+         "dimension": "Dimension", "category": "ItemClass", "mob class": "MobClass", "biome class": "BiomeClass",
+         "enchantment": "Enchantment", "enchantment class": "EnchantmentClass"}
+LEAF = {"category": "Item", "mob class": "Mob", "biome class": "Biome", "enchantment class": "Enchantment"}      # what a class is a class of
 CLASS_KINDS = tuple(LEAF)
 PLURAL = {"item": "items", "block": "blocks", "mob": "mobs", "biome": "biomes", "structure": "structures", "profession": "villager professions",
-          "dimension": "dimensions", "category": "item categories", "mob class": "mob classes", "biome class": "biome classes"}
+          "dimension": "dimensions", "category": "item categories", "mob class": "mob classes", "biome class": "biome classes",
+          "enchantment": "enchantments", "enchantment class": "enchantment classes"}
 
 # the words a player (or the model) uses for a whole kind: "biomes", "mobs", "creatures"
 KIND_WORDS: dict[str, str] = {}
 for _kind, _plural in PLURAL.items():
     KIND_WORDS[_kind] = KIND_WORDS[_plural] = _kind
 KIND_WORDS.update({"creature": "mob", "creatures": "mob", "categories": "category", "classes": "biome class", "professions": "profession",
-                   "villager profession": "profession", "item category": "category", "item categories": "category"})
+                   "villager profession": "profession", "item category": "category", "item categories": "category",
+                   "enchants": "enchantment", "enchanting": "enchantment"})
 
 
 def kind_of(text: str) -> str | None:
@@ -66,7 +69,7 @@ def _flat(graph: Graph, kind: str, words: list[str]) -> list[dict]:
     if kind in CLASS_KINDS:
         return graph.read(f"""
             MATCH (n:{label}) WHERE {cond}
-            OPTIONAL MATCH (n)-[:INCLUDES*1..]->(m:{LEAF[kind]}) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass
+            OPTIONAL MATCH (n)-[:INCLUDES*1..]->(m:{LEAF[kind]}) WHERE NOT m:ItemClass AND NOT m:MobClass AND NOT m:BiomeClass AND NOT m:EnchantmentClass
             RETURN n.name AS name, count(DISTINCT m) AS size ORDER BY name""", words=words)
     return graph.read(f"MATCH (n:{label}) WHERE {cond} RETURN DISTINCT n.name AS name ORDER BY name", words=words)
 

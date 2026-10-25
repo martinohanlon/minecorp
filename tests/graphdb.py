@@ -14,6 +14,7 @@ from neo4j import GraphDatabase
 
 import compute_routes
 import load_actions as la
+import load_enchantments as lenc
 import load_model as lm
 import load_trades as ltr
 import load_world as lwd
@@ -103,6 +104,9 @@ def build_test_graph(jar_path):
         world_graph = lwd.build(jar_path)                              # needs the Block and Mob nodes the actions made
         lwd.write(world_graph, uri, user, password, TEST_DB)
 
+        enchantment_graph = lenc.build(jar_path)                       # needs the Item nodes the recipes made; trades link to its classes
+        lenc.write(enchantment_graph, uri, user, password, TEST_DB)
+
         trade_graph = ltr.build(jar_path)                              # needs the Mob and Structure nodes the world made
         ltr.write(trade_graph, uri, user, password, TEST_DB)
 
@@ -126,7 +130,7 @@ def build_test_graph(jar_path):
             assert compute_routes.main() == 0
 
         yield {"db": Db(driver), "uri": uri, "user": user, "password": password, "normalised": normalised,
-               "recipe_graph": recipe_graph, "action_graph": action_graph, "world_graph": world_graph, "trade_graph": trade_graph, "model_rows": model_rows}
+               "recipe_graph": recipe_graph, "action_graph": action_graph, "world_graph": world_graph, "trade_graph": trade_graph, "enchantment_graph": enchantment_graph, "model_rows": model_rows}
     finally:
         try:
             driver.execute_query(f"DROP DATABASE {TEST_DB} IF EXISTS WAIT", database_="system")
