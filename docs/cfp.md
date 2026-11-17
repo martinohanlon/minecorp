@@ -15,7 +15,7 @@ Call for papers text for presenting MineCorp at technology conferences. Draft v2
 
 ## Abstract
 
-AI agents are only as reliable as the knowledge they can reach. Put everything in the prompt and it gets expensive and stale. Give the agent free rein over your databases and it guesses, and you can't tell why it answered what it did. A knowledge layer is a better answer: a shared, governed graph between your data and your agents, so the agents stay light and the substrate does the remembering.
+AI agents are only as reliable as the knowledge they can reach. Put everything in the prompt and it gets expensive and stale. Give the agent free rein over your databases and it guesses what your schema means. A knowledge layer is a better answer: a shared, governed graph between your data and your agents, so the agents stay light and the substrate does the remembering.
 
 This talk shows what that means by building one for an unlikely domain: MineCorp, a fictional company in the game Minecraft that turns raw materials into higher-value products. An agent supports its workers (the players) by answering questions about complex use cases ("what do I need for a diamond pickaxe?", "where do I find diamonds?", "how do I avoid the Endermen?"). MineCorp's knowledge lives in a graph database: domain data (recipes, mobs, biomes, villager trades, enchantments), defined step-by-step processes, and unstructured text from the community wiki. Agent memory sits alongside it, linked to the player.
 
@@ -34,7 +34,7 @@ You will leave with a reusable pattern for any domain built on catalogues and pr
 
 ## Medium version
 
-AI agents are only as reliable as the knowledge they can reach. Stuff it all in the prompt and it gets expensive and stale; let the agent loose on your databases and it guesses, and you can't tell why it said what it did. A knowledge layer is the alternative: a shared, governed graph between your data and your agents, so the agents stay light and the graph does the remembering.
+AI agents are only as reliable as the knowledge they can reach. Stuff it all in the prompt and it gets expensive and stale; let the agent loose on your databases and it guesses what your schema means. A knowledge layer is the alternative: a shared, governed graph between your data and your agents, so the agents stay light and the graph does the remembering.
 
 I show what that means by building one for an unlikely company: MineCorp, a fictional business in Minecraft that turns raw materials into higher-value products. An agent supports its workers by answering questions about complex use cases ("what do I need for a diamond pickaxe?", "where do I find diamonds?"). It answers from a graph database holding domain data, step-by-step processes, text from the community wiki and the agent's own memory, through purpose-built, read-only tools.
 
