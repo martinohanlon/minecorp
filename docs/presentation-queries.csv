@@ -1,0 +1,29 @@
+name,description,query,id,parentId,isFolder,isProtected
+Minecorp,,,0,,true,false
+1. Diamond sword,,MATCH (t:Item {name: 'Diamond Sword'}),1,0,false,false
+2. Diamond sword complete,,"MATCH (t:Item {name: 'Diamond Sword'})
+WITH reduce(seen = [t], depth IN range(1, 30) |
+  reduce(u = seen, n IN
+    reduce(acc = [], x IN seen |
+      acc
+      + [(x)<-[:CREATES]-(m) WHERE m:Recipe OR m:Mine OR m:Kill OR m:Shear | m]
+      + [(x)-[:REQUIRES|USES_STATION]->(y) | y]
+      + [(x)-[:INCLUDES]->(y) | y]
+    )
+  | CASE WHEN n IN u THEN u ELSE u + n END)
+) AS nodes
+MATCH (a)-[r:CREATES|REQUIRES|USES_STATION|INCLUDES]->(b)
+WHERE a IN nodes AND b IN nodes
+RETURN a, r, b",2,0,false,false
+3. Domain graph example,,"MATCH p = (:Item {name: 'Diamond Pickaxe'})<-[:CREATES]-(:Recipe)-[:REQUIRES|USES_STATION]->(:Item)
+RETURN p
+UNION
+MATCH p = (:Item {name: 'Diamond'})<-[:CREATES]-(:Mine)-[:REQUIRES]->()
+RETURN p",3,0,false,false
+4. Lexical graph and bridge,,,4,0,false,false
+5. Memory graph and reasoning,,"MATCH (u:User)-[:IS_PLAYER]->(pl:Player)
+MATCH (u)-[:HAS_CONVERSATION]->(cv:Conversation)
+WITH u, pl, cv ORDER BY cv.created_at DESC LIMIT 1
+MATCH pm = (cv)-[:HAS_MESSAGE]->(:Message)
+OPTIONAL MATCH pt = (u)-[:HAS_TRACE]->(:ReasoningTrace)-[:HAS_STEP]->(:ReasoningStep)-[:USES_TOOL]->(:ToolCall)
+RETURN pl, pm, pt",5,0,false,false
