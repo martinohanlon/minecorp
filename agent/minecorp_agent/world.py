@@ -100,7 +100,7 @@ def trades_giving(graph: Graph, item_id: str) -> tuple[list[dict], int]:
         MATCH (t:Trade)-[c:CREATES]->(i:Item {id: $id})
         MATCH (t)<-[:INCLUDES]-(:TradeSet)<-[o:OFFERS]-(p)
         RETURN DISTINCT p.name AS who, o.level AS level, o.pool AS pool, c.count AS count, i.name AS item, t.villagerTypes AS types,
-               t.variablePrice AS variable, t.enchanted AS enchanted,
+               t.variablePrice AS variable, t.enchanted AS enchanted, t.maxUses AS uses,
                [(t)-[r:REQUIRES]->(x:Item) | {role: r.role, item: x.name, count: r.count}] AS pay
         ORDER BY coalesce(level, 9), who""", id=item_id)
     entries = []
@@ -113,6 +113,8 @@ def trades_giving(graph: Graph, item_id: str) -> tuple[list[dict], int]:
         e["pay"] = pay_text(r["pay"], r["variable"])
         if r["count"] and r["count"] > 1:
             e["gets"] = f"{r['count']} {r['item']}"
+        if r["uses"]:
+            e["maxUses"] = r["uses"]          # how many times the villager makes this trade before it must restock
         if r["types"]:
             e["onlyVillagersOf"] = ", ".join(r["types"]) + " villages"
         if r["enchanted"]:
@@ -396,18 +398,19 @@ def describe_profession(graph: Graph, profession_id: str) -> dict:
     """What a villager of a profession offers at each level: the trades its pool holds and how many are picked."""
     rows = graph.read("""
         MATCH (:Profession {id: $id})-[o:OFFERS]->(s:TradeSet)-[:INCLUDES]->(t:Trade)
-        RETURN o.level AS level, s.amount AS picks, t.name AS trade ORDER BY level, trade""", id=profession_id)
+        RETURN o.level AS level, s.amount AS picks, t.name AS trade, t.maxUses AS uses ORDER BY level, trade""", id=profession_id)
     levels: dict[int, dict] = {}
     for r in rows:
         entry = levels.setdefault(r["level"], {"level": r["level"], "offersAtRandom": r["picks"], "trades": []})
-        entry["trades"].append(r["trade"].removeprefix("Trade "))
+        entry["trades"].append(r["trade"].removeprefix("Trade ") + (f" ({int(r['uses'])} uses before restock)" if r["uses"] else ""))
     out = []
     for entry in levels.values():
         if len(entry["trades"]) > MAX_TRADES:
             entry["moreTrades"] = len(entry["trades"]) - MAX_TRADES
             entry["trades"] = entry["trades"][:MAX_TRADES]
         out.append(entry)
-    return {"levels": out, "next": "A villager picks 'offersAtRandom' of the trades listed at each level, so it does not offer them all."}
+    return {"levels": out, "next": "A villager picks 'offersAtRandom' of the trades listed at each level, so it does not offer them all. "
+                                   "'(N uses before restock)' is how many times the villager can make that trade before it must restock."}
 
 
 def describe_biome(graph: Graph, biome_id: str) -> dict:

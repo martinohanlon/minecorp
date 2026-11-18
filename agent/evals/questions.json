@@ -921,5 +921,31 @@
       "not find",
       "only help"
     ]
+  },
+  {
+    "id": "trade-max-uses",
+    "question": "A farmer villager buys 20 wheat for an emerald. How many times can that trade be used before the villager has to restock?",
+    "expect_any_tools": [
+      "describe",
+      "how_to_get"
+    ],
+    "expect_not_tools": [
+      "search_wiki"
+    ],
+    "expect_all": [
+      "16"
+    ]
+  },
+  {
+    "id": "trade-max-uses-cake",
+    "question": "How many emeralds does a farmer charge for a cake, and how many times can that trade be made?",
+    "expect_any_tools": [
+      "describe",
+      "how_to_get"
+    ],
+    "expect_all": [
+      "3",
+      "12"
+    ]
   }
 ]
