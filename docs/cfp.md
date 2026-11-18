@@ -21,7 +21,7 @@ This talk shows what that means by building one for an unlikely domain: MineCorp
 
 Every part has an enterprise twin. Recipes are a bill of materials, processes are runbooks, the wiki is your internal documentation, read-only tools are access control, candidate versus confirmed knowledge is human approval, and the decision trace is the audit trail.
 
-In 30 minutes you will learn:
+You will learn:
 
 - How a knowledge layer compares with prompt-stuffing, retrieval on its own, and free-form text-to-query for agents, and when it is not worth it.
 - The architecture: ontology, data and memory, behind a thin client and an agent that can only call purpose-built, read-only tools.
@@ -34,11 +34,18 @@ You will leave with a reusable pattern for any domain built on catalogues and pr
 
 ## Medium version
 
-AI agents are only as reliable as the knowledge they can reach. Stuff it all in the prompt and it gets expensive and stale; let the agent loose on your databases and it guesses what your schema means. A knowledge layer is the alternative: a shared, governed graph between your data and your agents, so the agents stay light and the graph does the remembering.
+AI agents are only as reliable as the knowledge they can reach. Stuff it all in the prompt and it gets expensive and stale; let the agent loose on your databases and it guesses what your schema means. A knowledge layer is the alternative: a shared, governed graph between your data and your agents.
 
-I show what that means by building one for an unlikely company: MineCorp, a fictional business in Minecraft that turns raw materials into higher-value products. An agent supports its workers by answering questions about complex use cases ("what do I need for a diamond pickaxe?", "where do I find diamonds?"). It answers from a graph database holding domain data, step-by-step processes, text from the community wiki and the agent's own memory, through purpose-built, read-only tools.
+I build one for an unlikely company: MineCorp, a fictional business in Minecraft that turns raw materials into higher-value products. An agent answers its workers' questions ("what do I need for a diamond pickaxe?") from a graph holding domain data, processes, community wiki text and its own memory, through read-only tools. There is a live demo.
 
-You will see how to structure the graph (domain, lexical and bridge, with machine-extracted knowledge), how to load and test it (a validated spec checked against the live graph, and evals that catch drift), and what went wrong along the way. Take away a pattern for any domain built on catalogues and processes: runbooks, supply chains, support and operations.
+You will learn:
+
+- When a knowledge layer fits, and when it does not.
+- The architecture: ontology, data and memory, with read-only tools.
+- How to structure the graph: domain, lexical and bridge, with candidate versus confirmed knowledge.
+- How to build and test it, and what went wrong along the way.
+
+Take away a pattern for any domain built on catalogues and processes.
 
 ## Short version
 
