@@ -1,0 +1,603 @@
+[
+  {
+    "id": "s1-bucket",
+    "stratum": "S1-recall",
+    "question": "How many iron ingots do you need to craft a bucket?",
+    "expect": [
+      "3 iron ingot|three iron ingot"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (:Item {name:'Bucket'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(:Item {name:'Iron Ingot'}) RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-creeper-drop",
+    "stratum": "S1-recall",
+    "question": "What does a creeper drop when you kill it?",
+    "expect": [
+      "gunpowder"
+    ],
+    "gold": "Gunpowder",
+    "gold_query": "MATCH (:Action:Kill)-[:REQUIRES]->(:Mob {name:'Creeper'}) MATCH (a:Action:Kill)-[:CREATES]->(i:Item) WHERE (a)-[:REQUIRES]->(:Mob {name:'Creeper'}) RETURN DISTINCT i.name AS gold"
+  },
+  {
+    "id": "s1-planks-per-log",
+    "stratum": "S1-recall",
+    "question": "How many oak planks do you get from crafting one oak log?",
+    "expect": [
+      "4|four"
+    ],
+    "gold": "4",
+    "gold_query": "MATCH (:Item {name:'Oak Planks'})<-[c:CREATES]-(:Recipe)-[:REQUIRES]->(:Item {name:'Oak Logs'}) RETURN c.count AS gold"
+  },
+  {
+    "id": "s1-efficiency-max",
+    "stratum": "S1-recall",
+    "question": "What is the maximum level of the Efficiency enchantment?",
+    "expect": [
+      "5|five|level v"
+    ],
+    "gold": "5",
+    "gold_query": "MATCH (e:Enchantment {name:'Efficiency'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s1-smelt-iron",
+    "stratum": "S1-recall",
+    "question": "What do you smelt in a furnace to get an iron ingot?",
+    "expect": [
+      "raw iron|iron ore"
+    ],
+    "gold": "Raw Iron (also Iron Ore and Deepslate Iron Ore)",
+    "gold_query": "MATCH (:Item {name:'Iron Ingot'})<-[:CREATES]-(r:Recipe {type:'smelting'})-[:REQUIRES]->(x) WHERE x.name = 'Raw Iron' RETURN x.name AS gold"
+  },
+  {
+    "id": "iron-upper-peak",
+    "stratum": "S2-exact-data",
+    "question": "In the highest iron ore band of the Overworld (the one that spans y 80 to 319), at what y level does iron ore generation peak?",
+    "expect": [
+      "232"
+    ],
+    "gold": "232",
+    "gold_query": "MATCH (:Block {name:'Iron Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) WHERE p.minY = 80 RETURN p.peakY AS gold"
+  },
+  {
+    "id": "s2-copper-peak",
+    "stratum": "S2-exact-data",
+    "question": "At what y level does copper ore generation peak in the Overworld?",
+    "expect": [
+      "48"
+    ],
+    "gold": "48",
+    "gold_query": "MATCH (:Block {name:'Copper Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) RETURN DISTINCT p.peakY AS gold"
+  },
+  {
+    "id": "s2-coal-max-y",
+    "stratum": "S2-exact-data",
+    "question": "What is the highest y level at which coal ore can generate in the Overworld?",
+    "expect": [
+      "319"
+    ],
+    "gold": "319",
+    "gold_query": "MATCH (:Block {name:'Coal Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) RETURN max(p.maxY) AS gold"
+  },
+  {
+    "id": "s2-farmer-wheat-uses",
+    "stratum": "S2-exact-data",
+    "question": "A farmer villager buys 20 wheat for an emerald. How many times can that trade be used before the villager has to restock?",
+    "expect": [
+      "16|sixteen"
+    ],
+    "gold": "16",
+    "gold_query": "MATCH (:Profession {name:'Farmer'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade {name:'Trade 20 Wheat for Emerald'}) RETURN t.maxUses AS gold"
+  },
+  {
+    "id": "s2-farmer-cake-price",
+    "stratum": "S2-exact-data",
+    "question": "How many emeralds does a farmer villager charge for a cake?",
+    "expect": [
+      "3 emerald|three emerald"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (:Profession {name:'Farmer'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade)-[:CREATES]->(:Item {name:'Cake'}) MATCH (t)-[q:REQUIRES]->(:Item {name:'Emerald'}) RETURN q.count AS gold"
+  },
+  {
+    "id": "s3-max-level-5",
+    "stratum": "S3-multi-hop",
+    "question": "How many enchantments have a maximum level of 5?",
+    "expect": [
+      "7|seven"
+    ],
+    "gold": "7",
+    "gold_query": "MATCH (e:Enchantment) WHERE e.maxLevel = 5 RETURN count(e) AS gold"
+  },
+  {
+    "id": "s3-wolf-biomes",
+    "stratum": "S3-multi-hop",
+    "question": "In how many different biomes can wolves spawn naturally?",
+    "expect": [
+      "9|nine"
+    ],
+    "gold": "9",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Wolf'}) RETURN count(DISTINCT b) AS gold"
+  },
+  {
+    "id": "s3-bell-professions",
+    "stratum": "S3-multi-hop",
+    "question": "How many different villager professions sell bells?",
+    "expect": [
+      "3|three"
+    ],
+    "gold": "3 (Armorer, Toolsmith, Weaponsmith)",
+    "gold_query": "MATCH (p:Profession)-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(:Trade)-[:CREATES]->(:Item {name:'Bell'}) RETURN count(DISTINCT p) AS gold"
+  },
+  {
+    "id": "s3-most-spawned-mob",
+    "stratum": "S3-multi-hop",
+    "question": "Which mob spawns naturally in the greatest number of different biomes?",
+    "expect": [
+      "enderman|endermen"
+    ],
+    "gold": "Enderman (61 biomes; the next, Bat and Skeleton, 54)",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(m:Mob) WITH m.name AS mob, count(DISTINCT b) AS n ORDER BY n DESC LIMIT 1 RETURN mob AS gold"
+  },
+  {
+    "id": "s3-farmer-trade-count",
+    "stratum": "S3-multi-hop",
+    "question": "How many different trades does a farmer villager offer in total, across all levels?",
+    "expect": [
+      "14|fourteen"
+    ],
+    "gold": "14",
+    "gold_query": "MATCH (:Profession {name:'Farmer'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade) RETURN count(DISTINCT t) AS gold"
+  },
+  {
+    "id": "s4-lunge-max",
+    "stratum": "S4-version-specific",
+    "question": "What is the maximum level of the Lunge enchantment?",
+    "expect": [
+      "3|three|iii"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (e:Enchantment {name:'Lunge'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s4-copper-spear",
+    "stratum": "S4-version-specific",
+    "question": "What do you craft a copper spear from?",
+    "expect": [
+      "stick",
+      "copper ingot"
+    ],
+    "gold": "Copper Tool Materials x1, Stick x2 (the category holds only Copper Ingot)",
+    "gold_query": "MATCH (:Item {name:'Copper Spear'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x) WITH x, q ORDER BY x.name RETURN reduce(s = '', v IN collect(x.name + ' x' + toString(q.count)) | s + CASE WHEN s = '' THEN '' ELSE ', ' END + v) AS gold"
+  },
+  {
+    "id": "s4-spear-count",
+    "stratum": "S4-version-specific",
+    "question": "How many different tiers of spear exist, counting every material from wooden to netherite?",
+    "expect": [
+      "7|seven"
+    ],
+    "gold": "7 (wooden, stone, copper, iron, golden, diamond, netherite)",
+    "gold_query": "MATCH (i:Item) WHERE i.name ENDS WITH ' Spear' RETURN count(i) AS gold"
+  },
+  {
+    "id": "s4-sulfur-cube-biome",
+    "stratum": "S4-version-specific",
+    "question": "In which biome does the Sulfur Cube spawn?",
+    "expect": [
+      "sulfur caves"
+    ],
+    "gold": "Sulfur Caves",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Sulfur Cube'}) RETURN b.name AS gold"
+  },
+  {
+    "id": "s4-parched-biome",
+    "stratum": "S4-version-specific",
+    "question": "In which biome does the Parched mob spawn?",
+    "expect": [
+      "desert"
+    ],
+    "gold": "Desert",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Parched'}) RETURN b.name AS gold"
+  },
+  {
+    "id": "s1-furnace",
+    "stratum": "S1-recall",
+    "question": "How many cobblestone do you need to craft a furnace?",
+    "expect": [
+      "8|eight"
+    ],
+    "gold": "8",
+    "gold_query": "MATCH (:Item {name:'Furnace'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-chest",
+    "stratum": "S1-recall",
+    "question": "How many planks do you need to craft a chest?",
+    "expect": [
+      "8|eight"
+    ],
+    "gold": "8",
+    "gold_query": "MATCH (:Item {name:'Chest'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-crafting-table",
+    "stratum": "S1-recall",
+    "question": "How many planks do you need to craft a crafting table?",
+    "expect": [
+      "4|four"
+    ],
+    "gold": "4",
+    "gold_query": "MATCH (:Item {name:'Crafting Table'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-bread",
+    "stratum": "S1-recall",
+    "question": "How many wheat do you need to craft one bread?",
+    "expect": [
+      "3|three"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (:Item {name:'Bread'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-ladder",
+    "stratum": "S1-recall",
+    "question": "How many sticks do you need for one crafting of ladders?",
+    "expect": [
+      "7|seven"
+    ],
+    "gold": "7",
+    "gold_query": "MATCH (:Item {name:'Ladder'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-wooden-pickaxe-sticks",
+    "stratum": "S1-recall",
+    "question": "How many sticks does a wooden pickaxe need?",
+    "expect": [
+      "2|two"
+    ],
+    "gold": "2",
+    "gold_query": "MATCH (:Item {name:'Wooden Pickaxe'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x) WHERE x.name = 'Stick' RETURN q.count AS gold"
+  },
+  {
+    "id": "s1-sharpness-max",
+    "stratum": "S1-recall",
+    "question": "What is the maximum level of the Sharpness enchantment?",
+    "expect": [
+      "5|five|v"
+    ],
+    "gold": "5",
+    "gold_query": "MATCH (e:Enchantment {name:'Sharpness'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s1-protection-max",
+    "stratum": "S1-recall",
+    "question": "What is the maximum level of the Protection enchantment?",
+    "expect": [
+      "4|four|iv"
+    ],
+    "gold": "4",
+    "gold_query": "MATCH (e:Enchantment {name:'Protection'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s1-fortune-max",
+    "stratum": "S1-recall",
+    "question": "What is the maximum level of the Fortune enchantment?",
+    "expect": [
+      "3|three|iii"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (e:Enchantment {name:'Fortune'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s1-unbreaking-max",
+    "stratum": "S1-recall",
+    "question": "What is the maximum level of the Unbreaking enchantment?",
+    "expect": [
+      "3|three|iii"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (e:Enchantment {name:'Unbreaking'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s2-emerald-peak",
+    "stratum": "S2-exact-data",
+    "question": "At what y level does emerald ore generation peak in the Overworld?",
+    "expect": [
+      "232"
+    ],
+    "gold": "232",
+    "gold_query": "MATCH (:Block {name:'Emerald Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) WHERE p.peakY IS NOT NULL  RETURN DISTINCT p.peakY AS gold"
+  },
+  {
+    "id": "s2-gold-peak",
+    "stratum": "S2-exact-data",
+    "question": "At what y level does gold ore generation peak in the Overworld?",
+    "expect": [
+      "-16"
+    ],
+    "gold": "-16",
+    "gold_query": "MATCH (:Block {name:'Gold Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) WHERE p.peakY IS NOT NULL  RETURN DISTINCT p.peakY AS gold"
+  },
+  {
+    "id": "s2-coal-peak",
+    "stratum": "S2-exact-data",
+    "question": "In the coal ore band that spans y 0 to 192, at what y level does coal generation peak?",
+    "expect": [
+      "96"
+    ],
+    "gold": "96",
+    "gold_query": "MATCH (:Block {name:'Coal Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) WHERE p.peakY IS NOT NULL AND p.minY = 0 RETURN DISTINCT p.peakY AS gold"
+  },
+  {
+    "id": "s2-redstone-max-y",
+    "stratum": "S2-exact-data",
+    "question": "What is the highest y level at which redstone ore can generate in the Overworld?",
+    "expect": [
+      "15"
+    ],
+    "gold": "15",
+    "gold_query": "MATCH (:Block {name:'Redstone Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) RETURN max(p.maxY) AS gold"
+  },
+  {
+    "id": "s2-lapis-max-y",
+    "stratum": "S2-exact-data",
+    "question": "What is the highest y level at which lapis lazuli ore can generate in the Overworld?",
+    "expect": [
+      "64"
+    ],
+    "gold": "64",
+    "gold_query": "MATCH (:Block {name:'Lapis Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) RETURN max(p.maxY) AS gold"
+  },
+  {
+    "id": "s2-copper-min-y",
+    "stratum": "S2-exact-data",
+    "question": "What is the lowest y level at which copper ore can generate in the Overworld?",
+    "expect": [
+      "-16"
+    ],
+    "gold": "-16",
+    "gold_query": "MATCH (:Block {name:'Copper Ore'})<-[:CREATES]-(:Feature)<-[:PLACES]-(p:PlacedFeature)-[:IN_DIMENSION]->(:Dimension {name:'Overworld'}) RETURN min(p.minY) AS gold"
+  },
+  {
+    "id": "s2-cake-uses",
+    "stratum": "S2-exact-data",
+    "question": "How many times can a farmer villager's cake trade be made before the villager restocks?",
+    "expect": [
+      "12|twelve"
+    ],
+    "gold": "12",
+    "gold_query": "MATCH (:Profession {name:'Farmer'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade)-[:CREATES]->(:Item {name:'Cake'}) RETURN DISTINCT t.maxUses AS gold"
+  },
+  {
+    "id": "s2-bell-price",
+    "stratum": "S2-exact-data",
+    "question": "How many emeralds does a villager charge for a bell?",
+    "expect": [
+      "36|thirty-six"
+    ],
+    "gold": "36",
+    "gold_query": "MATCH (:Profession {name:'Armorer'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade)-[:CREATES]->(:Item {name:'Bell'}) MATCH (t)-[q:REQUIRES]->(:Item {name:'Emerald'}) RETURN DISTINCT q.count AS gold"
+  },
+  {
+    "id": "s2-saddle-price",
+    "stratum": "S2-exact-data",
+    "question": "How many emeralds does a leatherworker villager charge for a saddle?",
+    "expect": [
+      "6|six"
+    ],
+    "gold": "6",
+    "gold_query": "MATCH (:Profession {name:'Leatherworker'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade)-[:CREATES]->(:Item {name:'Saddle'}) MATCH (t)-[q:REQUIRES]->(:Item {name:'Emerald'}) RETURN DISTINCT q.count AS gold"
+  },
+  {
+    "id": "s2-pumpkin-pie-price",
+    "stratum": "S2-exact-data",
+    "question": "How many pumpkin pies does a farmer villager give you for one emerald?",
+    "expect": [
+      "4|four"
+    ],
+    "gold": "4",
+    "gold_query": "MATCH (:Profession {name:'Farmer'})-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade)-[c:CREATES]->(:Item {name:'Pumpkin Pie'}) RETURN DISTINCT c.count AS gold"
+  },
+  {
+    "id": "s3-max-level-3",
+    "stratum": "S3-multi-hop",
+    "question": "How many enchantments have a maximum level of 3?",
+    "expect": [
+      "16|sixteen"
+    ],
+    "gold": "16",
+    "gold_query": "MATCH (e:Enchantment) WHERE e.maxLevel = 3 RETURN count(e) AS gold"
+  },
+  {
+    "id": "s3-max-level-1",
+    "stratum": "S3-multi-hop",
+    "question": "How many enchantments have a maximum level of 1?",
+    "expect": [
+      "9|nine"
+    ],
+    "gold": "9",
+    "gold_query": "MATCH (e:Enchantment) WHERE e.maxLevel = 1 RETURN count(e) AS gold"
+  },
+  {
+    "id": "s3-sheep-biomes",
+    "stratum": "S3-multi-hop",
+    "question": "In how many different biomes can sheep spawn naturally?",
+    "expect": [
+      "26|twenty-six"
+    ],
+    "gold": "26",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Sheep'}) RETURN count(DISTINCT b) AS gold"
+  },
+  {
+    "id": "s3-pig-biomes",
+    "stratum": "S3-multi-hop",
+    "question": "In how many different biomes can pigs spawn naturally?",
+    "expect": [
+      "25|twenty-five"
+    ],
+    "gold": "25",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Pig'}) RETURN count(DISTINCT b) AS gold"
+  },
+  {
+    "id": "s3-desert-mobs",
+    "stratum": "S3-multi-hop",
+    "question": "How many different kinds of mob can spawn naturally in the Desert biome?",
+    "expect": [
+      "14|fourteen"
+    ],
+    "gold": "14",
+    "gold_query": "MATCH (:Biome {name:'Desert'})-[:SPAWNS]->(m:Mob) RETURN count(DISTINCT m) AS gold"
+  },
+  {
+    "id": "s3-mushroom-mobs",
+    "stratum": "S3-multi-hop",
+    "question": "How many different kinds of mob can spawn naturally in the Mushroom Fields biome?",
+    "expect": [
+      "3|three"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (:Biome {name:'Mushroom Fields'})-[:SPAWNS]->(m:Mob) RETURN count(DISTINCT m) AS gold"
+  },
+  {
+    "id": "s3-farmer-level1-trades",
+    "stratum": "S3-multi-hop",
+    "question": "How many different trades can a level 1 farmer villager be offered?",
+    "expect": [
+      "5|five"
+    ],
+    "gold": "5",
+    "gold_query": "MATCH (:Profession {name:'Farmer'})-[o:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade) WHERE o.level = 1 RETURN count(DISTINCT t) AS gold"
+  },
+  {
+    "id": "s3-saddle-profession",
+    "stratum": "S3-multi-hop",
+    "question": "Which villager profession sells saddles?",
+    "expect": [
+      "leatherworker"
+    ],
+    "gold": "Leatherworker",
+    "gold_query": "MATCH (p:Profession)-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(:Trade)-[:CREATES]->(:Item {name:'Saddle'}) RETURN DISTINCT p.name AS gold"
+  },
+  {
+    "id": "s3-wheat-buyers",
+    "stratum": "S3-multi-hop",
+    "question": "How many different villager professions will buy wheat?",
+    "expect": [
+      "1|one"
+    ],
+    "gold": "1",
+    "gold_query": "MATCH (p:Profession)-[:OFFERS]->(:TradeSet)-[:INCLUDES]->(t:Trade) WHERE (t)-[:REQUIRES]->(:Item {name:'Wheat'}) RETURN count(DISTINCT p) AS gold"
+  },
+  {
+    "id": "s4-wind-burst-max",
+    "stratum": "S4-version-specific",
+    "question": "What is the maximum level of the Wind Burst enchantment?",
+    "expect": [
+      "3|three|iii"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (e:Enchantment {name:'Wind Burst'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s4-breach-max",
+    "stratum": "S4-version-specific",
+    "question": "What is the maximum level of the Breach enchantment?",
+    "expect": [
+      "4|four|iv"
+    ],
+    "gold": "4",
+    "gold_query": "MATCH (e:Enchantment {name:'Breach'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s4-density-max",
+    "stratum": "S4-version-specific",
+    "question": "What is the maximum level of the Density enchantment?",
+    "expect": [
+      "5|five|v"
+    ],
+    "gold": "5",
+    "gold_query": "MATCH (e:Enchantment {name:'Density'}) RETURN e.maxLevel AS gold"
+  },
+  {
+    "id": "s4-bogged-biomes",
+    "stratum": "S4-version-specific",
+    "question": "In how many different biomes can the Bogged spawn naturally?",
+    "expect": [
+      "2|two"
+    ],
+    "gold": "2",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Bogged'}) RETURN count(DISTINCT b) AS gold"
+  },
+  {
+    "id": "s4-nautilus-biomes",
+    "stratum": "S4-version-specific",
+    "question": "In how many different biomes can the Nautilus spawn naturally?",
+    "expect": [
+      "9|nine"
+    ],
+    "gold": "9",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Nautilus'}) RETURN count(DISTINCT b) AS gold"
+  },
+  {
+    "id": "s4-copper-pickaxe",
+    "stratum": "S4-version-specific",
+    "question": "How many copper ingots do you need to craft a copper pickaxe?",
+    "expect": [
+      "3|three"
+    ],
+    "gold": "3",
+    "gold_query": "MATCH (:Item {name:'Copper Pickaxe'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x) WHERE x.name = 'Copper Tool Materials' RETURN q.count AS gold"
+  },
+  {
+    "id": "s4-copper-sword",
+    "stratum": "S4-version-specific",
+    "question": "How many copper ingots do you need to craft a copper sword?",
+    "expect": [
+      "2|two"
+    ],
+    "gold": "2",
+    "gold_query": "MATCH (:Item {name:'Copper Sword'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x) WHERE x.name = 'Copper Tool Materials' RETURN q.count AS gold"
+  },
+  {
+    "id": "s4-copper-chestplate",
+    "stratum": "S4-version-specific",
+    "question": "How many copper ingots do you need to craft a copper chestplate?",
+    "expect": [
+      "8|eight"
+    ],
+    "gold": "8",
+    "gold_query": "MATCH (:Item {name:'Copper Chestplate'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s4-copper-helmet",
+    "stratum": "S4-version-specific",
+    "question": "How many copper ingots do you need to craft a copper helmet?",
+    "expect": [
+      "5|five"
+    ],
+    "gold": "5",
+    "gold_query": "MATCH (:Item {name:'Copper Helmet'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x)  RETURN q.count AS gold"
+  },
+  {
+    "id": "s4-iron-spear-sticks",
+    "stratum": "S4-version-specific",
+    "question": "How many sticks do you need to craft an iron spear?",
+    "expect": [
+      "2|two"
+    ],
+    "gold": "2",
+    "gold_query": "MATCH (:Item {name:'Iron Spear'})<-[:CREATES]-(:Recipe)-[q:REQUIRES]->(x) WHERE x.name = 'Stick' RETURN q.count AS gold"
+  },
+  {
+    "id": "s3-bat-biomes",
+    "stratum": "S3-multi-hop",
+    "question": "In how many different biomes can bats spawn naturally?",
+    "expect": [
+      "54"
+    ],
+    "gold": "54",
+    "gold_query": "MATCH (b:Biome)-[:SPAWNS]->(:Mob {name:'Bat'}) RETURN count(DISTINCT b) AS gold"
+  }
+]

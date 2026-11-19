@@ -108,7 +108,8 @@ class TestLoop:
         result, _ = run(client, tmp_path)
         assert result.answer == "Use a crafting table." and result.status == "ok" and result.error is None
         assert len(client.calls) == 1 and result.steps == []
-        assert result.usage == {"prompt_tokens": 10, "completion_tokens": 5, "model_calls": 1}
+        assert result.usage == {"prompt_tokens": 10, "completion_tokens": 5, "model_calls": 1,
+                                "cached_tokens": 0, "reasoning_tokens": 0, "api_model": "test-model"}   # the last three are for the benchmark's cost
 
     def test_the_first_request_has_the_system_prompt_the_player_and_all_tools(self, tmp_path):
         client = FakeClient(reply("ok"))

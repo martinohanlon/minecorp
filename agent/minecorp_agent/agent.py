@@ -20,7 +20,7 @@ from .config import Settings
 from .graph import Graph
 from .history import Exchange
 from .models import Question, Result, Step
-from .prompt import SYSTEM_PROMPT
+from .prompt import BARE_PROMPT, SYSTEM_PROMPT
 from .sources import sources_for
 from .tools import TOOLS, TOOLS_BY_NAME
 
@@ -51,25 +51,47 @@ class Agent:
         started = time.monotonic()
         steps: list[Step] = []
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "model_calls": 0}
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT if self.settings.use_tools else BARE_PROMPT}]
         for earlier in context:
             messages.append({"role": "user", "content": f"Player {q.player_name} asks: {earlier.question}"})
             messages.append({"role": "assistant", "content": "\n".join(earlier.lines)})
         messages.append({"role": "user", "content": f"Player {q.player_name} asks: {q.text}"})
         answer, status, error = "", "ok", None
+        responses_api = self.settings.api == "responses"
+        prior_id: str | None = None                       # Responses API: the server keeps the conversation; each turn sends only what is new
+        new_input = [m for m in messages[1:]]
         try:
             for turn in range(1, self.settings.max_turns + 1):
                 last = turn == self.settings.max_turns
-                resp = self.client.chat.completions.create(
-                    model=self.settings.openai_model,
-                    messages=messages,
-                    tools=self.tool_specs,
-                    tool_choice="none" if last else "auto",
-                )
+                if responses_api:
+                    text, calls, prior_id = self._responses_turn(messages[0]["content"], new_input, prior_id, last, usage)
+                    if not calls:
+                        answer = text
+                        if last and not answer:
+                            status = "turn_limit"
+                        break
+                    new_input = []
+                    for call_id, name, raw_args in calls:
+                        content, step = self._run_tool(turn, name, raw_args)
+                        steps.append(step)
+                        new_input.append({"type": "function_call_output", "call_id": call_id, "output": content})
+                    continue
+                options: dict = {}
+                if self.settings.use_tools:
+                    options.update(tools=self.tool_specs, tool_choice="none" if last else "auto")
+                if self.settings.reasoning_effort:
+                    options["reasoning_effort"] = self.settings.reasoning_effort
+                resp = self.client.chat.completions.create(model=self.settings.openai_model, messages=messages, **options)
                 usage["model_calls"] += 1
+                usage["api_model"] = getattr(resp, "model", None) or self.settings.openai_model   # the exact model string the API answered with
                 if resp.usage:
                     usage["prompt_tokens"] += resp.usage.prompt_tokens
                     usage["completion_tokens"] += resp.usage.completion_tokens
+                    # kept for the benchmark's cost estimate: cached input is cheaper, reasoning tokens are already inside completion_tokens
+                    prompt_details = getattr(resp.usage, "prompt_tokens_details", None)
+                    completion_details = getattr(resp.usage, "completion_tokens_details", None)
+                    usage["cached_tokens"] = usage.get("cached_tokens", 0) + (getattr(prompt_details, "cached_tokens", 0) or 0)
+                    usage["reasoning_tokens"] = usage.get("reasoning_tokens", 0) + (getattr(completion_details, "reasoning_tokens", 0) or 0)
                 msg = resp.choices[0].message
                 if not msg.tool_calls:
                     answer = (msg.content or "").strip()
@@ -97,6 +119,31 @@ class Agent:
         return result
 
     # ------------------------------------------------------------------ internals
+
+    def _responses_turn(self, instructions: str, new_input: list, prior_id: str | None, last: bool, usage: dict) -> tuple[str, list, str]:
+        """One model call through the Responses API (the benchmark's path: the gpt-6 models do not accept function tools with a reasoning
+        effort on Chat Completions). Returns the text, the tool calls as (call_id, name, arguments) and the response id for the next turn."""
+        options: dict = {}
+        if self.settings.use_tools:
+            options.update(tools=[{"type": "function", "name": t.name, "description": t.description, "parameters": t.parameters, "strict": False}
+                                  for t in TOOLS],
+                           tool_choice="none" if last else "auto")
+        if self.settings.reasoning_effort:
+            options["reasoning"] = {"effort": self.settings.reasoning_effort}
+        if prior_id:
+            options["previous_response_id"] = prior_id
+        resp = self.client.responses.create(model=self.settings.openai_model, instructions=instructions, input=new_input, **options)
+        usage["model_calls"] += 1
+        usage["api_model"] = getattr(resp, "model", None) or self.settings.openai_model
+        if resp.usage:
+            usage["prompt_tokens"] += resp.usage.input_tokens
+            usage["completion_tokens"] += resp.usage.output_tokens
+            input_details = getattr(resp.usage, "input_tokens_details", None)
+            output_details = getattr(resp.usage, "output_tokens_details", None)
+            usage["cached_tokens"] = usage.get("cached_tokens", 0) + (getattr(input_details, "cached_tokens", 0) or 0)
+            usage["reasoning_tokens"] = usage.get("reasoning_tokens", 0) + (getattr(output_details, "reasoning_tokens", 0) or 0)
+        calls = [(c.call_id, c.name, c.arguments) for c in resp.output if getattr(c, "type", None) == "function_call"]
+        return (resp.output_text or "").strip(), calls, resp.id
 
     def _run_tool(self, turn: int, name: str, raw_args: str) -> tuple[str, Step]:
         """Run one tool call; always returns text for the model and a Step for the trace."""

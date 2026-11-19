@@ -35,5 +35,8 @@ target/
 # Agent traces (contain player questions)
 agent/logs/
 
+# Benchmark results (model answers and traces; rebuildable, cost money to recreate, so keep what you need)
+agent/bench/results/
+
 # End-to-end test server (a private copy of server/)
 .test-server/
