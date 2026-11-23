@@ -4,7 +4,7 @@ Slide overview for the talk in [cfp.md](cfp.md).
 | | |
 |---|---|
 | **Talk** | Mining for Meaning: A Knowledge Layer for Agents |
-| **Strategy** | ONE complete master deck (all 29 slides); each talk is cut from it by audience and available time (see "Cutting the deck") |
+| **Strategy** | ONE complete master deck (all 31 slides); each talk is cut from it by audience and available time (see "Cutting the deck") |
 | **Slot** | the CFP is 30 minutes with a live demo; other lengths are cut from the master deck |
 | **Audience** | multiple; the structure and demo are fixed and the examples are adapted (see the end) |
 | **Product naming** | Neo4j is named from the architecture slide on |
@@ -39,15 +39,15 @@ Screenshots that show the game (the chat, the book, the world) wait until the de
 
 The master deck is complete and is not shortened to fit a slot. For each talk, hide (do not delete) the slides that do not serve that audience or time. Keep slide numbers in the master so a cut is a list of numbers.
 
-**Core slides, in every version:** 1, 2, 3, 4, 5, 7, 8, 9, 12, 13, 18, 21, 22, 29 (title, welcome, hook, use case, the complexity, the three parts, the graph map, one process, the reveal, the demo, the takeaways).
+**Core slides, in every version:** 1, 2, 3, 4, 5, 7, 8, 9, 12, 13, 18, 21, 22, 30 (title, welcome, hook, use case, the complexity, the three parts, the graph map, one process, the reveal, the demo, the takeaways).
 
 **Add by audience:**
 
 | Audience | Add to the core |
 |---|---|
-| Developers | 11, 23, 24, 25, 26, 27, 28 (architecture, rebuild, spec test, tools, sources, tests, failures) |
-| Architects | 6, 10, 14, 15, 16, 17, 19, 20, 23, 24 (sources, why a graph, each graph, memory, rebuild, spec) |
-| Technical leaders | 6, 14, 15, 16, 17, 19, 20, 26 (sources, the graphs and their business parallels, evidence) |
+| Developers | 11, 23, 24, 25, 26, 27, 28, 29 (architecture, rebuild, spec test, tools, sources, tests, failures, interim results) |
+| Architects | 6, 10, 14, 15, 16, 17, 19, 20, 23, 24, 29 (sources, why a graph, each graph, memory, rebuild, spec, interim results) |
+| Technical leaders | 6, 14, 15, 16, 17, 19, 20, 26, 29 (sources, the graphs and their business parallels, evidence, interim results) |
 
 **By time:** with less time, drop add-ons from the end of the list first; with more, use them all and extend the demo (every step in slide 22). The demo steps are also cuttable: 1, 3 and 5 are the minimum.
 
@@ -85,7 +85,7 @@ Hi, I'm Martin
 - **Everything in the prompt:** expensive and stale.
 - **Free rein over the databases (text-to-query):** the agent guesses what your schema means.
 - **Retrieval on its own:** only finds passages, but not how things connect.
-- **A knowledge layer:** the alternative, built up over the next slides. It is not always worth it (said on the closing slide, 29).
+- **A knowledge layer:** the alternative, built up over the next slides. It is not always worth it (said on the closing slide, 30; slide 29 shows interim numbers for what it buys).
 - **Visual:** three small diagrams, each with the failure written under it. The fourth is left blank on purpose and filled in later.
 - Source of the comparison: the CFP checklist says the demo must back this up with a real comparison.
 
@@ -375,7 +375,7 @@ To decide: the comparison against prompt-stuffing and retrieval that the CFP pro
 - **Business parallel:** the answer comes with its evidence.
 - **Visual:** a mock-up of the panel (text and one highlighted pattern), not a screenshot. The real book was seen in the demo (slide 22, step 5), so this slide explains how it is made.
 
-## Part 8. Test (takeaway 4)
+## Part 8. Test and evidence (takeaways 1 and 4)
 
 ### 27. Testing the agent: questions with checks
 
@@ -405,9 +405,36 @@ To decide: the comparison against prompt-stuffing and retrieval that the CFP pro
 - **Visual:** one slide with two columns: the question, the wrong answer, the cause, the fix.
 - Wording: show the item names (Sharpness, Wool) but do not explain them; the lesson is the threshold and the category, not the game. Say "the right passage scored 0.644" and "wool is a category of 16 items".
 
+### 29. Does it pay off? Interim results
+
+- The data for Minecraft is publicly available, a recent LLM should contain this information in its training data.
+- Hypothesis - a small model with the knowledge layer performs as well as a large model
+
+- **Headline:** a small model with the knowledge layer answered every question; the large model on its own missed 1 in 12, at about five times the cost per right answer.
+- **Interim, indicative results**: 60 questions about the system's own data, each asked 3 times of each setup (720 runs).
+
+| | Small + graph | Small | Large | Large + graph |
+|---|---|---|---|---|
+| Right answers (of 180) | **180 (100%)** | 124 (69%) | 165 (92%) | 180 (100%) |
+| Cost per right answer | **$0.0009** | $0.00025 | $0.0048 | $0.060 |
+| Cost compared with small + graph | **1x** | 0.3x | 5.3x | 66x |
+
+- **Caveat on the slide, in plain words: these results are indicative, not conclusive.** One benchmark, 60 questions, two models, one run. The answers are checked against the same graph the agent reads, so this shows the agent retrieves this system's data faithfully, not that the data is right. A different question set could narrow the gap or reverse it.
+- **Visual:** the table above, large, with the "Small + graph" column highlighted in the domain colour and an "indicative" stamp or ribbon across a corner so it cannot be read as a finding. Keep the four columns in this order (small + graph, small, large, large + graph) so the eye goes from the claim to the alternatives. Under it, one line of small print: "Small = GPT-6 Luna, large = GPT-6.2 Astra; same settings for both; cost at list price; multiples are cost per right answer; run of 2026-11-18."
+- **Say it as a story, not a league table:**
+  - The small model alone is cheap and often wrong (69%); giving it the graph lifts it to the large model's level and beyond for about a fifth of the large model's cost per right answer.
+  - The large model alone is good (92%) but not exact. Its misses are all figures that sit close to the truth and are wrong: what a trader charges for a cake (it says 1, the data says 3), how many kinds of creature spawn in the desert (12; the data says 14).
+  - Giving the large model the graph gains accuracy but at a dearer price per right answer, so the interesting comparison is the first column against the third.
+  - On common knowledge (a recipe, a well-known level) every setup got nearly everything right; the graph earns its place on exact figures, counts and joins.
+- **If asked how sure we are:** the gap between small + graph and large alone is 8 points, with a 95% interval of 2 to 16 (resampling the questions). That is a real but modest gain measured on a small set, which is why the slide says indicative.
+- **If asked about fairness:** the large model alone did know the newest content (it scored every new-content question right), so this is not a story about out-of-date training data. The graph's edge is exactness. And one early failure was the agent's own: it could not say how many times a trade can be made because no tool returned it, which the benchmark found and the team fixed (a good small example of testing, slide 27).
+- **Cost note:** the cost per right answer for the graph columns assumes list price. With the provider's prompt cache the small + graph figure is about four times lower again (the large + graph one about two times), but that needs steady traffic, so quote the list price.
+- Source and detail: [benchmark.md](benchmark.md) (run 20261118-170033; reproduce with `./scripts/run-benchmark.ps1`). Re-run before presenting if the data, the agent or the prices have changed, and update the table. The numbers here are from the run of 2026-11-18.
+- Naming: after the reveal (slide 21), so the game's own terms are fine in the notes; on the slide keep "the system's own data".
+
 ## Part 9. Close
 
-### 29. Four takeaways
+### 30. Four takeaways
 
 ![Four takeaways](images/four_takeaways.png)
 - Four takeaways:
@@ -419,7 +446,7 @@ To decide: the comparison against prompt-stuffing and retrieval that the CFP pro
 - **Fits any domain** built on catalogues and processes: runbooks, supply chains, support, operations.
 - **Visual:** four numbered cards or rows. Reuse the icon style of the diagrams: takeaway 2 uses the three-part picture from slide 12, takeaway 3 the three graph colours from slide 13. Neutral wording, since the game was named at the reveal and this slide is about the pattern.
 
-### 30. Thank you
+### 31. Thank you
 
 [github.com/martinohanlon/minecorp]](https://github.com/martinohanlon/minecorp)
 
