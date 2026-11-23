@@ -1,0 +1,12 @@
+{
+  "_about": "US dollars per million tokens. Approximate: the owner's list of 2026-11-18 (gpt-6 family) and a web search the same day (gpt-5.4 family, unconfirmed). cached_input is not in the owner's list; where it is null the runner ASSUMES 10 percent of the input price (the gpt-5 convention) and the report also shows the uncached figure. Check against the pricing page before quoting a result.",
+  "as_of": "2026-11-18",
+  "models": {
+    "gpt-6-luna":     {"input": 0.10, "output": 0.50, "cached_input": null},
+    "gpt-6.1-terra":  {"input": 1.00, "output": 5.00, "cached_input": null},
+    "gpt-6.2-sol":    {"input": 2.00, "output": 10.00, "cached_input": null},
+    "gpt-6.2-astra":  {"input": 8.00, "output": 40.00, "cached_input": null},
+    "gpt-5.4-nano":   {"input": 0.20, "output": 1.25, "cached_input": null},
+    "gpt-5.4-mini":   {"input": 0.75, "output": 4.50, "cached_input": null}
+  }
+}

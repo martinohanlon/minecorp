@@ -182,7 +182,7 @@ class TestMain:
 class TestTheScripts:
     """Every script has a PowerShell and a bash version, and they are named for what they do."""
 
-    NAMES = ["build-graph", "build-plugin", "chat-with-agent", "install-java", "install-maven", "run-tests", "start-agent", "start-server"]
+    NAMES = ["build-graph", "build-plugin", "chat-with-agent", "install-java", "install-maven", "run-benchmark", "run-tests", "start-agent", "start-server"]
 
     @pytest.mark.parametrize("name", NAMES)
     def test_each_script_has_both_versions(self, name):

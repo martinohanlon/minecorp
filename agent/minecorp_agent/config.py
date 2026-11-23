@@ -34,6 +34,9 @@ class Settings:
     max_turns: int          # model calls per question (tool rounds + the final answer)
     llm_timeout: float      # seconds per model call
     trace_dir: Path         # one JSON line per question is appended here
+    reasoning_effort: str | None = None   # sent to the model when set (benchmark: the same effort for every model); None = the model's default
+    api: str = "chat"                     # "chat" (Chat Completions, what the service uses) or "responses" (the benchmark's gpt-6 models need it with tools and an effort)
+    use_tools: bool = True               # False = model only: no tools and the bare prompt (benchmark arm; the service never sets this)
 
 
 def get_settings() -> Settings:

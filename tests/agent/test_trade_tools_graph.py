@@ -28,14 +28,14 @@ def trade_ways(out):
 class TestHowToGet:
     def test_a_villager_sells_bread_for_an_emerald(self, agent_graph):
         out = call(agent_graph, "how_to_get", name="bread")
-        assert trade_ways(out) == [{"how": "trade", "with": "Farmer", "level": 1, "pay": "Emerald", "gets": "6 Bread"}]
+        assert trade_ways(out) == [{"how": "trade", "with": "Farmer", "level": 1, "pay": "Emerald", "gets": "6 Bread", "maxUses": 16}]
 
     def test_emeralds_can_be_mined_and_got_by_selling_goods(self, agent_graph):
         out = call(agent_graph, "how_to_get", name="emerald")
         assert {"mine"} <= {w["how"] for w in out["ways"]}
         trades = trade_ways(out)
         assert trades and all({"with", "pay"} <= set(t) for t in trades)
-        assert {"how": "trade", "with": "Farmer", "level": 1, "pay": "22 Carrot"} in trades
+        assert {"how": "trade", "with": "Farmer", "level": 1, "pay": "22 Carrot", "maxUses": 16} in trades
 
     def test_the_trades_listed_are_the_lowest_levels_first_and_the_rest_are_counted(self, agent_graph):
         out = call(agent_graph, "how_to_get", name="emerald")
@@ -110,8 +110,16 @@ class TestDescribe:
         out = result_for(call(agent_graph, "describe", name="farmer"), "profession")
         assert [lv["level"] for lv in out["levels"]] == [1, 2, 3, 4, 5]
         first = out["levels"][0]
-        assert "20 Wheat for Emerald" in first["trades"] and "Emerald for 6 Bread" in first["trades"] and first["offersAtRandom"] == 2
+        assert "20 Wheat for Emerald (16 uses before restock)" in first["trades"] and "Emerald for 6 Bread (16 uses before restock)" in first["trades"] and first["offersAtRandom"] == 2
         assert "offersAtRandom" in out["next"]
+
+    def test_a_trade_says_how_many_times_it_can_be_made_before_a_restock(self, agent_graph):
+        """The pilot benchmark (docs/benchmark.md) found the graph held this but no tool said it: 'how many times can a farmer's wheat trade be used?'"""
+        out = result_for(call(agent_graph, "describe", name="farmer"), "profession")
+        by_level = {lv["level"]: lv["trades"] for lv in out["levels"]}
+        assert "3 Emerald for Cake (12 uses before restock)" in by_level[4] and "4 Melon for Emerald (12 uses before restock)" in by_level[3]
+        assert "restock" in out["next"]
+        assert all(" uses before restock)" in trade for lv in out["levels"] for trade in lv["trades"])      # every farmer trade in the data has a limit
 
     def test_a_long_list_is_cut_with_a_count(self, agent_graph):
         out = result_for(call(agent_graph, "describe", name="shepherd"), "profession")
