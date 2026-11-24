@@ -111,8 +111,9 @@ class TestNamesAndErrors:
     def test_a_missing_name_is_a_bad_argument(self, agent_graph, tool, name):
         assert call(agent_graph, tool, name=name)["type"] == "bad_argument"
 
-    def test_a_category_is_not_a_place(self, agent_graph):
-        assert "error" in call(agent_graph, "where_to_find", name="planks")
+    def test_a_craftable_category_is_not_a_place_so_how_to_get_answers(self, agent_graph):
+        r = call(agent_graph, "where_to_find", name="planks")
+        assert r["answeredBy"] == "how_to_get" and "error" not in r
 
     @pytest.mark.parametrize("tool,name", [("where_to_find", "diamond"), ("where_to_find", "desert"), ("describe", "desert"),
                                            ("describe", "diamond ore"), ("describe", "creeper")])

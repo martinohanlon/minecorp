@@ -70,7 +70,7 @@ def resolve_item(graph: Graph, ref: str, want_category: bool | None = None) -> t
     best = [r for r in rows if r["rank"] == top["rank"]]
     if top["rank"] <= 1 or len(best) == 1:
         return top, None
-    return None, {"error": f"'{ref}' is ambiguous. Pick one and call again with its id.",
+    return None, {"error": f"'{ref}' is ambiguous. Retry now with the first candidate's id, or call how_to_get if '{ref}' is a general kind (planks, wool).",
                   "candidates": [_brief(r) for r in rows[:8]]}
 
 
@@ -198,8 +198,32 @@ def name_arg(args: dict) -> str:
     return str(args.get("name") or args.get("item") or "")
 
 
+def _category_recipes(graph: Graph, ref: str) -> dict | None:
+    """get_recipes for a category name ('planks', 'wool'): the recipes of its simplest craftable member, with how many members can be
+    crafted. None when the name is not exactly a category (or an item of that name exists), so the usual rules apply."""
+    rows = search_items(graph, ref, 12)
+    cats = [r for r in rows if r["isCategory"] and r["rank"] <= 1]
+    if not cats or any(not r["isCategory"] and r["rank"] <= 1 for r in rows):
+        return None
+    cat = cats[0]
+    craftable = _craftable_members(graph, cat["id"])
+    if not craftable["simplest"]:
+        return {"category": cat["name"], "members": craftable["total"], "recipes": [],
+                "note": "No item of this category is crafted. It is gathered from the world: use how_to_get."}
+    recipes = fetch_recipes(graph, next(r["id"] for r in search_items(graph, craftable["simplest"], 5) if not r["isCategory"] and r["name"] == craftable["simplest"]))
+    return {"category": cat["name"], "members": craftable["total"],
+            "craftableMembers": f"{craftable['made']} of {craftable['total']}",
+            "shownFor": craftable["simplest"], "recipes": [_recipe_view(r) for r in recipes],
+            "note": (f"'{cat['name']}' is a category of {craftable['total']} items; these are the recipes for {craftable['simplest']}, the simplest. "
+                     f"The others are made the same way from their own materials: call get_recipes with one specific item for its exact recipe. "
+                     + READING_NOTE)}
+
+
 def tool_get_recipes(graph: Graph, args: dict) -> dict:
-    """get_recipes: every way to make one item."""
+    """get_recipes: every way to make one item (for a category, the simplest member's)."""
+    by_category = _category_recipes(graph, name_arg(args))
+    if by_category:
+        return by_category
     item, err = resolve_item(graph, name_arg(args), want_category=False)
     if err:
         if "candidates" in err:
@@ -614,8 +638,11 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
     else:                             # a category is not made, its items are: craftable when some of them are
         craftable = _craftable_members(graph, item["id"])
         crafted = craftable["made"] > 0
-    if category:  # a category has one self-dropping block per member: noise, unless nothing else gives it
-        rows = [r for r in rows if not r["selfDrop"]] or rows
+    hidden_self_drops = False
+    if category:  # a category has one self-dropping block per member: noise, never a way to get it (a mined plank block is a plank block)
+        kept = [r for r in rows if not r["selfDrop"]]
+        hidden_self_drops = len(kept) < len(rows) and crafted
+        rows = kept if (kept or crafted) else rows
     ways = []
     for r in rows:
         way = {"how": r["how"], "from": r["source"]}
@@ -640,8 +667,11 @@ def tool_how_to_get(graph: Graph, args: dict) -> dict:
         out["moreTrades"] = trade_total - len(trades)
     if category:
         out["category"] = True
-        out["note"] = "This is a category: each way gives some of its items (see 'gives')."
-    if not ways:
+        out["note"] = ("This is a category: each way gives some of its items (see 'gives')." if ways else
+                       "This is a category: nothing in the world drops its items other than the blocks themselves.")
+        if hidden_self_drops:
+            out["note"] += " Mining one of its blocks only gives that block back, so it is not listed as a way: crafting is how players get these."
+    if not ways and not (category and crafted):
         out["note"] = "No block or mob in the data drops this item, and no villager trades it." + (" It can be crafted: use get_recipes." if crafted else "")
         out["alsoCraftable"] = crafted
         return out

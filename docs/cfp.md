@@ -1,6 +1,6 @@
 # Conference proposal: Mining for Meaning
 
-Call for papers text for presenting MineCorp at technology conferences. Draft v2, 2026-10-27.
+Call for papers text for presenting MineCorp at technology conferences. Draft v3, 2026-11-23 (adds the interim benchmark results).
 
 | | |
 |---|---|
@@ -27,6 +27,7 @@ You will learn:
 - The architecture: ontology, data and memory, behind a thin client and an agent that can only call purpose-built, read-only tools.
 - How to structure the graph: a domain graph from authoritative data, a lexical graph from text, a bridge between them, and a decision trace for every answer. Machine-extracted knowledge stays a candidate until a person confirms it.
 - How to build and govern it: loading from the source of truth, keeping the model as a validated spec that is tested against the live graph, and evals that catch drift. I will also show what went wrong, including a similarity threshold that threw away the right answer.
+- What it buys, measured: early benchmark results on accuracy and cost, comparing a small model with the graph against a large model without it. The results are indicative, not conclusive, and I will say where they could mislead.
 
 You will see MineCorp in action in a live demo, including the in-game chat and explanation that shows the graph path behind each answer.
 
@@ -44,6 +45,7 @@ You will learn:
 - The architecture: ontology, data and memory, with read-only tools.
 - How to structure the graph: domain, lexical and bridge, with candidate versus confirmed knowledge.
 - How to build and test it, and what went wrong along the way.
+- Early benchmark results on accuracy and cost, with and without the graph.
 
 Take away a pattern for any domain built on catalogues and processes.
 
@@ -57,12 +59,14 @@ What makes an agent trustworthy? A knowledge layer: a governed graph between you
 - The three parts of a knowledge layer (ontology, data, memory) and where the agent's tools sit relative to it.
 - A practical graph structure: domain, lexical and bridge graphs, with candidate versus confirmed knowledge.
 - A build and testing approach: source-of-truth loaders, a spec checked against the graph, and evals for the agent.
+- Early evidence on what a knowledge layer buys in accuracy and cost, from one indicative benchmark.
 
 ## Where the content comes from in this repo
 
 - The knowledge layer framing: the two Neo4j posts listed in [AGENTS.md](../AGENTS.md) under Sources.
 - The graph structure: [ontology.md](ontology.md) and [model/ontology.yaml](../model/ontology.yaml) (the spec that a test checks against the built graph).
 - The architecture: [architecture.md](architecture.md) and [agent-tools.md](agent-tools.md).
+- The benchmark numbers: [benchmark.md](benchmark.md) (run 2026-11-18; slide 29 of [presentation.md](presentation.md)). Re-run before submitting if the data, agent or prices change, and keep the "indicative" wording: the answers are checked against the same graph the agent reads, so it shows faithful retrieval, not that the data is right.
 - Memory and decision traces: [agent-memory.md](agent-memory.md).
 - The in-game book of sources: [explain-book.md](explain-book.md).
 - "What went wrong" stories: the similarity threshold (the "Wiki fallback" section of [agent-tools.md](agent-tools.md)) and the category that could not be crafted (the 2026-10-22 "Wool fixes" entry in AGENTS.md).

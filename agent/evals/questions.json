@@ -947,5 +947,53 @@
       "3",
       "12"
     ]
+  },
+  {
+    "id": "planks-how-to-get",
+    "question": "where do i get planks?",
+    "expect_any_tools": [
+      "how_to_get",
+      "get_recipes"
+    ],
+    "expect_all": [
+      "log"
+    ],
+    "expect_none": [
+      "mine planks",
+      "mine plank blocks"
+    ]
+  },
+  {
+    "id": "followup-recipe-category",
+    "history": [
+      {
+        "question": "where do i get planks?",
+        "answer": "- Planks can also be crafted from logs; if you want, I can look up a recipe."
+      }
+    ],
+    "question": "look up a recipe ?",
+    "expect_tools": [
+      "get_recipes"
+    ],
+    "expect_all": [
+      "log"
+    ],
+    "expect_none": [
+      "ambiguous",
+      "pick one"
+    ]
+  },
+  {
+    "id": "sharpness-describe-first",
+    "question": "what does sharpness do?",
+    "expect_tools": [
+      "describe",
+      "search_wiki"
+    ],
+    "expect_any": [
+      "damage",
+      "stronger",
+      "attack"
+    ]
   }
 ]

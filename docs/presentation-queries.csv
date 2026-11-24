@@ -19,6 +19,9 @@ RETURN a, r, b",2,0,false,false
 RETURN p
 UNION
 MATCH p = (:Item {name: 'Diamond'})<-[:CREATES]-(:Mine)-[:REQUIRES]->()
+RETURN p
+UNION 
+MATCH p = (:Biome)-[:SPAWNS]->(:Mob {name: 'Parrot'})<-[:REQUIRES]-(:Action)-[:CREATES]->()
 RETURN p",3,0,false,false
 4. Lexical graph and bridge,,,4,0,false,false
 5. Memory graph and reasoning,,"MATCH (u:User)-[:IS_PLAYER]->(pl:Player)

@@ -158,8 +158,19 @@ class TestGetRecipes:
         r = call(agent_graph, "get_recipes", item="ore")
         assert "ambiguous" in r["error"] and r["candidates"]
 
-    def test_a_category_name_is_not_an_item(self, agent_graph):
-        assert "error" in call(agent_graph, "get_recipes", item="planks")
+    def test_a_category_name_gives_the_simplest_members_recipe_and_the_count(self, agent_graph):
+        r = call(agent_graph, "get_recipes", item="planks")
+        assert "error" not in r and r["category"] == "Planks"
+        assert r["craftableMembers"] == "12 of 12" and r["shownFor"] and r["recipes"]
+        assert "get_recipes with one specific item" in r["note"]
+
+    def test_a_specific_item_is_still_found_when_a_category_shares_its_words(self, agent_graph):
+        r = call(agent_graph, "get_recipes", item="oak planks")
+        assert r["item"] == "Oak Planks" and "category" not in r
+
+    def test_the_ambiguity_error_says_how_to_recover(self, agent_graph):
+        r = call(agent_graph, "get_recipes", item="ore")
+        assert "Retry now with the first candidate" in r["error"] and "how_to_get" in r["error"]
 
 
 # --------------------------------------------------------------------------- get_uses and class_members
@@ -520,6 +531,11 @@ class TestStoredRoutesMatchTheTools:
 
 
 class TestHowToGetACategory:
+    def test_planks_do_not_list_mining_a_plank_block_as_a_way_and_lead_with_crafting(self, agent_graph):
+        r = call(agent_graph, "how_to_get", name="planks")
+        assert r["ways"] == [] and r["alsoCraftable"] is True
+        assert r["craftedLike"]["recipes"] and "not listed as a way" in r["note"]
+
     def test_wool_is_a_category_whose_items_can_all_be_crafted_and_the_tip_names_the_simplest(self, agent_graph):
         r = call(agent_graph, "how_to_get", name="wool")
         assert r["category"] is True and r["alsoCraftable"] is True and r["craftableMembers"] == "16 of 16"
@@ -570,3 +586,12 @@ class TestHandCrafting:
         r = call(agent_graph, "what_do_i_need", name="iron pickaxe")
         table = next(s for s in r.get("stations", []) if s["station"] == "Crafting Table")
         assert "at" not in table and "no crafting table is needed" in table["note"]
+
+
+class TestWhereToFindACategory:
+    def test_where_do_i_get_planks_is_answered_with_how_to_get_and_leads_with_crafting(self, agent_graph):
+        r = call(agent_graph, "where_to_find", name="planks")
+        assert "error" not in r and r["answeredBy"] == "how_to_get" and r["craftedLike"]["recipes"]
+
+    def test_a_non_craftable_ambiguous_name_still_errors(self, agent_graph):
+        assert "error" in call(agent_graph, "where_to_find", name="ore")

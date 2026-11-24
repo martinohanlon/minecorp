@@ -42,7 +42,7 @@ def resolve_things(graph: Graph, ref: str, kinds: tuple[str, ...] | None = None)
     if rows[0]["rank"] <= 1:
         best = [r for r in rows if r["rank"] <= 1]
     if len(best) > MAX_CANDIDATES:
-        return [], {"error": f"'{ref}' is ambiguous. Pick one and call again with its exact name.",
+        return [], {"error": f"'{ref}' is ambiguous. Retry now with the first candidate's exact name; if '{ref}' is a general kind (planks, wool) players craft it, so call how_to_get instead.",
                     "candidates": [{"name": r["name"], "kind": r["kind"]} for r in rows[:8]], "type": "bad_argument"}
     return best, None
 
@@ -290,6 +290,19 @@ WHERE = {"item": where_item, "block": where_block, "mob": where_mob, "biome": wh
          "enchantment": where_enchantment}
 
 
+def _category_how_to_get(graph: Graph, ref: str) -> dict | None:
+    """'Where do I get planks': a craftable item category has no single place, so answer with how_to_get (which leads with crafting)."""
+    from .tools import search_items, tool_how_to_get          # tools imports this module
+    rows = search_items(graph, ref, 12)
+    if not any(r["isCategory"] and r["rank"] <= 1 for r in rows) or any(not r["isCategory"] and r["rank"] <= 1 for r in rows):
+        return None
+    out = tool_how_to_get(graph, {"name": ref})
+    if "error" in out or not out.get("alsoCraftable"):
+        return None
+    return {**out, "answeredBy": "how_to_get",
+            "note": (out.get("note", "") + " This is a general kind with no single place in the world, so this is how_to_get's answer.").strip()}
+
+
 def tool_where_to_find(graph: Graph, args: dict) -> dict:
     """where_to_find: where an item, block, mob, biome or structure is in the world."""
     ref = str(args.get("name", "")).strip()
@@ -297,7 +310,7 @@ def tool_where_to_find(graph: Graph, args: dict) -> dict:
         return {"error": "Give the name of the item, block, mob, biome or structure.", "type": "bad_argument"}
     things, err = resolve_things(graph, ref, WHERE_KINDS)
     if err:
-        return err
+        return _category_how_to_get(graph, ref) or err
     results = []
     for t in things:
         results.append({"name": t["name"], "kind": t["kind"], **WHERE[t["kind"]](graph, t["id"])})
